@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://study-task.kz/sitemap.xml
