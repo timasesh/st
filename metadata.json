@@ -1,0 +1,6 @@
+{
+  "name": "Study Task",
+  "description": "Красивый интерактивный лендинг онлайн-школы Study Task с геймификацией, школьными предметами и системой достижений.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Comic+Neue:wght@300;400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Comic Neue", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Baloo 2", cursive, sans-serif;
+  --font-mono: ui-monospace, monospace;
+
+  /* Blue brand palette */
+  --color-primary: #2563EB;
+  --color-primary-light: #EFF6FF;
+  --color-primary-dark: #1D4ED8;
+  --color-accent: #3B82F6;
+  --color-accent-light: #DBEAFE;
+  --color-accent-dark: #1E40AF;
+  --color-surface: #FAFCFF;
+  --color-foreground: #1E3A5F;
+  --color-muted: #64748B;
+  --color-border: #BFDBFE;
+  --color-clay-shadow: #93C5FD;
+  --color-clay-deep: #1D4ED8;
+  --color-navy: #172554;
+}
+
+.clay-card {
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 2rem;
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+    inset 0 -3px 6px rgba(37, 99, 235, 0.06),
+    0 6px 0 var(--color-clay-shadow),
+    0 10px 28px rgba(37, 99, 235, 0.1);
+}
+
+.clay-card-sm {
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 1.25rem;
+  box-shadow:
+    inset 0 1px 3px rgba(255, 255, 255, 0.8),
+    0 4px 0 var(--color-clay-shadow),
+    0 6px 16px rgba(37, 99, 235, 0.08);
+}
+
+.clay-btn {
+  border-radius: 1.25rem;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.25),
+    0 5px 0 var(--color-clay-deep),
+    0 8px 20px rgba(37, 99, 235, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.clay-btn:hover {
+  transform: translateY(-1px);
+}
+
+.clay-btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.15),
+    0 2px 0 var(--color-clay-deep),
+    0 4px 10px rgba(37, 99, 235, 0.2);
+}
+
+.clay-btn-accent {
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.2),
+    0 5px 0 var(--color-clay-deep),
+    0 8px 20px rgba(37, 99, 235, 0.25);
+}
+
+.clay-btn-accent:active {
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.1),
+    0 2px 0 var(--color-clay-deep),
+    0 4px 10px rgba(37, 99, 235, 0.2);
+}
+
+.clay-nav {
+  background: rgba(250, 252, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 2px solid var(--color-border);
+}
+
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-16px) rotate(3deg); }
+}
+
+@keyframes float-soft-reverse {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(12px) rotate(-2deg); }
+}
+
+.animate-float-soft {
+  animation: float-soft 5s ease-in-out infinite;
+}
+
+.animate-float-soft-reverse {
+  animation: float-soft-reverse 6s ease-in-out infinite;
+}
+
+.animation-delay-2000 { animation-delay: 2s; }
+.animation-delay-4000 { animation-delay: 4s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-soft,
+  .animate-float-soft-reverse,
+  .animate-bounce,
+  .animate-pulse,
+  .animate-ping,
+  .animate-spin-slow {
+    animation: none !important;
+  }
+}
