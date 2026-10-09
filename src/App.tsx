@@ -31,7 +31,7 @@ const DEFAULT_PROGRESS: StoredProgress = {
   level: 1,
   claimedPrizes: [],
   unlockedAchievements: [],
-  userName: 'Юный Самурай',
+  userName: 'Иван Смирнов',
   userClass: '5 класс',
 };
 
