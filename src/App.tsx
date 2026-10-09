@@ -4,7 +4,6 @@ import Hero from './components/Hero';
 import InteractivePlatform from './components/InteractivePlatform';
 import Features from './components/Features';
 import HowItWorks from './components/HowItWorks';
-import Testimonials from './components/Testimonials';
 import Pricing from './components/Pricing';
 import Leaderboard from './components/Leaderboard';
 import FreeTrial from './components/FreeTrial';
@@ -223,7 +222,6 @@ export default function App() {
         <HowItWorks />
 
         {/* Parent testimonials */}
-        <Testimonials />
 
         {/* Free Starter Package Info & Sign Up */}
         <FreeTrial onUnlockDiagnosticAchievement={handleUnlockDiagnosticAchievement} />
