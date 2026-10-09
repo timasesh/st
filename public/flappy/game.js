@@ -504,21 +504,28 @@ function drawParticles() {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rotation);
 
-    ctx.fillStyle = '#f2ede3';
-    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    if (p.isRocketDebris) {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w * 0.45, p.h * 0.35);
+    } else {
+      ctx.fillStyle = '#f2ede3';
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
 
-    ctx.fillStyle = 'rgba(0, 60, 160, 0.4)';
-    ctx.fillRect(-p.w / 2, -p.h / 2, p.w * 0.32, p.h * 0.24);
+      ctx.fillStyle = 'rgba(0, 60, 160, 0.4)';
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w * 0.32, p.h * 0.24);
 
-    ctx.strokeStyle = 'rgba(0, 0, 80, 0.3)';
-    ctx.lineWidth = 0.7;
-    [0.44, 0.66, 0.86].forEach(t => {
-      const ly = -p.h / 2 + p.h * t;
-      ctx.beginPath();
-      ctx.moveTo(-p.w / 2 + 2, ly);
-      ctx.lineTo(p.w / 2 - 2, ly);
-      ctx.stroke();
-    });
+      ctx.strokeStyle = 'rgba(0, 0, 80, 0.3)';
+      ctx.lineWidth = 0.7;
+      [0.44, 0.66, 0.86].forEach(t => {
+        const ly = -p.h / 2 + p.h * t;
+        ctx.beginPath();
+        ctx.moveTo(-p.w / 2 + 2, ly);
+        ctx.lineTo(p.w / 2 - 2, ly);
+        ctx.stroke();
+      });
+    }
 
     ctx.restore();
   });
@@ -545,20 +552,23 @@ function drawFloatingTexts() {
 
 // Функция `addParticles` реализует локальную часть бизнес-логики модуля.
 function addParticles(x, y) {
-  for (let i = 0; i < 22; i++) {
-    const angle = -(0.08 + Math.random() * 0.84) * Math.PI;
-    const speed = 3 + Math.random() * 9;
+  const rocketColors = ['#ffffff', '#f8fbff', '#93c5fd', '#60a5fa', '#3b82f6', '#1d4ed8', '#1e40af'];
+  for (let i = 0; i < 38; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2.5 + Math.random() * 7;
     particles.push({
       x: x + (Math.random() - 0.5) * 14,
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      w: 13 + Math.random() * 10,
-      h: 10 + Math.random() * 7,
+      w: 3 + Math.random() * 5,
+      h: 3 + Math.random() * 5,
       rotation: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.22,
-      life: 130, maxLife: 130,
-      landed: false
+      rotSpeed: (Math.random() - 0.5) * 0.3,
+      color: rocketColors[Math.floor(Math.random() * rocketColors.length)],
+      isRocketDebris: true,
+      life: 70 + Math.floor(Math.random() * 25), maxLife: 95,
+      landed: false,
     });
   }
 }
@@ -756,10 +766,10 @@ function updatePipes() {
 
 // Функция `die` реализует локальную часть бизнес-логики модуля.
 function die() {
-  addParticles(player.x + player.w/2, player.y + player.h/2);
   if (!player.alive) return;
   if (invincible > 0) return;
 
+  addParticles(player.x + player.w/2, player.y + player.h/2);
   player.alive = false;
   gameState = 'dead';
   if (navigator.vibrate) navigator.vibrate(200);
