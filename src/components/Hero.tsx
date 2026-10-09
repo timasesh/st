@@ -133,12 +133,10 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-accent to-blue-400 flex items-center justify-center text-white shadow-md">
-                    <User className="w-6 h-6" />
-                  </div>
+                  <img src="/static/ST.webp" alt="Study Task" className="w-12 h-12 rounded-2xl object-contain bg-white p-1 shadow-md" />
                   <div>
                     <h3 className="font-display font-bold text-foreground text-sm">
-                      Юный Самурай
+                      Иван Смирнов
                     </h3>
                     <span className="text-xs text-muted">5 класс · математика</span>
                   </div>

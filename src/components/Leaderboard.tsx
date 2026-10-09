@@ -20,7 +20,7 @@ export default function Leaderboard({ stars, level, userName }: LeaderboardProps
     const userEntry: LeaderboardEntry = {
       id: 'user-active',
       rank: 0, // calculated later
-      name: userName || 'Юный Самурай',
+      name: userName || 'Иван Смирнов',
       stars: stars + 15, // start user with a small headstart offset for display
       level: level,
       avatarSeed: 'astronaut',
@@ -48,7 +48,7 @@ export default function Leaderboard({ stars, level, userName }: LeaderboardProps
             <span>Рейтинг недели</span>
           </div>
           <h2 className="font-display font-extrabold text-foreground text-2xl sm:text-3xl">
-            Кто собрал больше звёзд
+            Рейтинг недели
           </h2>
           <p className="text-muted text-sm">
             Пройди квизы в симуляторе выше — и твоё имя поднимется в списке.

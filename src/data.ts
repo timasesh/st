@@ -36,6 +36,55 @@ export const SUBJECTS: Subject[] = [
         options: ['199', '200', '109', '189'],
         correctAnswerIndex: 0, // 99 + 100 = 199
         explanation: 'Супер! 99 (самое большое двузначное) + 100 (самое маленькое трехзначное) = 199.'
+      },
+      {
+        id: 'math-4',
+        question: 'Сколько будет 7 × 8?',
+        options: ['54', '56', '64', '48'],
+        correctAnswerIndex: 1,
+        explanation: 'Верно: 7 × 8 = 56.'
+      },
+      {
+        id: 'math-5',
+        question: 'Чему равна четверть числа 100?',
+        options: ['20', '25', '40', '50'],
+        correctAnswerIndex: 1,
+        explanation: 'Четверть — это одна из четырёх равных частей: 100 ÷ 4 = 25.'
+      },
+      {
+        id: 'math-6',
+        question: 'Какое число делится и на 2, и на 3?',
+        options: ['14', '21', '18', '25'],
+        correctAnswerIndex: 2,
+        explanation: '18 делится на 2 и на 3 без остатка.'
+      },
+      {
+        id: 'math-7',
+        question: 'Периметр квадрата со стороной 5 см равен…',
+        options: ['10 см', '15 см', '20 см', '25 см'],
+        correctAnswerIndex: 2,
+        explanation: 'У квадрата четыре равные стороны, поэтому 4 × 5 = 20 см.'
+      },
+      {
+        id: 'math-8',
+        question: 'Сколько минут в 2 часах?',
+        options: ['100', '120', '180', '200'],
+        correctAnswerIndex: 1,
+        explanation: 'В одном часе 60 минут, значит в двух — 120.'
+      },
+      {
+        id: 'math-9',
+        question: 'Чему равно 3²?',
+        options: ['6', '9', '12', '23'],
+        correctAnswerIndex: 1,
+        explanation: '3² означает 3 × 3, это 9.'
+      },
+      {
+        id: 'math-10',
+        question: 'В коробке 24 карандаша. Их поровну раздали 6 ученикам. Сколько получил каждый?',
+        options: ['3', '4', '6', '8'],
+        correctAnswerIndex: 1,
+        explanation: '24 ÷ 6 = 4 карандаша каждому.'
       }
     ]
   },

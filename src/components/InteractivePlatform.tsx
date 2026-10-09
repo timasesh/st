@@ -208,8 +208,8 @@ export default function InteractivePlatform({
   };
 
   return (
-    <section id="interactive" className="py-24 bg-primary-light border-y-2 border-border relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="interactive" className="py-16 bg-primary-light border-y-2 border-border relative">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Title Block */}
         <div className="text-center max-w-3xl mx-auto mb-12">
@@ -232,7 +232,8 @@ export default function InteractivePlatform({
         </div>
 
         {/* Dashboard Frame */}
-        <div className="clay-card overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[600px] bg-surface">
+        <div className="clay-card overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[520px] bg-surface relative">
+          <img src="/static/ST.webp" alt="Study Task" className="absolute top-4 left-4 z-20 w-11 h-11 object-contain rounded-xl bg-white p-1 shadow-md" />
           
           {/* Dashboard Left Sidebar */}
           <div className="lg:col-span-3 bg-navy text-white p-6 flex flex-col justify-between border-r-2 border-blue-900">
@@ -437,7 +438,7 @@ export default function InteractivePlatform({
                             </span>
                           ))}
                         </div>
-                        <p className="text-[11px] text-muted">В демо-квизе 3 вопроса: ответь на все верно, чтобы увидеть, как это работает.</p>
+                        <p className="text-[11px] text-muted">Ответь правильно на все 10 вопросов и получи звезду.</p>
                       </div>
                       <div className="flex items-center gap-3 sm:flex-col sm:gap-1">
                         <ArrowRight className="w-6 h-6 text-amber-600" />
@@ -492,7 +493,7 @@ export default function InteractivePlatform({
                           <span className={`text-xs font-bold px-2.5 py-1 rounded-full bg-white shadow-sm border ${selectedSubject.borderClass} ${selectedSubject.textClass}`}>
                             Сложность: {selectedSubject.difficulty}
                           </span>
-                          <span className="text-xs text-muted font-medium">• 3 Качественных вопроса</span>
+                          <span className="text-xs text-muted font-medium">• 10 вопросов</span>
                         </div>
                         <h4 className="text-lg font-bold text-foreground">{selectedSubject.name}</h4>
                         <p className="text-muted text-sm leading-relaxed">{selectedSubject.description}</p>

@@ -45,8 +45,6 @@ export default function Navbar({
     { id: 'home', label: 'Главная' },
     { id: 'interactive', label: 'Квизы', icon: Sparkles },
     { id: 'features', label: 'О центре' },
-    { id: 'how', label: 'Как учимся' },
-    { id: 'free-trial', label: 'Пробный' },
     { id: 'pricing', label: 'Тарифы' },
     { id: 'contact', label: 'Контакты' },
   ];
@@ -66,9 +64,7 @@ export default function Navbar({
               className="flex items-center gap-2.5 cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 rounded-xl"
               onClick={() => scrollToSection('home')}
             >
-              <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center text-white font-display font-bold text-lg shadow-[0_3px_0_#1D4ED8]">
-                ST
-              </div>
+              <img src="/static/ST.webp" alt="Study Task" className="w-10 h-10 object-contain rounded-xl" />
               <div className="text-left">
                 <span className="font-display font-bold text-xl text-foreground leading-none">
                   StudyTask

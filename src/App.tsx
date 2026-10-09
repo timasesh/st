@@ -5,7 +5,6 @@ import InteractivePlatform from './components/InteractivePlatform';
 import Features from './components/Features';
 import HowItWorks from './components/HowItWorks';
 import Pricing from './components/Pricing';
-import Leaderboard from './components/Leaderboard';
 import FreeTrial from './components/FreeTrial';
 import ContactForm from './components/ContactForm';
 import Footer from './components/Footer';
@@ -151,7 +150,7 @@ export default function App() {
       setLevel(1);
       setClaimedPrizes([]);
       setUnlockedAchievements([]);
-      setUserName('Юный Самурай');
+      setUserName('Иван Смирнов');
       setUserClass('5 класс');
       try {
         localStorage.removeItem('study_task_progress');
@@ -225,9 +224,6 @@ export default function App() {
 
         {/* Free Starter Package Info & Sign Up */}
         <FreeTrial onUnlockDiagnosticAchievement={handleUnlockDiagnosticAchievement} />
-
-        {/* Live dynamic Leaderboard */}
-        <Leaderboard stars={stars} level={level} userName={userName} />
 
         {/* Tuition Cost Tariffs & Cost Calculator */}
         <Pricing />

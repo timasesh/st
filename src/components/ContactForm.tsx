@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mail, Phone, MapPin, Sparkles, MessageSquare } from 'lucide-react';
+import { Mail, Phone, MapPin, Sparkles, MessageSquare, Instagram, Send } from 'lucide-react';
 import { WHATSAPP_DISPLAY, whatsappUrl } from '../constants';
 
 export default function ContactForm() {
@@ -42,6 +42,14 @@ export default function ContactForm() {
                   </div>
                 </div>
               ))}
+              <div className="flex items-center gap-3 pt-1">
+                <a href="#" aria-label="Instagram (ссылка скоро появится)" className="inline-flex items-center gap-2 rounded-xl border-2 border-border bg-white px-3 py-2 text-sm font-semibold text-foreground hover:border-primary/40">
+                  <Instagram className="w-4 h-4 text-primary" /> Instagram
+                </a>
+                <a href="#" aria-label="Telegram (ссылка скоро появится)" className="inline-flex items-center gap-2 rounded-xl border-2 border-border bg-white px-3 py-2 text-sm font-semibold text-foreground hover:border-primary/40">
+                  <Send className="w-4 h-4 text-primary" /> Telegram
+                </a>
+              </div>
             </div>
           </div>
 
