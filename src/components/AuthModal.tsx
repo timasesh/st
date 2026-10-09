@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, LogIn, Lock, Mail, User, Trophy, Check } from 'lucide-react';
+import { GRADE_OPTIONS } from '../constants';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -167,9 +168,9 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModal
                       onChange={(e) => setFormData({ ...formData, studentClass: e.target.value })}
                       className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:bg-white font-medium cursor-pointer"
                     >
-                      {Array.from({ length: 11 }).map((_, i) => (
-                        <option key={i} value={`${i + 1} класс`}>
-                          {i + 1} класс
+                      {GRADE_OPTIONS.map((grade) => (
+                        <option key={grade} value={grade}>
+                          {grade}
                         </option>
                       ))}
                     </select>

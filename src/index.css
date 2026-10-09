@@ -1,9 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Comic+Neue:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Comic Neue", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Baloo 2", cursive, sans-serif;
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Nunito", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;
 
   /* Blue brand palette */
@@ -100,6 +100,15 @@
 
 .animate-float-soft-reverse {
   animation: float-soft-reverse 6s ease-in-out infinite;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
 }
 
 .animation-delay-2000 { animation-delay: 2s; }

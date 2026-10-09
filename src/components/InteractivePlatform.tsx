@@ -33,6 +33,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { SUBJECTS, PRIZES, ACHIEVEMENTS } from '../data';
 import { Subject, Prize, QuizQuestion } from '../types';
+import { GRADE_OPTIONS } from '../constants';
 import FlappyBirdGame from './FlappyBirdGame';
 
 // Map icon names to Lucide icons
@@ -110,6 +111,7 @@ export default function InteractivePlatform({
 
   // Start a Quiz
   const handleStartQuiz = (subject: Subject) => {
+    if (subject.comingSoon) return;
     setSelectedSubject(subject);
     setQuizActive(true);
     setCurrentQuestionIndex(0);
@@ -224,8 +226,7 @@ export default function InteractivePlatform({
             Попробуй геймификацию в действии
           </h2>
           <p className="text-muted">
-            Пройди быстрый демо-квиз по любимому предмету, заработай звезды и потрать их на реальные 
-            сувениры в нашем виртуальном магазине призов! Наша платформа прямо сейчас отслеживает твои успехи.
+            Пройди демо-квиз по математике для 5–9 классов, заработай звёзды и посмотри, на какие призы их можно обменять.
           </p>
         </div>
 
@@ -284,9 +285,9 @@ export default function InteractivePlatform({
                     onChange={(e) => onChangeUserClass(e.target.value)}
                     className="bg-blue-950/80 text-slate-200 border border-blue-800 text-xs rounded-lg px-2.5 py-1.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer font-semibold"
                   >
-                    {Array.from({ length: 11 }).map((_, i) => (
-                      <option key={i} value={`${i + 1} класс`}>
-                        {i + 1} класс
+                    {GRADE_OPTIONS.map((grade) => (
+                      <option key={grade} value={grade}>
+                        {grade}
                       </option>
                     ))}
                   </select>
@@ -451,7 +452,7 @@ export default function InteractivePlatform({
                       <div className="flex justify-between items-start mb-4">
                         <div>
                           <h3 className="font-black text-xl text-foreground">Карта Знаний</h3>
-                          <p className="text-sm text-muted/80">Регион: Естественные науки & IT • Предмет: {selectedSubject.name}</p>
+                          <p className="text-sm text-muted/80">Математика · 5–9 классы · {selectedSubject.name}</p>
                         </div>
                         <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-lg text-xs font-black">
                           {level >= 3 ? '4/5 КВЕСТОВ ПРОЙДЕНО' : '2/5 КВЕСТОВ ПРОЙДЕНО'}
@@ -472,35 +473,10 @@ export default function InteractivePlatform({
                     </div>
 
                     <div className="flex justify-between items-center pt-2">
-                      <h3 className="text-xl font-bold text-foreground font-display">Выбери предмет для квеста:</h3>
+                      <h3 className="text-xl font-bold text-foreground font-display">Квест по математике:</h3>
                       <span className="text-xs font-semibold text-primary bg-primary-light px-2.5 py-1 rounded-full border-2 border-border flex items-center gap-1">
                         <Zap className="w-3 h-3" /> +15 XP за квиз
                       </span>
-                    </div>
-
-                    {/* Horizontal subject chips */}
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                      {SUBJECTS.map((subj) => {
-                        const isSelected = selectedSubject.id === subj.id;
-                        return (
-                          <button
-                            key={subj.id}
-                            onClick={() => setSelectedSubject(subj)}
-                            className={`flex flex-col items-center p-3 rounded-2xl border-2 transition-all cursor-pointer text-center space-y-2 ${
-                              isSelected
-                                ? 'border-primary bg-primary-light/50 text-blue-900 scale-102 shadow-sm'
-                                : 'border-border hover:border-border text-muted hover:bg-primary-light'
-                            }`}
-                          >
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white bg-gradient-to-tr ${subj.colorClass} shadow-sm`}>
-                              {renderIcon(subj.iconName, "w-5 h-5")}
-                            </div>
-                            <span className="text-xs font-extrabold tracking-tight block truncate max-w-full">
-                              {subj.name}
-                            </span>
-                          </button>
-                        );
-                      })}
                     </div>
 
                     {/* Detailed info of selected subject */}
@@ -786,7 +762,7 @@ export default function InteractivePlatform({
                       }}
                       className="px-6 py-3 bg-navy hover:bg-blue-950/80 text-white rounded-xl font-bold text-sm transition-all cursor-pointer"
                     >
-                      <span>Выбрать другой предмет</span>
+                      <span>Вернуться к квизу</span>
                     </button>
                   </div>
                 </motion.div>
@@ -839,7 +815,7 @@ export default function InteractivePlatform({
                         <Gift className="w-8 h-8" />
                         <div>
                           <p className="font-extrabold text-sm">Успешно приобретено: {justPurchased}!</p>
-                          <p className="text-xs opacity-90">Заказ добавлен в твой профиль. Для получения свяжись с куратором школы.</p>
+                          <p className="text-xs opacity-90">Заказ добавлен в твой профиль. Для получения свяжись с куратором центра.</p>
                         </div>
                       </motion.div>
                     )}

@@ -9,22 +9,22 @@ import {
   Shield,
   Lock,
   Sparkles,
-  ArrowRight,
+  MessageCircle,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { whatsappUrl } from '../constants';
 
 interface HeroProps {
-  onStartJourney: () => void;
+  onBookTrial: () => void;
   stars: number;
 }
 
-export default function Hero({ onStartJourney, stars }: HeroProps) {
+export default function Hero({ onBookTrial, stars }: HeroProps) {
   return (
     <section
       id="home"
       className="relative min-h-screen pt-28 pb-20 flex items-center bg-primary-light overflow-hidden"
     >
-      {/* Clay-style decorative shapes */}
       <div
         aria-hidden
         className="absolute top-20 -left-16 w-48 h-48 rounded-[3rem] bg-blue-200/50 border-2 border-blue-200 animate-float-soft"
@@ -49,7 +49,7 @@ export default function Hero({ onStartJourney, stars }: HeroProps) {
               className="inline-flex items-center gap-2 bg-white text-primary px-4 py-2 rounded-full text-sm font-bold w-fit border-2 border-border clay-card-sm"
             >
               <Sparkles className="w-4 h-4 text-amber-500" />
-              Набор в группы — сентябрь 2026
+              Математика, 5–9 классы: набор открыт
             </motion.div>
 
             <motion.div
@@ -58,14 +58,13 @@ export default function Hero({ onStartJourney, stars }: HeroProps) {
               transition={{ duration: 0.5, delay: 0.08 }}
               className="space-y-4"
             >
-              <h1 className="font-display font-extrabold text-foreground text-[2.75rem] sm:text-6xl lg:text-[4.25rem] leading-[1.05] tracking-tight">
-                Школа, где учёба
-                <span className="block text-accent">похожа на игру</span>
+              <h1 className="font-display font-extrabold text-foreground text-4xl sm:text-5xl lg:text-[3.4rem] leading-[1.12] tracking-tight">
+                StudyTask: учёба, которая похожа на игру
               </h1>
 
               <p className="text-muted text-lg leading-relaxed max-w-lg mx-auto lg:mx-0">
-                Живые уроки с учителем, квизы после каждого занятия и звёзды, которые
-                можно обменять на настоящие призы. Для детей 1–11 классов в Алматы и онлайн.
+                Живые уроки математики для 5–9 классов в Алматы и онлайн. После каждого занятия квиз,
+                за него звёзды, а звёзды меняются на призы. Первый пробный урок бесплатно.
               </p>
             </motion.div>
 
@@ -76,51 +75,55 @@ export default function Hero({ onStartJourney, stars }: HeroProps) {
               className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3"
             >
               <button
-                onClick={onStartJourney}
-                className="bg-primary hover:bg-primary-dark text-white px-8 py-4 rounded-[1.25rem] font-display font-bold text-lg clay-btn w-full sm:w-auto cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/30"
+                type="button"
+                onClick={onBookTrial}
+                className="bg-primary hover:bg-primary-dark text-white px-8 py-4 rounded-[1.25rem] font-display font-bold text-lg clay-btn w-full sm:w-auto cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/30 min-h-12"
               >
-                Попробовать квиз
+                Записаться на пробный
               </button>
 
-              <button
-                onClick={onStartJourney}
-                className="bg-white text-foreground border-2 border-border px-8 py-4 rounded-[1.25rem] font-bold text-lg hover:bg-primary-light transition-colors w-full sm:w-auto cursor-pointer flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
+              <a
+                href={whatsappUrl('Здравствуйте! Хочу записаться на пробный урок математики.')}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-white text-foreground border-2 border-border px-8 py-4 rounded-[1.25rem] font-bold text-lg hover:bg-primary-light transition-colors w-full sm:w-auto cursor-pointer flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 min-h-12"
               >
-                Как устроено
-                <ArrowRight className="w-4 h-4" />
-              </button>
+                <MessageCircle className="w-5 h-5 text-emerald-600" />
+                Написать в WhatsApp
+              </a>
             </motion.div>
 
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.24 }}
-              className="flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-4"
+              className="space-y-3 pt-2"
             >
-              {[
-                { value: '120+', label: 'учеников сейчас' },
-                { value: '4.9', label: 'оценка родителей', icon: Star },
-                { value: '2 урока', label: 'бесплатно на старте' },
-              ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="clay-card-sm px-4 py-3 flex items-center gap-2"
-                >
-                  {stat.icon && (
-                    <stat.icon className="w-4 h-4 text-amber-500 fill-amber-400" />
-                  )}
-                  <div>
-                    <span className="block font-display font-bold text-foreground text-lg leading-none">
-                      {stat.value}
-                    </span>
-                    <span className="text-xs text-muted">{stat.label}</span>
+              <p className="text-sm text-foreground font-medium max-w-lg mx-auto lg:mx-0">
+                Занятия ведут опытные преподаватели, которые умеют объяснять просто и интересно.
+              </p>
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4">
+                {[
+                  { value: '5–9', label: 'классы, математика' },
+                  { value: '1 урок', label: 'пробный бесплатно' },
+                  { value: '60 мин', label: 'длительность урока' },
+                ].map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="clay-card-sm px-4 py-3 flex items-center gap-2"
+                  >
+                    <div>
+                      <span className="block font-display font-bold text-foreground text-lg leading-none">
+                        {stat.value}
+                      </span>
+                      <span className="text-xs text-muted">{stat.label}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </motion.div>
           </div>
 
-          {/* Student dashboard preview */}
           <div className="lg:col-span-5 relative w-full flex justify-center items-center">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -137,7 +140,7 @@ export default function Hero({ onStartJourney, stars }: HeroProps) {
                     <h3 className="font-display font-bold text-foreground text-sm">
                       Юный Самурай
                     </h3>
-                    <span className="text-xs text-muted">5 класс · кабинет ученика</span>
+                    <span className="text-xs text-muted">5 класс · математика</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 bg-amber-50 border-2 border-amber-200 rounded-full px-3 py-1">
@@ -182,7 +185,7 @@ export default function Hero({ onStartJourney, stars }: HeroProps) {
                       2
                     </div>
                     <div>
-                      <h5 className="text-xs font-bold text-foreground">Циклы в Python</h5>
+                      <h5 className="text-xs font-bold text-foreground">Проценты</h5>
                       <p className="text-[11px] text-emerald-600 font-medium">Сейчас в процессе</p>
                     </div>
                   </div>
@@ -196,10 +199,10 @@ export default function Hero({ onStartJourney, stars }: HeroProps) {
                 <h4 className="text-xs font-bold text-muted">Награды</h4>
                 <div className="flex gap-3 justify-center">
                   {[
-                    { icon: Medal, label: 'Орфограф', color: 'from-amber-300 to-orange-400' },
-                    { icon: Shield, label: 'Физика', color: 'from-blue-300 to-indigo-400' },
-                    { icon: Rocket, label: 'Python', color: 'from-emerald-300 to-teal-400' },
-                    { icon: Lock, label: 'ИИ', color: '', locked: true },
+                    { icon: Medal, label: 'Дроби', color: 'from-amber-300 to-orange-400' },
+                    { icon: Shield, label: 'Уравнения', color: 'from-blue-300 to-indigo-400' },
+                    { icon: Rocket, label: 'Геометрия', color: 'from-emerald-300 to-teal-400' },
+                    { icon: Lock, label: 'Скоро', color: '', locked: true },
                   ].map((badge) => (
                     <div key={badge.label} className="flex flex-col items-center gap-1">
                       <div

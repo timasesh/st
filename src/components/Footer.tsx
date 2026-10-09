@@ -1,5 +1,6 @@
 import React from 'react';
 import { Heart } from 'lucide-react';
+import { WHATSAPP_DISPLAY } from '../constants';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -21,8 +22,8 @@ export default function Footer() {
             </div>
 
             <p className="text-sm text-blue-200/70 max-w-sm leading-relaxed">
-              Онлайн-школа для детей 1–11 классов: живые уроки, квизы и система звёзд с реальными призами.
-              Алматы и вся Казахстан — учимся из дома.
+              Математический образовательный центр для 5–9 классов: живые уроки, квизы и система звёзд с реальными призами.
+              Алматы и онлайн.
             </p>
           </div>
 
@@ -33,8 +34,8 @@ export default function Footer() {
             <ul className="space-y-2 text-sm">
               <li><a href="#home" className="hover:text-white transition-colors cursor-pointer">Главная</a></li>
               <li><a href="#interactive" className="hover:text-white transition-colors cursor-pointer">Квизы</a></li>
-              <li><a href="#features" className="hover:text-white transition-colors cursor-pointer">О школе</a></li>
-              <li><a href="#reviews" className="hover:text-white transition-colors cursor-pointer">Отзывы</a></li>
+              <li><a href="#features" className="hover:text-white transition-colors cursor-pointer">О центре</a></li>
+              <li><a href="#free-trial" className="hover:text-white transition-colors cursor-pointer">Пробный урок</a></li>
               <li><a href="#pricing" className="hover:text-white transition-colors cursor-pointer">Тарифы</a></li>
             </ul>
           </div>
@@ -50,7 +51,7 @@ export default function Footer() {
               </li>
               <li>
                 <span className="text-blue-300/60">Телефон: </span>
-                <span className="text-white/90">+7 (771) 751 51 67</span>
+                <span className="text-white/90">{WHATSAPP_DISPLAY}</span>
               </li>
               <li>
                 <span className="text-blue-300/60">Город: </span>

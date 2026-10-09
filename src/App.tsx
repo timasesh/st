@@ -160,9 +160,8 @@ export default function App() {
     }
   };
 
-  // Helper trigger to scroll and focus quiz
-  const handleOpenQuizTab = () => {
-    const el = document.getElementById('interactive');
+  const scrollToId = (id: string) => {
+    const el = document.getElementById(id);
     if (el) {
       const offset = 80;
       const pos = el.getBoundingClientRect().top + window.scrollY;
@@ -172,6 +171,9 @@ export default function App() {
       });
     }
   };
+
+  const handleOpenQuizTab = () => scrollToId('interactive');
+  const handleBookTrial = () => scrollToId('free-trial');
 
   // Trigger from the Free Trial Section
   const handleUnlockDiagnosticAchievement = () => {
@@ -195,7 +197,7 @@ export default function App() {
       {/* Main Sections */}
       <main>
         {/* Hero Banner Section */}
-        <Hero onStartJourney={handleOpenQuizTab} stars={stars} />
+        <Hero onBookTrial={handleBookTrial} stars={stars} />
 
         {/* Live Interactive Gamification Cockpit */}
         <InteractivePlatform

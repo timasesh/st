@@ -5,7 +5,7 @@ export const SUBJECTS: Subject[] = [
     id: 'math',
     name: 'Математика',
     iconName: 'Calculator',
-    description: 'Развиваем логическое мышление, пространственное воображение и нестандартный подход к задачам.',
+    description: 'Живые уроки математики для 5–9 классов: логика, дроби, уравнения и задачи в игровом формате.',
     colorClass: 'from-primary to-accent-dark',
     bgClass: 'bg-blue-50/50',
     borderClass: 'border-blue-100',
@@ -49,6 +49,7 @@ export const SUBJECTS: Subject[] = [
     borderClass: 'border-emerald-100',
     textClass: 'text-emerald-600',
     difficulty: 'Продвинутый',
+    comingSoon: true,
     quests: [
       { id: 'it-q1', title: 'Hello World', description: 'Написать свою первую строчку кода', starsReward: 5, xpReward: 20, isCompleted: false },
       { id: 'it-q2', title: 'Повелитель циклов', description: 'Запустить бесконечный цикл без багов', starsReward: 10, xpReward: 40, isCompleted: false },
@@ -87,6 +88,7 @@ export const SUBJECTS: Subject[] = [
     borderClass: 'border-sky-100',
     textClass: 'text-sky-600',
     difficulty: 'Продвинутый',
+    comingSoon: true,
     quests: [
       { id: 'phys-q1', title: 'Сила Ньютона', description: 'Поймать падающее яблоко в симуляции', starsReward: 5, xpReward: 20, isCompleted: false },
       { id: 'phys-q2', title: 'Генератор Теслы', description: 'Зажечь лампочку статическим зарядом', starsReward: 10, xpReward: 40, isCompleted: false },
@@ -125,6 +127,7 @@ export const SUBJECTS: Subject[] = [
     borderClass: 'border-amber-100',
     textClass: 'text-amber-600',
     difficulty: 'Легкий',
+    comingSoon: true,
     quests: [
       { id: 'eng-q1', title: 'Полиглот', description: 'Выучить 10 новых космических фраз', starsReward: 5, xpReward: 20, isCompleted: false },
       { id: 'eng-q2', title: 'Дипломат', description: 'Закончить диалог с ИИ-учителем', starsReward: 10, xpReward: 40, isCompleted: false },
@@ -163,6 +166,7 @@ export const SUBJECTS: Subject[] = [
     borderClass: 'border-violet-100',
     textClass: 'text-violet-600',
     difficulty: 'Легкий',
+    comingSoon: true,
     quests: [
       { id: 'rus-q1', title: 'Орфограф', description: 'Написать диктант без единой помарки', starsReward: 5, xpReward: 20, isCompleted: false },
       { id: 'rus-q2', title: 'Мастер метафор', description: 'Найти все эпитеты в стихотворении', starsReward: 10, xpReward: 40, isCompleted: false },

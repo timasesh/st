@@ -1,5 +1,6 @@
 import React from 'react';
 import { Mail, Phone, MapPin, Sparkles, MessageSquare } from 'lucide-react';
+import { WHATSAPP_DISPLAY, whatsappUrl } from '../constants';
 
 export default function ContactForm() {
   return (
@@ -19,16 +20,16 @@ export default function ContactForm() {
                 Напишите — ответим
               </h2>
               <p className="text-muted">
-                Расскажем про расписание, геймификацию, тарифы или поможем выбрать первый предмет.
+                Расскажем про расписание, геймификацию и тарифы по математике для 5–9 классов.
                 Обычно отвечаем в WhatsApp за пару минут.
               </p>
             </div>
 
             <div className="space-y-4 pt-2">
               {[
-                { icon: Phone, label: 'Телефон', value: '+7 (771) 751 51 67', hint: 'WhatsApp и Telegram' },
+                { icon: Phone, label: 'Телефон', value: WHATSAPP_DISPLAY, hint: 'WhatsApp и Telegram' },
                 { icon: Mail, label: 'Почта', value: 'study.task.kz@gmail.com', hint: 'Ответ в течение дня' },
-                { icon: MapPin, label: 'Офис', value: 'Алматы, Казахстан', hint: 'Уроки полностью онлайн' },
+                { icon: MapPin, label: 'Офис', value: 'Алматы, Казахстан', hint: 'Уроки в Алматы и онлайн' },
               ].map((item) => (
                 <div key={item.label} className="flex items-start gap-4">
                   <div className="w-10 h-10 rounded-xl bg-white border-2 border-border flex items-center justify-center shrink-0">
@@ -53,7 +54,7 @@ export default function ContactForm() {
                 Напишите нам в один клик
               </h3>
               <p className="text-muted text-sm">
-                Менеджер поможет подобрать время для пробного урока и расскажет про бесплатный стартовый пакет.
+                Подберём время для одного бесплатного пробного урока математики на 60 минут.
               </p>
             </div>
 
@@ -65,7 +66,7 @@ export default function ContactForm() {
                     <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white" />
                   </div>
                   <div>
-                    <span className="block text-xs font-bold text-foreground">Study Task</span>
+                    <span className="block text-xs font-bold text-foreground">StudyTask</span>
                     <span className="block text-[11px] text-emerald-600 font-medium">Онлайн · ответ ~1 мин</span>
                   </div>
                 </div>
@@ -75,22 +76,22 @@ export default function ContactForm() {
               <div className="space-y-2 text-xs">
                 <div className="bg-white p-3 rounded-2xl border-2 border-border/50 max-w-[85%] rounded-tl-sm">
                   <p className="text-foreground/80 leading-relaxed">
-                    Здравствуйте! Расскажите, в каком классе учится ребёнок и какой предмет интересует — подберём время для пробного урока.
+                    Здравствуйте! Расскажите, в каком классе (5–9) учится ребёнок — подберём время для пробного урока математики.
                   </p>
                 </div>
                 <div className="bg-white p-3 rounded-2xl border-2 border-border/50 max-w-[85%] rounded-tl-sm">
                   <p className="text-foreground/80 leading-relaxed">
-                    Первые два занятия и диагностика — <strong>бесплатно</strong>, без обязательств.
+                    Пробный урок — <strong>один, 60 минут</strong>, бесплатно, без обязательств.
                   </p>
                 </div>
               </div>
             </div>
 
             <a
-              href="https://wa.me/87717515167?text=Здравствуйте! Меня интересуют уроки в школе Study Task"
+              href={whatsappUrl('Здравствуйте! Меня интересуют уроки математики в центре StudyTask')}
               target="_blank"
               rel="noreferrer"
-              className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-[1.25rem] font-display font-bold text-base transition-all flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-400/40"
+              className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-[1.25rem] font-display font-bold text-base transition-all flex items-center justify-center gap-2 cursor-pointer min-h-12 focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-400/40"
             >
               <MessageSquare className="w-5 h-5" />
               Написать в WhatsApp

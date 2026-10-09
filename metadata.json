@@ -1,6 +1,6 @@
 {
   "name": "Study Task",
-  "description": "Красивый интерактивный лендинг онлайн-школы Study Task с геймификацией, школьными предметами и системой достижений.",
+  "description": "Лендинг математического образовательного центра StudyTask: живые уроки математики для 5–9 классов, квизы, звёзды и призы.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X, Star, LogIn, Sparkles, PhoneCall } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { whatsappUrl } from '../constants';
 
 interface NavbarProps {
   stars: number;
@@ -43,8 +44,9 @@ export default function Navbar({
   const navLinks = [
     { id: 'home', label: 'Главная' },
     { id: 'interactive', label: 'Квизы', icon: Sparkles },
-    { id: 'features', label: 'О школе' },
+    { id: 'features', label: 'О центре' },
     { id: 'how', label: 'Как учимся' },
+    { id: 'free-trial', label: 'Пробный' },
     { id: 'pricing', label: 'Тарифы' },
     { id: 'contact', label: 'Контакты' },
   ];
@@ -72,7 +74,7 @@ export default function Navbar({
                   StudyTask
                 </span>
                 <span className="block text-[11px] text-muted font-medium">
-                  онлайн-школа с игрой
+                  математический образовательный центр
                 </span>
               </div>
             </button>
@@ -124,10 +126,10 @@ export default function Navbar({
               </button>
 
               <a
-                href="https://wa.me/87717515167?text=Здравствуйте, хотелось бы записаться на обучение!"
+                href={whatsappUrl('Здравствуйте, хотелось бы записаться на обучение!')}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 mt-0.5 bg-primary hover:bg-primary-dark text-white rounded-full font-display font-bold text-sm transition-colors cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/30"
+                className="inline-flex items-center gap-1.5 px-4 py-2 mt-0.5 bg-primary hover:bg-primary-dark text-white rounded-full font-display font-bold text-sm transition-colors cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/30 min-h-11"
               >
                 <PhoneCall className="w-4 h-4" />
                 Записаться
@@ -187,10 +189,10 @@ export default function Navbar({
                   </button>
 
                   <a
-                    href="https://wa.me/87717515167?text=Здравствуйте, хотелось бы записаться на обучение!"
+                    href={whatsappUrl('Здравствуйте, хотелось бы записаться на обучение!')}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-center gap-2 w-full py-3 bg-accent text-white rounded-xl font-display font-bold clay-btn clay-btn-accent cursor-pointer"
+                    className="flex items-center justify-center gap-2 w-full py-3 bg-accent text-white rounded-xl font-display font-bold clay-btn clay-btn-accent cursor-pointer min-h-12"
                   >
                     <PhoneCall className="w-4 h-4" />
                     Записаться в WhatsApp

@@ -166,7 +166,7 @@ export default function Leaderboard({ stars, level, userName }: LeaderboardProps
 
         {/* Bottom micro tip */}
         <p className="text-center text-xs text-muted mt-4">
-          *Рейтинг обновляется раз в неделю. Каждый понедельник ученики, занявшие топ-3, получают суперприз от школы!
+          *Рейтинг обновляется раз в неделю. Каждый понедельник ученики, занявшие топ-3, получают суперприз от центра!
         </p>
 
       </div>

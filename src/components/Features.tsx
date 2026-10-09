@@ -30,7 +30,7 @@ const FEATURE_ITEMS = [
   {
     id: 'gamification',
     title: 'Звёзды → призы',
-    description: 'За уроки и квизы начисляются звёзды. Их можно потратить в магазине — от наклеек до наушников.',
+    description: 'За уроки и квизы — звёзды. Стикерпак от 15★, кепка от 35★, бутылка от 50★, худи от 85★, наушники от 150★.',
     icon: Star,
     color: 'bg-amber-500 text-white',
     tag: 'реальные награды',
@@ -50,7 +50,7 @@ export default function Features() {
             Не просто репетитор — целая экосистема
           </h2>
           <p className="text-muted text-base">
-            Программа как в хорошей школе, но с механиками из любимых игр: уровни, звёзды и награды, за которые хочется стараться.
+            Программа математического образовательного центра с механиками из любимых игр: уровни, звёзды и награды, за которые хочется стараться.
           </p>
         </div>
 
@@ -97,12 +97,10 @@ export default function Features() {
             </div>
             <div className="lg:col-span-4 flex lg:justify-end">
               <a
-                href="https://wa.me/87717515167?text=Здравствуйте! Хочу записаться на диагностику знаний"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 bg-white text-primary hover:bg-primary-light px-6 py-3.5 rounded-[1.25rem] font-display font-bold text-sm sm:text-base clay-btn cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-white/40"
+                href="#free-trial"
+                className="inline-flex items-center gap-2 bg-white text-primary hover:bg-primary-light px-6 py-3.5 rounded-[1.25rem] font-display font-bold text-sm sm:text-base clay-btn cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-white/40 min-h-12"
               >
-                Бесплатная диагностика
+                Записаться на пробный
                 <ShieldCheck className="w-5 h-5" />
               </a>
             </div>

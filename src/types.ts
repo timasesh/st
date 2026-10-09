@@ -27,6 +27,7 @@ export interface Subject {
   difficulty: 'Легкий' | 'Средний' | 'Продвинутый';
   quests: Quest[];
   quiz: QuizQuestion[];
+  comingSoon?: boolean;
 }
 
 export interface Prize {

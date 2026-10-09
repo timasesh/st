@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Gift, BookOpen, Award, CheckCircle, ArrowRight, Heart } from 'lucide-react';
+import { GRADE_OPTIONS, whatsappUrl } from '../constants';
 
 interface FreeTrialProps {
   onUnlockDiagnosticAchievement: () => void;
@@ -12,7 +13,6 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
     studentName: '',
     studentClass: '5 класс',
     phone: '',
-    subject: 'Математика',
   });
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -22,11 +22,20 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
     if (!formData.phone || !formData.studentName) return;
 
     setLoading(true);
+    const message = [
+      'Здравствуйте! Хочу записаться на пробный урок математики.',
+      `Родитель: ${formData.parentName}`,
+      `Ученик: ${formData.studentName}`,
+      `Класс: ${formData.studentClass}`,
+      `Телефон: ${formData.phone}`,
+    ].join('\n');
+
+    window.open(whatsappUrl(message), '_blank');
     setTimeout(() => {
       setLoading(false);
       setIsSubmitted(true);
       onUnlockDiagnosticAchievement();
-    }, 1200);
+    }, 400);
   };
 
   return (
@@ -41,16 +50,15 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
               <div className="space-y-6">
                 <div className="inline-flex items-center gap-2 bg-white/15 border-2 border-white/25 rounded-full px-4 py-1.5">
                   <Gift className="w-4 h-4 text-amber-200" />
-                  <span className="text-sm font-bold text-white/90">Стартовый пакет</span>
+                  <span className="text-sm font-bold text-white/90">Пробный урок</span>
                 </div>
 
-                <h3 className="font-display font-extrabold text-3xl sm:text-4xl leading-tight">
-                  Два урока бесплатно — без обязательств
+                <h3 className="font-display font-extrabold text-4xl leading-tight">
+                  Первый пробный урок — бесплатно
                 </h3>
 
-                <p className="opacity-90 leading-relaxed text-sm sm:text-base">
-                  Попробуйте формат, познакомьтесь с учителем и посмотрите, как ребёнок реагирует на квизы и звёзды.
-                  Если не подойдёт — просто скажете, и всё.
+                <p className="opacity-90 leading-relaxed text-base">
+                  Один урок математики на 60 минут: живое занятие, квиз и звёзды. Без оплаты и без обязательств.
                 </p>
 
                 <div className="space-y-4 pt-2">
@@ -59,9 +67,9 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                       <BookOpen className="w-5 h-5 text-amber-200" />
                     </div>
                     <div>
-                      <h4 className="font-display font-bold text-base">2 пробных урока</h4>
+                      <h4 className="font-display font-bold text-base">1 пробный урок</h4>
                       <p className="opacity-80 text-xs mt-0.5">
-                        Полноценное занятие с преподавателем — любой предмет на выбор.
+                        60 минут с преподавателем. Математика, 5–9 классы, Алматы или онлайн.
                       </p>
                     </div>
                   </div>
@@ -71,9 +79,9 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                       <Award className="w-5 h-5 text-amber-200" />
                     </div>
                     <div>
-                      <h4 className="font-display font-bold text-base">Диагностика знаний</h4>
+                      <h4 className="font-display font-bold text-base">Что входит</h4>
                       <p className="opacity-80 text-xs mt-0.5">
-                        Найдём пробелы и составим план — без давления и «продажи».
+                        Знакомство с форматом, разбор темы и короткий квиз. Дальше — только если вам подошло.
                       </p>
                     </div>
                   </div>
@@ -82,7 +90,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
 
               <div className="pt-6 border-t-2 border-white/15 text-xs opacity-80 flex items-center gap-2">
                 <Heart className="w-4 h-4 fill-white/80" />
-                <span>Запись ни к чему не обязывает — это нормальный тест-драйв.</span>
+                <span>Запись ни к чему не обязывает — это один бесплатный урок.</span>
               </div>
             </div>
 
@@ -99,10 +107,10 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                   >
                     <div>
                       <h4 className="font-display font-extrabold text-xl text-foreground">
-                        Оставить заявку
+                        Короткая заявка
                       </h4>
                       <p className="text-muted text-sm mt-1">
-                        Перезвоним в течение 15 минут и подберём время.
+                        Перезвоним и подберём время для одного пробного урока.
                       </p>
                     </div>
 
@@ -115,10 +123,11 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                           id="parentName"
                           type="text"
                           required
+                          autoComplete="name"
                           value={formData.parentName}
                           onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
                           placeholder="Айгуль"
-                          className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                          className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 min-h-12 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                         />
                       </div>
 
@@ -134,7 +143,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                             value={formData.studentName}
                             onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
                             placeholder="Амир"
-                            className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                            className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 min-h-12 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                           />
                         </div>
 
@@ -146,62 +155,45 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                             id="studentClass"
                             value={formData.studentClass}
                             onChange={(e) => setFormData({ ...formData, studentClass: e.target.value })}
-                            className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:bg-white transition-colors cursor-pointer font-medium"
+                            className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 min-h-12 focus:outline-none focus:border-primary focus:bg-white transition-colors cursor-pointer font-medium"
                           >
-                            {Array.from({ length: 11 }).map((_, i) => (
-                              <option key={i} value={`${i + 1} класс`}>
-                                {i + 1} класс
+                            {GRADE_OPTIONS.map((grade) => (
+                              <option key={grade} value={grade}>
+                                {grade}
                               </option>
                             ))}
                           </select>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label htmlFor="phone" className="block text-sm font-bold text-foreground">
-                            Телефон
-                          </label>
-                          <input
-                            id="phone"
-                            type="tel"
-                            required
-                            value={formData.phone}
-                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                            placeholder="+7 (___) ___ __ __"
-                            className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:bg-white transition-colors"
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label htmlFor="subject" className="block text-sm font-bold text-foreground">
-                            Предмет
-                          </label>
-                          <select
-                            id="subject"
-                            value={formData.subject}
-                            onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                            className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:bg-white transition-colors cursor-pointer font-medium"
-                          >
-                            <option value="Математика">Математика</option>
-                            <option value="IT & Программирование">IT & Программирование</option>
-                            <option value="Физика">Физика</option>
-                            <option value="Английский язык">Английский язык</option>
-                            <option value="Русский язык">Русский язык</option>
-                          </select>
-                        </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="phone" className="block text-sm font-bold text-foreground">
+                          Телефон
+                        </label>
+                        <input
+                          id="phone"
+                          type="tel"
+                          required
+                          autoComplete="tel"
+                          value={formData.phone}
+                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          placeholder="+7 (___) ___ __ __"
+                          className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 min-h-12 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                        />
                       </div>
+
+                      <p className="text-xs text-muted">Предмет: математика. Набор открыт для 5–9 классов.</p>
 
                       <button
                         type="submit"
                         disabled={loading}
-                        className="w-full py-4 bg-accent hover:bg-accent-dark disabled:bg-accent/60 text-white rounded-[1.25rem] font-display font-bold text-base clay-btn clay-btn-accent transition-all flex items-center justify-center gap-2 cursor-pointer mt-2 focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/30"
+                        className="w-full py-4 bg-accent hover:bg-accent-dark disabled:bg-accent/60 disabled:cursor-not-allowed text-white rounded-[1.25rem] font-display font-bold text-base clay-btn clay-btn-accent transition-all flex items-center justify-center gap-2 cursor-pointer mt-2 min-h-12 focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/30"
                       >
                         {loading ? (
                           <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <>
-                            <span>Получить бесплатный пакет</span>
+                            <span>Записаться на пробный урок</span>
                             <ArrowRight className="w-5 h-5" />
                           </>
                         )}
@@ -243,7 +235,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                     <button
                       type="button"
                       onClick={() => setIsSubmitted(false)}
-                      className="px-6 py-2.5 border-2 border-border text-muted hover:bg-primary-light rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                      className="px-6 py-2.5 border-2 border-border text-muted hover:bg-primary-light rounded-xl font-bold text-xs transition-colors cursor-pointer min-h-11"
                     >
                       Отправить ещё одну заявку
                     </button>
