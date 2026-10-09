@@ -24,17 +24,21 @@ import {
   RefreshCw,
   Gift,
   ArrowRight,
-  User,
+  Paperclip,
+  BookOpen,
   AlertCircle,
   Rocket,
   Gamepad2,
   Lock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { SUBJECTS, PRIZES, ACHIEVEMENTS } from '../data';
-import { Subject, Prize, QuizQuestion } from '../types';
+import { SUBJECTS } from '../data';
+import { Subject } from '../types';
+import { KIT_1 } from './GiftKit';
 import { GRADE_OPTIONS } from '../constants';
 import FlappyBirdGame from './FlappyBirdGame';
+
+type KitItem = (typeof KIT_1)[number];
 
 // Map icon names to Lucide icons
 const IconMap: Record<string, React.ComponentType<any>> = {
@@ -87,7 +91,7 @@ export default function InteractivePlatform({
   onChangeUserClass,
   onResetProgress,
 }: InteractivePlatformProps) {
-  const [activeTab, setActiveTab] = useState<'game' | 'quizzes' | 'shop' | 'profile'>('game');
+  const [activeTab, setActiveTab] = useState<'game' | 'quizzes' | 'shop'>('game');
   const [selectedSubject, setSelectedSubject] = useState<Subject>(SUBJECTS[0]);
   
   // Quiz state
@@ -102,8 +106,10 @@ export default function InteractivePlatform({
   const [errorStreak, setErrorStreak] = useState(0);
 
   // Shop state
-  const [shopCategory, setShopCategory] = useState<'Все' | 'Стикеры' | 'Мерч' | 'Гаджеты'>('Все');
   const [justPurchased, setJustPurchased] = useState<string | null>(null);
+
+  // Homework modal
+  const [showHomeworkModal, setShowHomeworkModal] = useState(false);
 
   // Profile Edit
   const [isEditingName, setIsEditingName] = useState(false);
@@ -156,7 +162,7 @@ export default function InteractivePlatform({
       const isPerfect = score + (selectedAnswer === question.correctAnswerIndex ? 1 : 0) === totalQuestions;
       const finalScore = score + (selectedAnswer === question.correctAnswerIndex ? 1 : 0);
       
-      const earnedStars = finalScore * 5 + (isPerfect ? 10 : 0);
+      const earnedStars = isPerfect ? 1 : 0; // звезда только за результат без ошибок (10 из 10)
       const earnedXp = finalScore * 25 + (isPerfect ? 25 : 0);
 
       setQuizResultStars(earnedStars);
@@ -176,9 +182,9 @@ export default function InteractivePlatform({
   };
 
   // Buy Item in Shop
-  const handleBuyItem = (prize: Prize) => {
-    if (stars < prize.cost) return;
-    onClaimPrize(prize.id, prize.cost);
+  const handleBuyItem = (prize: KitItem) => {
+    if (stars < prize.stars) return;
+    onClaimPrize(prize.id, prize.stars);
     onUnlockAchievement('ach-shopper'); // Unlock shooper achievement
     
     setJustPurchased(prize.name);
@@ -200,11 +206,6 @@ export default function InteractivePlatform({
     const IconComponent = IconMap[name] || AlertCircle;
     return <IconComponent className={className} />;
   };
-
-  // Filtered prizes
-  const filteredPrizes = PRIZES.filter(
-    (p) => shopCategory === 'Все' || p.category === shopCategory
-  );
 
   return (
     <section id="interactive" className="py-24 bg-primary-light border-y-2 border-border relative">
@@ -352,27 +353,6 @@ export default function InteractivePlatform({
                     МЕРЧ
                   </span>
                 </button>
-
-                <button
-                  onClick={() => {
-                    setQuizActive(false);
-                    setQuizCompleted(false);
-                    setActiveTab('profile');
-                  }}
-                  className={`flex items-center space-x-3 w-full px-4 py-3 rounded-xl font-semibold text-sm transition-all text-left ${
-                    activeTab === 'profile'
-                      ? 'bg-primary text-white shadow-md shadow-blue-900/30'
-                      : 'text-blue-300/70 hover:bg-blue-950/80 hover:text-white'
-                  }`}
-                >
-                  <User className="w-4.5 h-4.5" />
-                  <span>Мои достижения</span>
-                  {unlockedAchievements.length > 0 && (
-                    <span className="ml-auto bg-accent text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full">
-                      {unlockedAchievements.length}
-                    </span>
-                  )}
-                </button>
               </div>
 
             </div>
@@ -441,8 +421,34 @@ export default function InteractivePlatform({
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -15 }}
-                  className="space-y-6 h-full flex flex-col justify-between"
+                  className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-6"
                 >
+                  <div className="space-y-6 flex flex-col justify-between min-w-0">
+
+                  {/* Как получить звезду: 10 из 10 */}
+                  <div className="rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 p-5 shadow-[0_4px_0_#FCD34D]">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                      <div className="flex-1 space-y-2">
+                        <p className="font-display font-extrabold text-foreground text-base">Пройди тест на 10 из 10 — получи звезду</p>
+                        <div className="flex flex-wrap gap-1.5" aria-label="10 правильных ответов из 10">
+                          {Array.from({ length: 10 }).map((_, i) => (
+                            <span key={i} className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm">
+                              <Check className="w-4 h-4" />
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-muted">В демо-квизе 3 вопроса: ответь на все верно, чтобы увидеть, как это работает.</p>
+                      </div>
+                      <div className="flex items-center gap-3 sm:flex-col sm:gap-1">
+                        <ArrowRight className="w-6 h-6 text-amber-600" />
+                        <div className="w-16 h-16 rounded-full bg-amber-400 flex items-center justify-center shadow-lg ring-4 ring-amber-200">
+                          <Star className="w-9 h-9 text-white fill-white" />
+                        </div>
+                        <span className="font-mono font-black text-amber-700 text-lg">+1 ★</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-4">
                     {/* Subject Map Card from Artistic Flair */}
                   <div className="clay-card-sm p-6 relative overflow-hidden bg-surface">
@@ -504,9 +510,6 @@ export default function InteractivePlatform({
                                 <p className="text-[10px] text-muted/80 truncate">{quest.description}</p>
                               </div>
                               <div className="flex items-center space-x-1.5 text-right font-mono">
-                                <span className="text-[10px] font-black text-amber-600 flex items-center gap-0.5">
-                                  +{quest.starsReward} <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                                </span>
                                 <span className="text-[10px] font-bold text-primary">
                                   +{quest.xpReward} XP
                                 </span>
@@ -525,7 +528,7 @@ export default function InteractivePlatform({
                           <Play className="w-10 h-10 bg-white/20 p-2.5 rounded-full animate-pulse mb-3" />
                           <span className="font-extrabold text-sm text-center">Пройти Викторину</span>
                           <span className="text-[10px] opacity-80 mt-1 flex items-center gap-0.5">
-                            <Zap className="w-3 h-3" /> +25 звёзд бонус
+                            <Zap className="w-3 h-3" /> 10 из 10 = +1 звезда
                           </span>
                         </button>
                       </div>
@@ -540,9 +543,8 @@ export default function InteractivePlatform({
                       <div className="text-xs text-muted space-y-2">
                         <p className="font-black text-foreground text-sm">Правила игры StudyTask</p>
                         <p className="leading-relaxed">
-                          Каждый верный ответ дает тебе <strong className="text-primary">5 звезд</strong> и <strong className="text-primary">25 XP</strong>. 
-                          Если ответишь без единой ошибки на все вопросы, ты разблокируешь достижение <strong className="text-primary">"Умник-отличник"</strong> и получишь 
-                          дополнительно <strong className="text-primary">10 звезд</strong>! Заработав 25 звезд, ты откроешь значок <strong className="text-amber-600">"Звездный магнат"</strong>.
+                          Ответь на <strong className="text-primary">все вопросы без ошибок</strong> (10 из 10) и получи <strong className="text-amber-600">1 звезду</strong>.
+                          Ещё одна звезда — за прикреплённую домашку. Звёзды можно обменять на призы набора 1 в магазине.
                         </p>
                       </div>
                     </div>
@@ -560,7 +562,7 @@ export default function InteractivePlatform({
                           </p>
                         </div>
                         <div className="flex justify-between items-center pt-1">
-                          <span className="text-xs font-extrabold text-blue-200 font-mono">+100 XP & +25 ЗВЕЗД</span>
+                          <span className="text-xs font-extrabold text-blue-200 font-mono">+100 XP & +1 ЗВЕЗДА</span>
                           <button 
                             onClick={() => handleStartQuiz(selectedSubject)}
                             className="bg-accent hover:bg-accent-dark px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-blue-950/50"
@@ -574,6 +576,36 @@ export default function InteractivePlatform({
                       <div className="absolute top-0 right-10 w-12 h-12 bg-blue-700 rounded-full opacity-30 -z-0"></div>
                     </div>
                   </div>
+                  </div>
+
+                  {/* Домашнее задание (справа) */}
+                  <aside className="clay-card-sm p-5 bg-surface flex flex-col gap-4 self-start">
+                    <div className="flex items-center gap-2">
+                      <div className="w-10 h-10 rounded-xl bg-violet-100 text-violet-600 flex items-center justify-center">
+                        <BookOpen className="w-5 h-5" />
+                      </div>
+                      <h4 className="font-display font-extrabold text-foreground text-base">Домашнее задание</h4>
+                    </div>
+
+                    <div className="rounded-xl bg-primary-light border-2 border-border p-3 text-xs text-muted leading-relaxed">
+                      Здесь появляется задание от преподавателя после урока. Реши его в тетради и прикрепи фото.
+                    </div>
+
+                    <button
+                      type="button"
+                      aria-disabled="true"
+                      onClick={() => setShowHomeworkModal(true)}
+                      className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-slate-200 text-slate-500 font-bold text-sm cursor-pointer hover:bg-slate-300 transition-colors"
+                    >
+                      <Paperclip className="w-4 h-4" />
+                      Прикрепить домашку
+                    </button>
+
+                    <div className="flex items-center gap-2 rounded-xl bg-amber-50 border-2 border-amber-200 px-3 py-2">
+                      <Star className="w-5 h-5 text-amber-500 fill-amber-500 shrink-0" />
+                      <span className="text-xs font-bold text-amber-800">За прикреплённую домашку — 1 звезда</span>
+                    </div>
+                  </aside>
                 </motion.div>
               )}
 
@@ -735,6 +767,10 @@ export default function InteractivePlatform({
                       </div>
                     </div>
 
+                    {quizResultStars === 0 && (
+                      <p className="text-xs text-amber-700 font-semibold">Звезда выдаётся только за тест без ошибок — попробуй ещё раз!</p>
+                    )}
+
                     {/* Fun note */}
                     <p className="text-xs text-muted/80 italic">
                       Ты можешь сразу перейти в <strong className="text-primary">"Магазин призов"</strong> и потратить звезды на классный мерч!
@@ -779,31 +815,18 @@ export default function InteractivePlatform({
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                      <h3 className="text-xl font-bold text-foreground font-display">Магазин ценных подарков Study Task</h3>
-                      <p className="text-xs text-muted">
-                        Накапливай звезды за квизы и обменивай их здесь на ценные сувениры и технику!
-                      </p>
+                      <span className="inline-block text-[10px] font-bold text-primary bg-primary-light px-2.5 py-0.5 rounded-full border-2 border-border mb-1">Набор 1</span>
+                      <h3 className="text-xl font-bold text-foreground font-display">Магазин призов Study Task</h3>
+                      <p className="text-xs text-muted">Копи звёзды за тесты и домашку и обменивай их на призы!</p>
                     </div>
-
-                    {/* Filter categories */}
-                    <div className="flex flex-wrap gap-1.5 bg-primary-light p-1 rounded-xl">
-                      {(['Все', 'Стикеры', 'Мерч', 'Гаджеты'] as const).map((cat) => (
-                        <button
-                          key={cat}
-                          onClick={() => setShopCategory(cat)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                            shopCategory === cat
-                              ? 'bg-white text-primary shadow-sm'
-                              : 'text-muted hover:text-foreground'
-                          }`}
-                        >
-                          {cat}
-                        </button>
-                      ))}
+                    <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-2 text-center shadow-[0_3px_0_#FCD34D]">
+                      <div className="text-[10px] font-bold text-amber-700">Весь набор</div>
+                      <div className="font-display font-extrabold text-amber-700 text-xl leading-tight">
+                        {KIT_1.reduce((sum, g) => sum + g.stars, 0)} ★
+                      </div>
                     </div>
                   </div>
 
-                  {/* Purchase Success alert inside shop */}
                   <AnimatePresence>
                     {justPurchased && (
                       <motion.div
@@ -821,76 +844,50 @@ export default function InteractivePlatform({
                     )}
                   </AnimatePresence>
 
-                  {/* Products Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {filteredPrizes.map((prize) => {
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {KIT_1.map((prize) => {
                       const isClaimed = claimedPrizes.includes(prize.id);
-                      const canAfford = stars >= prize.cost;
-                      const levelLocked = level < prize.unlockedAtLevel;
+                      const canAfford = stars >= prize.stars;
+                      const variants = prize.images.length ? prize.images : [undefined];
 
                       return (
                         <div
                           key={prize.id}
-                          className={`bg-white border rounded-2xl p-4 flex flex-col justify-between transition-all relative ${
-                            isClaimed
-                              ? 'border-emerald-200 bg-emerald-50/10'
-                              : levelLocked
-                              ? 'border-border opacity-55'
-                              : 'border-border hover:border-blue-200 hover:shadow-md'
+                          className={`bg-white border-2 rounded-2xl p-4 flex flex-col gap-3 transition-all ${
+                            isClaimed ? 'border-emerald-200' : 'border-border hover:border-blue-200 hover:shadow-md'
                           }`}
                         >
-                          {/* Top Tag */}
-                          <div className="flex justify-between items-start mb-3">
-                            <span className="text-[10px] font-bold text-muted/80 bg-primary-light px-2 py-0.5 rounded uppercase">
-                              {prize.category}
-                            </span>
-                            
-                            {isClaimed ? (
-                              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-0.5">
-                                <Check className="w-3 h-3" /> Куплено
-                              </span>
-                            ) : levelLocked ? (
-                              <span className="text-[10px] font-bold text-primary bg-accent-light border border-border px-2.5 py-0.5 rounded-full flex items-center gap-0.5">
-                                <Lock className="w-3 h-3" /> LVL {prize.unlockedAtLevel}
-                              </span>
-                            ) : null}
+                          <div className={`grid gap-2 ${variants.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                            {variants.map((src, v) => (
+                              <div key={v} className="aspect-square rounded-xl bg-primary-light border-2 border-border overflow-hidden flex items-center justify-center">
+                                {src ? (
+                                  <img
+                                    src={src}
+                                    alt={`${prize.name}${variants.length > 1 ? `, вариант ${v + 1}` : ''}`}
+                                    loading="lazy"
+                                    className="w-full h-full object-contain p-2"
+                                  />
+                                ) : (
+                                  <Gift className="w-8 h-8 text-muted/50" />
+                                )}
+                              </div>
+                            ))}
                           </div>
+                          {variants.length > 1 && (
+                            <span className="text-[11px] text-muted">Вариантов на выбор: {variants.length}</span>
+                          )}
 
-                          {/* Icon illustration */}
-                          <div className="my-2 flex justify-center py-4 bg-primary-light rounded-2xl relative overflow-hidden group">
-                            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                              {renderIcon(prize.iconName, "w-6 h-6")}
-                            </div>
-                          </div>
+                          <h4 className="font-bold text-foreground text-sm">{prize.name}</h4>
 
-                          {/* Specs */}
-                          <div className="space-y-1.5 mt-2">
-                            <h4 className="font-bold text-foreground text-sm">{prize.name}</h4>
-                            <p className="text-muted text-xs line-clamp-2 leading-relaxed h-8">
-                              {prize.description}
-                            </p>
-                          </div>
-
-                          {/* Purchase button row */}
-                          <div className="border-t border-slate-50 pt-3 mt-4 flex items-center justify-between">
+                          <div className="border-t border-border pt-3 mt-auto flex items-center justify-between">
                             <div className="flex items-center space-x-1">
-                              <Star className="w-4.5 h-4.5 text-amber-500 fill-amber-500" />
-                              <span className="font-black text-foreground text-base font-mono">{prize.cost}</span>
+                              <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                              <span className="font-black text-foreground text-base font-mono">{prize.stars}</span>
                             </div>
 
                             {isClaimed ? (
-                              <button
-                                disabled
-                                className="px-3.5 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl cursor-not-allowed"
-                              >
+                              <button disabled className="px-3.5 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl cursor-not-allowed">
                                 В профиле
-                              </button>
-                            ) : levelLocked ? (
-                              <button
-                                disabled
-                                className="px-3 py-1.5 bg-primary-light text-muted/80 text-[10px] font-bold rounded-xl cursor-not-allowed"
-                              >
-                                Доступно с LVL {prize.unlockedAtLevel}
                               </button>
                             ) : (
                               <button
@@ -902,139 +899,8 @@ export default function InteractivePlatform({
                                     : 'bg-primary-light text-muted/80 cursor-not-allowed'
                                 }`}
                               >
-                                {canAfford ? 'Заказать' : 'Не хватает звезд'}
+                                {canAfford ? 'Заказать' : 'Не хватает звёзд'}
                               </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* ACHIEVEMENTS / PROFILE TAB */}
-              {activeTab === 'profile' && (
-                <motion.div
-                  key="ach-view"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  className="space-y-6"
-                >
-                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-                    <div>
-                      <h3 className="text-xl font-bold text-foreground font-display">Твоя стена достижений и наград</h3>
-                      <p className="text-xs text-muted">
-                        Открывай ачивки за активное участие в викторинах лендинга и прокачку своего уровня!
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Miniature badges panel from Artistic Flair */}
-                  <div className="clay-card-sm p-6 bg-surface">
-                    <div className="flex justify-between items-center mb-4">
-                      <h4 className="font-black text-foreground text-base">Наградной зал Самурая</h4>
-                      <span className="bg-primary-light text-primary px-3 py-1 rounded-lg text-xs font-black">
-                        ОТКРЫТО {unlockedAchievements.length} ИЗ 6 НАГРАД
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-                      {/* Badge 1: First Quest */}
-                      <div 
-                        className={`${unlockedAchievements.includes('ach-first') ? 'bg-yellow-50 border-yellow-100 text-yellow-600' : 'bg-primary-light border-border opacity-30'} h-16 rounded-2xl flex items-center justify-center text-2xl border transition-all hover:scale-105 cursor-help`}
-                        title="Первый шаг — пройден первый квиз"
-                      >
-                        🏆
-                      </div>
-                      {/* Badge 2: Perfect Quiz */}
-                      <div 
-                        className={`${unlockedAchievements.includes('ach-nerd') ? 'bg-primary-light border-border text-primary' : 'bg-primary-light border-border opacity-30'} h-16 rounded-2xl flex items-center justify-center text-2xl border transition-all hover:scale-105 cursor-help`}
-                        title="Отличник-ученый — квиз без ошибок"
-                      >
-                        🧪
-                      </div>
-                      {/* Badge 3: Level Up */}
-                      <div 
-                        className={`${unlockedAchievements.includes('ach-level-up') ? 'bg-purple-50 border-purple-100 text-purple-600' : 'bg-primary-light border-border opacity-30'} h-16 rounded-2xl flex items-center justify-center text-2xl border transition-all hover:scale-105 cursor-help`}
-                        title="Восхождение — получен новый уровень"
-                      >
-                        📖
-                      </div>
-                      {/* Badge 4: Star Collector */}
-                      <div 
-                        className={`${unlockedAchievements.includes('ach-star-collector') ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-primary-light border-border opacity-30'} h-16 rounded-2xl flex items-center justify-center text-2xl border transition-all hover:scale-105 cursor-help`}
-                        title="Звездный магнат — накоплено много звезд"
-                      >
-                        🌟
-                      </div>
-                      {/* Badge 5: Shopper */}
-                      <div 
-                        className={`${unlockedAchievements.includes('ach-shopper') ? 'bg-accent-light border-border text-primary' : 'bg-primary-light border-border opacity-30'} h-16 rounded-2xl flex items-center justify-center border transition-all hover:scale-105 cursor-help`}
-                        title="Выгодный шопинг — совершен заказ в магазине"
-                      >
-                        🛍️
-                      </div>
-                      {/* Badge 6: Future Legend */}
-                      <div 
-                        className={`${level >= 3 ? 'bg-yellow-100 border-yellow-200 text-yellow-700' : 'bg-primary-light border-border opacity-30'} h-16 rounded-2xl flex items-center justify-center text-2xl border transition-all hover:scale-105 cursor-help`}
-                        title="Будущая легенда — достигнут высокий уровень"
-                      >
-                        👑
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Achievements Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {ACHIEVEMENTS.map((ach) => {
-                      // Check if achievement is unlocked
-                      let isUnlocked = unlockedAchievements.includes(ach.id);
-                      if (ach.requiredStars && stars >= ach.requiredStars) {
-                        isUnlocked = true;
-                      }
-                      if (ach.requiredLevel && level >= ach.requiredLevel) {
-                        isUnlocked = true;
-                      }
-
-                      return (
-                        <div
-                          key={ach.id}
-                          className={`border rounded-2xl p-4 flex items-center space-x-4 transition-all ${
-                            isUnlocked
-                              ? 'border-border bg-accent-light/10 shadow-xs'
-                              : 'border-border opacity-50 bg-primary-light/50'
-                          }`}
-                        >
-                          <div className={`w-12 h-12 rounded-full shrink-0 flex items-center justify-center text-white ${
-                            isUnlocked ? ach.color : 'bg-blue-200'
-                          } shadow-sm text-xl`}>
-                            {isUnlocked ? renderIcon(ach.iconName, "w-5 h-5") : <Lock className="w-4 h-4 text-white" />}
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <h4 className={`text-sm font-bold truncate ${
-                              isUnlocked ? 'text-foreground' : 'text-muted/80'
-                            }`}>
-                              {ach.name}
-                            </h4>
-                            <p className="text-muted text-xs mt-0.5 line-clamp-2 leading-relaxed">
-                              {ach.description}
-                            </p>
-                            {ach.requiredStars && !isUnlocked && (
-                              <span className="text-[10px] text-amber-600 font-bold mt-1 block">
-                                Требуется звезд: {stars}/{ach.requiredStars}
-                              </span>
-                            )}
-                            {ach.requiredLevel && !isUnlocked && (
-                              <span className="text-[10px] text-primary font-bold mt-1 block">
-                                Требуется уровень: {level}/{ach.requiredLevel}
-                              </span>
-                            )}
-                            {isUnlocked && (
-                              <span className="text-[10px] text-emerald-600 font-bold mt-1 block flex items-center gap-0.5">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Открыто!
-                              </span>
                             )}
                           </div>
                         </div>
@@ -1051,6 +917,48 @@ export default function InteractivePlatform({
         </div>
 
       </div>
+
+      <AnimatePresence>
+        {showHomeworkModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setShowHomeworkModal(false)}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              initial={{ scale: 0.9, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9 }}
+              onClick={(e) => e.stopPropagation()}
+              className="clay-card bg-surface p-7 max-w-sm w-full text-center space-y-4"
+            >
+              <div className="text-4xl">😏</div>
+              <p className="font-display font-extrabold text-foreground text-lg leading-snug">
+                Ну ты и хитрый, сначала запишись на занятия)
+              </p>
+              <div className="flex flex-col gap-2">
+                <a
+                  href="#free-trial"
+                  onClick={() => setShowHomeworkModal(false)}
+                  className="px-5 py-3 rounded-xl bg-primary hover:bg-primary-dark text-white font-bold text-sm"
+                >
+                  Записаться на пробный урок
+                </a>
+                <button
+                  onClick={() => setShowHomeworkModal(false)}
+                  className="px-5 py-2.5 rounded-xl text-muted hover:text-foreground font-semibold text-sm cursor-pointer"
+                >
+                  Закрыть
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
