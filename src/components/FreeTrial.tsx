@@ -69,7 +69,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                     <div>
                       <h4 className="font-display font-bold text-base">1 пробный урок</h4>
                       <p className="opacity-80 text-xs mt-0.5">
-                        60 минут с преподавателем. Математика, 5–9 классы, Алматы или онлайн.
+                        60 минут с преподавателем. Математика, 5–9 классы, онлайн.
                       </p>
                     </div>
                   </div>

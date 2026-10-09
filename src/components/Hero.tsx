@@ -63,7 +63,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               </h1>
 
               <p className="text-muted text-lg leading-relaxed max-w-lg mx-auto lg:mx-0">
-                Живые уроки математики для 5–9 классов в Алматы и онлайн. После каждого занятия квиз,
+                Живые уроки математики для 5–9 классов онлайн. После каждого занятия квиз,
                 за него звёзды, а звёзды меняются на призы. Первый пробный урок бесплатно.
               </p>
             </motion.div>

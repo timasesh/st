@@ -23,7 +23,6 @@ export default function Footer() {
 
             <p className="text-sm text-blue-200/70 max-w-sm leading-relaxed">
               Математический образовательный центр для 5–9 классов: живые уроки, квизы и система звёзд с реальными призами.
-              Алматы и онлайн.
             </p>
           </div>
 

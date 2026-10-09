@@ -86,7 +86,7 @@ export default function HowItWorks() {
 
         <div className="mt-8 text-center clay-card-sm p-6 max-w-3xl mx-auto bg-surface">
           <p className="text-muted text-sm mb-4">
-            Занятия в Алматы и онлайн. Ребёнок занимается с преподавателем, вы видите прогресс в телефоне.
+            Занятия онлайн. Ребёнок занимается с преподавателем, вы видите прогресс в телефоне.
           </p>
           <a
             href="#free-trial"

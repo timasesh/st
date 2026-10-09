@@ -29,7 +29,7 @@ export default function ContactForm() {
               {[
                 { icon: Phone, label: 'Телефон', value: WHATSAPP_DISPLAY, hint: 'WhatsApp и Telegram' },
                 { icon: Mail, label: 'Почта', value: 'study.task.kz@gmail.com', hint: 'Ответ в течение дня' },
-                { icon: MapPin, label: 'Офис', value: 'Алматы, Казахстан', hint: 'Уроки в Алматы и онлайн' },
+                { icon: MapPin, label: 'Офис', value: 'Алматы, Казахстан', hint: 'Уроки онлайн' },
               ].map((item) => (
                 <div key={item.label} className="flex items-start gap-4">
                   <div className="w-10 h-10 rounded-xl bg-white border-2 border-border flex items-center justify-center shrink-0">
