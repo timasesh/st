@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, Laptop, Star, Award, ShieldCheck } from 'lucide-react';
+import { HelpCircle, Star, Award, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
 
 const FEATURE_ITEMS = [
@@ -20,17 +20,9 @@ const FEATURE_ITEMS = [
     tag: 'закрепление',
   },
   {
-    id: 'presentations',
-    title: 'Игры и презентации',
-    description: 'Каждый третий урок — интерактив: ассоциации, визуальные модели, мини-соревнования с одноклассниками.',
-    icon: Laptop,
-    color: 'bg-violet-500 text-white',
-    tag: 'раз в 3 урока',
-  },
-  {
     id: 'gamification',
     title: 'Звёзды → призы',
-    description: 'За уроки и квизы — звёзды. Стикерпак от 15★, кепка от 35★, бутылка от 50★, худи от 85★, наушники от 150★.',
+    description: 'За уроки и квизы — звёзды. Стикерпак за 5★, блокнот за 7★, футболка за 10★, рюкзак за 12★.',    
     icon: Star,
     color: 'bg-amber-500 text-white',
     tag: 'реальные награды',
@@ -54,7 +46,7 @@ export default function Features() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {FEATURE_ITEMS.map((item, index) => {
             const Icon = item.icon;
             return (

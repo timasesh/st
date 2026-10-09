@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Laptop, ClipboardCheck, Gift, ArrowRight, Star } from 'lucide-react';
-import { PRIZES } from '../data';
+import { Laptop, ClipboardCheck, Gift, ArrowRight} from 'lucide-react';
+import GiftKit from './GiftKit';       
 
 const STEPS = [
   {
@@ -82,30 +82,7 @@ export default function HowItWorks() {
           })}
         </div>
 
-        <div className="mt-12 clay-card p-6 sm:p-8 bg-surface">
-          <div className="text-center max-w-2xl mx-auto mb-6 space-y-2">
-            <h3 className="font-display font-extrabold text-foreground text-xl sm:text-2xl">
-              Какие призы и сколько звёзд нужно
-            </h3>
-            <p className="text-muted text-sm">
-              Звёзды копятся за уроки и квизы. Стоимость призов уже заложена в тариф.
-            </p>
-          </div>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {PRIZES.map((prize) => (
-              <li
-                key={prize.id}
-                className="clay-card-sm p-4 flex items-center justify-between gap-3 bg-primary-light"
-              >
-                <span className="text-sm font-bold text-foreground leading-snug">{prize.name}</span>
-                <span className="shrink-0 inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 border-2 border-amber-200 rounded-full px-2.5 py-1">
-                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                  {prize.cost}★
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+          <GiftKit />
 
         <div className="mt-8 text-center clay-card-sm p-6 max-w-3xl mx-auto bg-surface">
           <p className="text-muted text-sm mb-4">
