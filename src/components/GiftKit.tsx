@@ -8,19 +8,19 @@ type GiftItem = { id: string; name: string; stars: number; images: string[] };
 // Файлы лежат в public/static/gifts/, путь в коде начинается с /static/gifts/...
 // Несколько вариантов (например, блокноты) — просто несколько путей в images.
 export const KIT_1: GiftItem[] = [
-  { id: 'stickers', name: 'Стикерпак', stars: 5, images: [
-    // '/static/gifts/stickers.png',
+  { id: 'stickers', name: 'Стикерпак', stars: 5, images:  [
+    '/static/gifts/набор-наклеек-1.png',
+    '/static/gifts/набор-наклеек-2.png',
   ] },
   { id: 'notebook', name: 'Блокнот', stars: 7, images: [
-    // '/static/gifts/notebook-1.png',
-    // '/static/gifts/notebook-2.png',
-    // '/static/gifts/notebook-3.png',
+    '/static/gifts/блокнот-1(3-штуки-на-выбор).png',
+    '/static/gifts/блокнот-2(3-штуки-на-выбор).png',
   ] },
   { id: 'tshirt', name: 'Фирменная футболка', stars: 10, images: [
-    // '/static/gifts/tshirt.png',
+    '/static/gifts/футболка.jpeg',
   ] },
   { id: 'backpack', name: 'Фирменный рюкзак', stars: 12, images: [
-    // '/static/gifts/backpack.png',
+    '/static/gifts/рюкзак-(3-штуки-на-выбор).png',
   ] },
 ];
 // ▲▲▲ ▲▲▲
