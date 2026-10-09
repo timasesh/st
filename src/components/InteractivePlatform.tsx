@@ -232,8 +232,7 @@ export default function InteractivePlatform({
         </div>
 
         {/* Dashboard Frame */}
-        <div className="clay-card overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[520px] bg-surface relative">
-          <img src="/static/ST.webp" alt="Study Task" className="absolute top-4 left-4 z-20 w-11 h-11 object-contain rounded-xl bg-white p-1 shadow-md" />
+        <div className="clay-card overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[520px] bg-surface">
           
           {/* Dashboard Left Sidebar */}
           <div className="lg:col-span-3 bg-navy text-white p-6 flex flex-col justify-between border-r-2 border-blue-900">
@@ -242,9 +241,7 @@ export default function InteractivePlatform({
               {/* User mini profile block */}
               <div className="space-y-4">
                 <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-accent to-blue-400 flex items-center justify-center text-white shadow-md">
-                    <Rocket className="w-6 h-6" />
-                  </div>
+                  <img src="/static/ST.webp" alt="Study Task" className="w-12 h-12 rounded-2xl object-contain bg-white p-1 shadow-md shrink-0" />
                   <div className="flex-1">
                     {isEditingName ? (
                       <div className="flex items-center space-x-1">

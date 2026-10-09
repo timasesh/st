@@ -13,9 +13,7 @@ export default function Footer() {
 
           <div className="md:col-span-5 space-y-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center text-white font-display font-bold text-lg">
-                S
-              </div>
+              <img src="/static/ST.webp" alt="Study Task" className="w-9 h-9 rounded-xl object-contain bg-white p-0.5" />
               <span className="font-display font-bold text-lg text-white">
                 Study Task
               </span>

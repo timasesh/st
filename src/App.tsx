@@ -37,7 +37,11 @@ function loadStoredProgress(): StoredProgress {
   try {
     const stored = localStorage.getItem('study_task_progress');
     if (!stored) return DEFAULT_PROGRESS;
-    return { ...DEFAULT_PROGRESS, ...JSON.parse(stored) };
+    const progress = { ...DEFAULT_PROGRESS, ...JSON.parse(stored) };
+    if (/^юный самурай$/i.test(progress.userName?.trim() ?? '')) {
+      progress.userName = 'Иван Смирнов';
+    }
+    return progress;
   } catch {
     return DEFAULT_PROGRESS;
   }
