@@ -10,11 +10,9 @@ type GiftItem = { id: string; name: string; stars: number; images: string[] };
 export const KIT_1: GiftItem[] = [
   { id: 'stickers', name: 'Стикерпак', stars: 5, images:  [
     '/static/gifts/набор-наклеек-1.png',
-    '/static/gifts/набор-наклеек-2.png',
   ] },
   { id: 'notebook', name: 'Блокнот', stars: 7, images: [
     '/static/gifts/блокнот-1(3-штуки-на-выбор).png',
-    '/static/gifts/блокнот-2(3-штуки-на-выбор).png',
   ] },
   { id: 'tshirt', name: 'Фирменная футболка', stars: 10, images: [
     '/static/gifts/футболка.jpeg',
@@ -88,9 +86,7 @@ export default function GiftKit() {
                 <span className="font-display font-bold text-foreground text-sm leading-snug">{item.name}</span>
                 <Stars n={item.stars} />
               </div>
-              {variants.length > 1 && (
-                <span className="text-xs text-muted">Вариантов на выбор: {variants.length}</span>
-              )}
+              
             </motion.li>
           );
         })}
