@@ -15,7 +15,7 @@ export const KIT_1: GiftItem[] = [
     '/static/gifts/блокнот-1(3-штуки-на-выбор).png',
   ] },
   { id: 'tshirt', name: 'Фирменная футболка', stars: 10, images: [
-    '/static/gifts/футболка.jpeg',
+    '/static/gifts/футболка.png',
   ] },
   { id: 'backpack', name: 'Фирменный рюкзак', stars: 12, images: [
     '/static/gifts/рюкзак-(3-штуки-на-выбор).png',
