@@ -454,7 +454,7 @@ function drawPlayer() {
   ctx.translate(cx, cy);
 
   const targetAngle = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, player.vy * 0.082));
-  player.angle += (targetAngle - player.angle) * (player.vy < 0 ? 0.22 : 0.1);
+  player.angle += (targetAngle - player.angle) * (player.vy < 0 ? 0.08 : 0.1);
   ctx.rotate(player.angle);
 
   // Shield / break aura
@@ -920,7 +920,6 @@ function jump() {
     gameState = 'playing';
     lastPipe = Date.now() + 1000;
     player.vy = JUMP;
-    player.angle = -Math.PI / 4;
     doubleJumpUsed = false;
     document.getElementById('topControls').style.display = 'flex';
     playSound('jump');
@@ -935,7 +934,6 @@ function jump() {
     player.vy = JUMP * 0.85;
     doubleJumpUsed = true;
   }
-  player.angle = -Math.PI / 4;
 }
 
 // ===== START SCREEN PREVIEW =====
