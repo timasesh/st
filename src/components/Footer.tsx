@@ -22,6 +22,10 @@ export default function Footer() {
             <p className="text-sm text-blue-200/70 max-w-sm leading-relaxed">
               Математический образовательный центр для 5–9 классов: живые уроки, квизы и система звёзд с реальными призами.
             </p>
+            <div className="space-y-1 text-sm">
+              <p className="text-blue-200/70">Основатель: <span className="text-white/90">Тлеужанов Тимур</span></p>
+              <p className="text-blue-200/70">Instagram: <a href="https://www.instagram.com/timurtleuzhanov1/" target="_blank" rel="noreferrer" className="text-white/90 underline underline-offset-4 hover:text-white transition-colors">@timurtleuzhanov1</a></p>
+            </div>
           </div>
 
           <div className="md:col-span-3 space-y-4">
