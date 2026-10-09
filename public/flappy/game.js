@@ -11,6 +11,9 @@ shieldImage.src = './shield.png';
 const coinImage = new Image();
 coinImage.src = './coin.png';
 
+const rocketImage = new Image();
+rocketImage.src = './ракета.png';
+
 const GRAVITY = 0.45;
 const JUMP = -9.5;
 const PIPE_SPEED = 3;
@@ -401,6 +404,13 @@ function drawCoin() {
 
 // ===== PLAYER =====
 function drawNeutralPlayer(size) {
+  if (rocketImage.complete && rocketImage.naturalWidth > 0) {
+    const width = size * 1.45;
+    const height = width * rocketImage.naturalHeight / rocketImage.naturalWidth;
+    ctx.drawImage(rocketImage, -width / 2, -height / 2, width, height);
+    return;
+  }
+
   const r = size * 0.38;
 
   const bodyGrad = ctx.createRadialGradient(-r * 0.2, -r * 0.35, r * 0.1, 0, 0, r);
@@ -443,8 +453,8 @@ function drawPlayer() {
   const cy = player.y + player.h/2;
   ctx.translate(cx, cy);
 
-  const targetAngle = Math.max(-0.5, Math.min(0.8, player.vy * 0.06));
-  player.angle += (targetAngle - player.angle) * 0.15;
+  const targetAngle = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, player.vy * 0.082));
+  player.angle += (targetAngle - player.angle) * (player.vy < 0 ? 0.22 : 0.1);
   ctx.rotate(player.angle);
 
   // Shield / break aura
@@ -910,6 +920,7 @@ function jump() {
     gameState = 'playing';
     lastPipe = Date.now() + 1000;
     player.vy = JUMP;
+    player.angle = -Math.PI / 4;
     doubleJumpUsed = false;
     document.getElementById('topControls').style.display = 'flex';
     playSound('jump');
@@ -924,6 +935,7 @@ function jump() {
     player.vy = JUMP * 0.85;
     doubleJumpUsed = true;
   }
+  player.angle = -Math.PI / 4;
 }
 
 // ===== START SCREEN PREVIEW =====

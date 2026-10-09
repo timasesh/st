@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X, Star, LogIn, Sparkles, PhoneCall } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Menu, X, LogIn, Sparkles, PhoneCall } from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import { whatsappUrl } from '../constants';
 
 interface NavbarProps {
@@ -21,9 +21,6 @@ export default function Navbar({
 }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-
-  const xpNeeded = level * 100;
-  const xpPercentage = Math.min((xp / xpNeeded) * 100, 100);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
@@ -89,29 +86,6 @@ export default function Navbar({
             </div>
 
             <div className="hidden lg:flex items-center gap-2.5 self-center">
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.97 }}
-                onClick={onOpenQuizTab}
-                className="flex items-center gap-2.5 bg-white border-2 border-border rounded-full py-1.5 px-4 cursor-pointer hover:border-primary/40 transition-colors focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
-              >
-                <div className="flex flex-col items-end">
-                  <span className="text-[10px] text-muted font-bold leading-none">
-                    Уровень {level}
-                  </span>
-                  <div className="w-28 h-2 bg-accent-light rounded-full overflow-hidden mt-1 border border-border/50">
-                    <div
-                      className="bg-accent h-full rounded-full transition-all duration-500"
-                      style={{ width: `${xpPercentage}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 bg-amber-50 px-2.5 py-1 rounded-full border-2 border-amber-200">
-                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                  <span className="text-xs font-bold text-amber-700">{stars}</span>
-                </div>
-              </motion.button>
-
               <button
                 type="button"
                 onClick={onOpenAuthModal}
@@ -133,16 +107,6 @@ export default function Navbar({
             </div>
 
             <div className="lg:hidden flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onOpenQuizTab}
-                className="flex items-center gap-1 bg-amber-50 px-2.5 py-1 rounded-full border-2 border-amber-200 cursor-pointer"
-              >
-                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                <span className="text-xs font-bold text-amber-700">{stars}</span>
-                <span className="text-[10px] text-accent font-bold">L{level}</span>
-              </button>
-
               <button
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
