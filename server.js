@@ -23,7 +23,7 @@ const DEFAULT_CREDENTIALS = {
   username: 'study-admin',
   salt: 'MD+0kK7dVBWtuVpZmBwK2g==',
   passwordHash: 'PVp1UE40/4mVYCL30qMrK8eDOEP2Wi4okglSmBMh6Wl+gIVWxFmx9AiUrlhKn5r7jjCNMvO+bMEdD0odlgyScA==',
-  mustChangePassword: true,
+  mustChangePassword: false,
 };
 
 app.disable('x-powered-by');
@@ -236,13 +236,16 @@ app.post('/api/admin/login', async (req, res) => {
 
   failedLoginAttempts.delete(ip);
   setSessionCookie(res);
-  return res.json({ mustChangePassword: credentials.mustChangePassword });
+  return res.json({ ok: true });
 });
 
 app.post('/api/admin/change-password', requireAdmin, async (req, res) => {
-  const { newPassword } = req.body || {};
-  if (typeof newPassword !== 'string' || newPassword.length < 12 || newPassword.length > 128) {
-    return res.status(400).json({ error: 'Новый пароль должен содержать от 12 до 128 символов.' });
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || currentPassword.length > 128 || !(await passwordsMatch(currentPassword, credentials.salt, credentials.passwordHash))) {
+    return res.status(401).json({ error: 'Текущий пароль указан неверно.' });
+  }
+  if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
+    return res.status(400).json({ error: 'Новый пароль должен содержать от 8 до 128 символов.' });
   }
   if (await passwordsMatch(newPassword, credentials.salt, credentials.passwordHash)) {
     return res.status(400).json({ error: 'Новый пароль должен отличаться от текущего.' });

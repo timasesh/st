@@ -114,6 +114,67 @@ body {
 .animation-delay-2000 { animation-delay: 2s; }
 .animation-delay-4000 { animation-delay: 4s; }
 
+/* Admin dashboard dark theme */
+.admin-dashboard {
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.admin-dashboard.theme-dark {
+  color: #e6edf8;
+  background: #08111f;
+}
+
+.admin-dashboard.theme-dark header,
+.admin-dashboard.theme-dark aside,
+.admin-dashboard.theme-dark .admin-card,
+.admin-dashboard.theme-dark .crm-empty,
+.admin-dashboard.theme-dark .bg-white {
+  background-color: #111c2d !important;
+}
+
+.admin-dashboard.theme-dark .bg-primary-light {
+  background-color: #17253a !important;
+}
+
+.admin-dashboard.theme-dark .border-border,
+.admin-dashboard.theme-dark .admin-card,
+.admin-dashboard.theme-dark .crm-empty {
+  border-color: #263750 !important;
+}
+
+.admin-dashboard.theme-dark .text-foreground,
+.admin-dashboard.theme-dark h1,
+.admin-dashboard.theme-dark h2,
+.admin-dashboard.theme-dark strong,
+.admin-dashboard.theme-dark label {
+  color: #e6edf8;
+}
+
+.admin-dashboard.theme-dark .text-muted {
+  color: #9aabc2 !important;
+}
+
+.admin-dashboard.theme-dark .admin-input,
+.admin-dashboard.theme-dark input,
+.admin-dashboard.theme-dark select {
+  color: #e6edf8;
+  background-color: #0b1524 !important;
+  border-color: #334761 !important;
+}
+
+.admin-dashboard.theme-dark input::placeholder {
+  color: #71839c;
+}
+
+.admin-dashboard.theme-dark article,
+.admin-dashboard.theme-dark .crm-empty > p {
+  border-color: #263750;
+}
+
+.admin-dashboard.theme-dark .crm-tab {
+  color: #fff !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-float-soft,
   .animate-float-soft-reverse,

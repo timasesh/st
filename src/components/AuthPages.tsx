@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 type LoginPageProps = {
@@ -124,8 +124,6 @@ async function readApiResponse(response: Response) {
 export function AdminLoginPage() {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [session, setSession] = useState<AdminSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -154,32 +152,6 @@ export function AdminLoginPage() {
       });
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось войти. Проверьте логин и пароль.');
-      setSession({ authenticated: true, mustChangePassword: result.mustChangePassword });
-      if (!result.mustChangePassword) window.location.assign('/admin');
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Ошибка соединения с сервером.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const submitPasswordChange = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError('');
-    if (newPassword !== confirmPassword) {
-      setError('Пароли не совпадают.');
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await fetch('/api/admin/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ newPassword }),
-      });
-      const result = await readApiResponse(response);
-      if (!response.ok) throw new Error(result.error || 'Не удалось сменить пароль.');
       window.location.assign('/admin');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Ошибка соединения с сервером.');
@@ -195,22 +167,10 @@ export function AdminLoginPage() {
   return (
     <AuthShell eyebrow="ЗАЩИЩЁННЫЙ ДОСТУП">
       <ShieldCheck className="mx-auto mb-2 mt-4 h-9 w-9 text-blue-100" />
-      <h1 className="font-display text-2xl font-extrabold">{session.authenticated ? 'Смена пароля' : 'Вход администратора'}</h1>
-      <p className="mt-1 text-sm text-blue-100">{session.authenticated ? 'Для начала работы установите новый пароль' : 'Панель управления StudyTask'}</p>
+      <h1 className="font-display text-2xl font-extrabold">Вход администратора</h1>
+      <p className="mt-1 text-sm text-blue-100">Панель управления StudyTask</p>
 
       <AnimatePresence mode="wait">
-        {session.authenticated ? (
-          <motion.form key="change-password" onSubmit={submitPasswordChange} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 bg-surface p-6 text-left">
-            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-relaxed text-amber-800">Это обязательный первый шаг. После смены пароля откроется страница администратора.</p>
-            <PasswordField id="new-admin-password" label="Новый пароль" value={newPassword} onChange={setNewPassword} show={showPassword} onToggle={() => setShowPassword((value) => !value)} autoComplete="new-password" />
-            <PasswordField id="confirm-admin-password" label="Повторите новый пароль" value={confirmPassword} onChange={setConfirmPassword} show={showPassword} onToggle={() => setShowPassword((value) => !value)} autoComplete="new-password" />
-            <p className="text-xs text-muted">Минимум 12 символов.</p>
-            {error && <p role="alert" className="text-sm font-semibold text-rose-600">{error}</p>}
-            <button type="submit" disabled={loading} className="clay-btn flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 font-display text-sm font-bold text-white disabled:opacity-70">
-              {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><KeyRound className="h-4 w-4" /> Сменить пароль</>}
-            </button>
-          </motion.form>
-        ) : (
           <motion.form key="admin-login" onSubmit={submitLogin} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 bg-surface p-6 text-left">
             <label htmlFor="admin-login" className="block space-y-1.5 text-sm font-bold text-foreground">
               Логин
@@ -222,7 +182,6 @@ export function AdminLoginPage() {
               {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><LogIn className="h-4 w-4" /> Войти</>}
             </button>
           </motion.form>
-        )}
       </AnimatePresence>
       {!session.authenticated && <a href="/login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход ученика</a>}
     </AuthShell>
@@ -271,6 +230,10 @@ const ROLE_LABELS: Record<AccountRole, string> = { student: 'Ученики', pa
 export function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
   const [activeRole, setActiveRole] = useState<AccountRole>('student');
+  const [activeView, setActiveView] = useState<'accounts' | 'crm' | 'settings'>('accounts');
+  const [darkTheme, setDarkTheme] = useState(() => {
+    try { return localStorage.getItem('study_admin_theme') === 'dark'; } catch { return false; }
+  });
   const [accounts, setAccounts] = useState<ManagedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -284,6 +247,9 @@ export function AdminDashboardPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [studentClass, setStudentClass] = useState('5 класс');
+  const [currentAdminPassword, setCurrentAdminPassword] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
 
   const loadAccounts = async () => {
     const response = await fetch('/api/admin/accounts', { credentials: 'same-origin' });
@@ -296,7 +262,7 @@ export function AdminDashboardPage() {
     fetch('/api/admin/session', { credentials: 'same-origin' })
       .then(readApiResponse)
       .then(async (result: AdminSession) => {
-        if (!result.authenticated || result.mustChangePassword) {
+        if (!result.authenticated) {
           window.location.replace('/admin_login');
           return;
         }
@@ -309,6 +275,10 @@ export function AdminDashboardPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem('study_admin_theme', darkTheme ? 'dark' : 'light'); } catch { /* Theme still applies for this session. */ }
+  }, [darkTheme]);
 
   const roleAccounts = accounts.filter((account) => account.role === activeRole);
   const visibleAccounts = roleAccounts.filter((account) => `${account.firstName} ${account.lastName} ${account.phone}`.toLowerCase().includes(search.toLowerCase()));
@@ -350,12 +320,40 @@ export function AdminDashboardPage() {
     window.location.replace('/admin_login');
   };
 
+  const changeAdminPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    if (newAdminPassword !== confirmAdminPassword) {
+      setError('Новый пароль и подтверждение не совпадают.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const response = await fetch('/api/admin/change-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ currentPassword: currentAdminPassword, newPassword: newAdminPassword }),
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось сменить пароль.');
+      setCurrentAdminPassword(''); setNewAdminPassword(''); setConfirmAdminPassword('');
+      setSuccess('Пароль администратора успешно изменён.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const roleIcon = (role: AccountRole) => role === 'student' ? <GraduationCap className="h-5 w-5" /> : role === 'parent' ? <Users className="h-5 w-5" /> : <BriefcaseBusiness className="h-5 w-5" />;
 
   return (
-    <main className="min-h-screen bg-primary-light text-foreground">
+    <main className={`admin-dashboard min-h-screen bg-primary-light text-foreground ${darkTheme ? 'theme-dark' : ''}`}>
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-white px-5 py-4 shadow-sm sm:px-8">
-        <a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">Панель администратора</span></span></a>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => setActiveView('settings')} title="Настройки" aria-label="Открыть настройки" className={`rounded-xl border border-border p-2.5 text-muted transition hover:text-primary ${activeView === 'settings' ? 'bg-primary-light text-primary' : ''}`}><Settings className="h-5 w-5" /></button>
+          <a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">Панель администратора</span></span></a>
+        </div>
         <button type="button" onClick={logout} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-primary-light"><LogOut className="h-4 w-4" /> Выйти</button>
       </header>
       <div className="mx-auto flex min-h-[calc(100vh-73px)] max-w-7xl flex-col lg:flex-row">
@@ -363,19 +361,45 @@ export function AdminDashboardPage() {
           <p className="mb-3 px-3 text-xs font-extrabold uppercase tracking-wider text-muted">Управление</p>
           <nav className="flex gap-2 overflow-x-auto lg:flex-col">
             {(['student', 'parent', 'teacher'] as AccountRole[]).map((role) => (
-              <button key={role} type="button" onClick={() => switchRole(role)} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeRole === role ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}>
+              <button key={role} type="button" onClick={() => { switchRole(role); setActiveView('accounts'); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'accounts' && activeRole === role ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}>
                 {roleIcon(role)} {ROLE_LABELS[role]} <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeRole === role ? 'bg-white/20' : 'bg-primary-light'}`}>{accounts.filter((account) => account.role === role).length}</span>
               </button>
             ))}
+            <button type="button" onClick={() => { setActiveView('crm'); setError(''); setSuccess(''); }} className={`crm-tab flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-extrabold transition ${activeView === 'crm' ? 'bg-blue-700 text-white shadow-md ring-2 ring-blue-300' : 'bg-blue-600 text-white shadow-sm hover:bg-blue-700'}`}><Settings className="h-5 w-5" /> Настройка CRM</button>
           </nav>
         </aside>
 
         <section className="min-w-0 flex-1 p-5 sm:p-8">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
-            <div><p className="text-sm font-bold text-primary">Управление аккаунтами</p><h1 className="mt-1 font-display text-3xl font-extrabold">{ROLE_LABELS[activeRole]}</h1></div>
-            <span className="rounded-full bg-white px-4 py-2 text-sm font-bold text-muted shadow-sm">Всего: {roleAccounts.length}</span>
+            <div><p className="text-sm font-bold text-primary">{activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : ROLE_LABELS[activeRole]}</h1></div>
+            {activeView === 'accounts' && <span className="rounded-full bg-white px-4 py-2 text-sm font-bold text-muted shadow-sm">Всего: {roleAccounts.length}</span>}
           </div>
 
+          {activeView === 'crm' ? (
+            <section className="crm-empty rounded-2xl border border-blue-200 bg-white p-8 text-center shadow-sm sm:p-12">
+              <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white"><Settings className="h-7 w-7" /></span>
+              <h2 className="font-display text-xl font-extrabold">Настройка CRM</h2>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted">Раздел готов для будущих инструментов CRM.</p>
+            </section>
+          ) : activeView === 'settings' ? (
+            <div className="grid max-w-3xl gap-6">
+              <section className="admin-card rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
+                <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{darkTheme ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}</span><div><h2 className="font-display text-lg font-extrabold">Оформление</h2><p className="text-sm text-muted">Настройте внешний вид панели для этого браузера.</p></div></div>
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border p-4"><span><strong className="block">Тёмная тема</strong><span className="text-sm text-muted">{darkTheme ? 'Включена' : 'Выключена'}</span></span><button type="button" role="switch" aria-checked={darkTheme} onClick={() => setDarkTheme((value) => !value)} className={`relative h-7 w-12 rounded-full transition ${darkTheme ? 'bg-blue-600' : 'bg-slate-300'}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${darkTheme ? 'left-6' : 'left-1'}`} /></button></div>
+              </section>
+              <section className="admin-card rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
+                <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary"><KeyRound className="h-5 w-5" /></span><div><h2 className="font-display text-lg font-extrabold">Смена пароля</h2><p className="text-sm text-muted">Подтвердите текущий пароль и задайте новый.</p></div></div>
+                <form onSubmit={changeAdminPassword} className="space-y-4">
+                  <label className="block space-y-1.5 text-sm font-bold">Текущий пароль<input required type="password" autoComplete="current-password" value={currentAdminPassword} onChange={(event) => setCurrentAdminPassword(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label>
+                  <label className="block space-y-1.5 text-sm font-bold">Новый пароль<input required type="password" autoComplete="new-password" minLength={8} maxLength={128} value={newAdminPassword} onChange={(event) => setNewAdminPassword(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /><span className="block text-xs font-normal text-muted">От 8 до 128 символов.</span></label>
+                  <label className="block space-y-1.5 text-sm font-bold">Повторите новый пароль<input required type="password" autoComplete="new-password" minLength={8} maxLength={128} value={confirmAdminPassword} onChange={(event) => setConfirmAdminPassword(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label>
+                  {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+                  {success && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
+                  <button type="submit" disabled={saving} className="clay-btn flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60"><KeyRound className="h-4 w-4" />{saving ? 'Сохраняем…' : 'Сменить пароль'}</button>
+                </form>
+              </section>
+            </div>
+          ) : (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
             <section className="rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
               <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{roleIcon(activeRole)}</span><div><h2 className="font-display text-lg font-extrabold">Создать аккаунт</h2><p className="text-xs text-muted">Логин для входа — номер телефона</p></div></div>
@@ -405,6 +429,7 @@ export function AdminDashboardPage() {
               {loading ? <p className="py-8 text-center text-sm text-muted">Загружаем аккаунты…</p> : visibleAccounts.length ? <div className="space-y-3">{visibleAccounts.map((account) => <article key={account.id} className="rounded-xl border border-border p-4"><div className="flex items-start gap-3"><span className="rounded-lg bg-primary-light p-2 text-primary">{roleIcon(account.role)}</span><div className="min-w-0 flex-1"><strong className="block truncate">{account.firstName} {account.lastName}</strong><span className="text-sm text-muted">{account.phone}{account.studentClass ? ` · ${account.studentClass}` : ''}</span>{account.role === 'parent' && <p className="mt-1 text-xs text-muted">Дети: {account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ')}</p>}</div></div></article>)}</div> : <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center"><span className="mx-auto mb-3 block w-fit rounded-full bg-primary-light p-3 text-primary">{roleIcon(activeRole)}</span><p className="font-bold">Аккаунтов пока нет</p><p className="mt-1 text-sm text-muted">Создайте первый аккаунт через форму.</p></div>}
             </section>
           </div>
+          )}
           {authorized && <p className="mt-6 text-center text-xs text-muted">Вы вошли как study-admin. Пароли хранятся в защищённом виде.</p>}
         </section>
       </div>
