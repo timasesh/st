@@ -655,12 +655,39 @@ async function writeTrialLessons(lessons) {
   await fs.rename(temporaryPath, filePath);
 }
 
+function nextTrialSlotStart(day, hour, baseDate = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(baseDate);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  const weekdays = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+  const today = weekdays[values.weekday];
+  let delta = (day - today + 7) % 7;
+  const currentMinutes = Number(values.hour) * 60 + Number(values.minute);
+  if (delta === 0 && currentMinutes >= (hour + 1) * 60) delta = 7;
+  const [year, month, date] = [Number(values.year), Number(values.month), Number(values.day)];
+  const slotDate = new Date(Date.UTC(year, month - 1, date + delta));
+  const target = { year: slotDate.getUTCFullYear(), month: slotDate.getUTCMonth() + 1, day: slotDate.getUTCDate(), hour };
+  const targetAsUtc = Date.UTC(target.year, target.month - 1, target.day, target.hour);
+  let candidate = targetAsUtc;
+  const targetZoneFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const local = Object.fromEntries(targetZoneFormatter.formatToParts(new Date(candidate)).map(({ type, value }) => [type, value]));
+    const localAsUtc = Date.UTC(Number(local.year), Number(local.month) - 1, Number(local.day), Number(local.hour), Number(local.minute));
+    candidate += targetAsUtc - localAsUtc;
+  }
+  return new Date(candidate).toISOString();
+}
+
+function getTrialScheduledAt(lesson) {
+  return lesson.scheduledAt || nextTrialSlotStart(lesson.day, lesson.hour, new Date(lesson.createdAt || Date.now()));
+}
+
 app.get('/api/admin/trial-lessons', requireAdmin, async (_req, res) => {
   try {
     await refreshAccounts();
     const lessons = await readTrialLessons();
     return res.json(lessons.map((lesson) => ({
       ...lesson,
+      scheduledAt: getTrialScheduledAt(lesson),
       teacher: publicAccount(accounts.find((account) => account.id === lesson.teacherId) || { id: '', role: 'teacher', phone: '', firstName: 'Удалённый', lastName: 'преподаватель' }),
     })));
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить пробные уроки.' }); }
@@ -691,7 +718,8 @@ app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
     const occupied = plannedLessons.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)
       || trials.some((lesson) => (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour);
     if (occupied) return res.status(409).json({ error: 'Этот слот преподавателя уже занят. Выберите другое время.' });
-    const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, parentPhone, teacherId, day, hour, createdAt: new Date().toISOString(), status: 'scheduled' };
+    const createdAt = new Date().toISOString();
+    const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, parentPhone, teacherId, day, hour, createdAt, scheduledAt: nextTrialSlotStart(day, hour, new Date(createdAt)), status: 'scheduled' };
     await writeTrialLessons([trial, ...trials]);
     await recordAdminAuditSafely(req.adminSession.sub, 'Создан пробный урок', `${firstName} ${lastName}, ${studentClass}; ${teacher.firstName} ${teacher.lastName}; ${day}:${hour}`);
     return res.status(201).json({ ...trial, teacher: publicAccount(teacher) });
@@ -717,7 +745,7 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
     const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
     if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) return res.status(400).json({ error: 'Проверьте имя, фамилию, класс и контакт родителя.' });
     if (planned.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour) || trials.some((lesson) => lesson.id !== req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)) return res.status(409).json({ error: 'Этот слот уже занят.' });
-    trials[index] = { ...trials[index], firstName, lastName, studentClass, teacherId, day, hour, parentPhone };
+    trials[index] = { ...trials[index], firstName, lastName, studentClass, teacherId, day, hour, parentPhone, scheduledAt: nextTrialSlotStart(day, hour) };
     await writeTrialLessons(trials);
     await recordAdminAuditSafely(req.adminSession.sub, 'Перенесён пробный урок', `${trials[index].firstName} ${trials[index].lastName}; ${day}:${hour}; ${teacher.firstName} ${teacher.lastName}`);
     return res.json({ ...trials[index], teacher: publicAccount(teacher) });
@@ -736,10 +764,7 @@ app.delete('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
 });
 
 function trialLessonHasEnded(lesson) {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Almaty', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  const dayIndex = ({ Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 })[values.weekday];
-  return lesson.day < dayIndex || (lesson.day === dayIndex && lesson.hour + 1 <= Number(values.hour));
+  return new Date(getTrialScheduledAt(lesson)).getTime() + 60 * 60 * 1000 <= Date.now();
 }
 
 app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) => {
