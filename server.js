@@ -1015,43 +1015,48 @@ function teacherStudentSummary(student) {
   return { id: student.id, role: 'student', firstName: student.firstName, lastName: student.lastName, studentClass: student.studentClass || '', teacher: teacher ? { firstName: teacher.firstName, lastName: teacher.lastName } : null, parent: parent ? { firstName: parent.firstName, lastName: parent.lastName } : null, createdAt: student.createdAt };
 }
 
-function getAssignedTeacherStudent(req, res) {
+async function getAssignedTeacherLessonSubject(req, res) {
   const user = getUserSession(req);
   if (!user || user.account.role !== 'teacher') {
     res.status(403).json({ error: 'Доступ к карточкам учеников есть только у преподавателя.' });
     return null;
   }
   const student = accounts.find((entry) => entry.id === req.params.studentId && entry.role === 'student' && entry.teacherId === user.account.id && entry.status !== 'withdrawn');
-  if (!student) {
-    res.status(404).json({ error: 'Ученик не найден или не закреплён за вами.' });
-    return null;
-  }
-  return student;
+  if (student) return { id: student.id, firstName: student.firstName, lastName: student.lastName, studentClass: student.studentClass || '', summary: teacherStudentSummary(student) };
+  const trial = (await readTrialLessons()).find((entry) => entry.id === req.params.studentId && entry.teacherId === user.account.id && ['scheduled', 'trial', 'attended', 'no_show'].includes(entry.status || 'scheduled'));
+  if (trial) return { id: trial.id, firstName: trial.firstName, lastName: trial.lastName, studentClass: trial.studentClass || '', summary: teacherStudentSummary({ ...trial, id: trial.id }), trial: true };
+  res.status(404).json({ error: 'Ученик или пробное занятие не найдено либо не закреплено за вами.' });
+  return null;
 }
 
 app.get('/api/teacher/students/:studentId/lesson-history', async (req, res) => {
   await refreshAccounts();
-  const student = getAssignedTeacherStudent(req, res);
-  if (!student) return;
-  try { return res.json({ student: teacherStudentSummary(student), history: await readStudentLessonHistory(student.id) }); }
+  const subject = await getAssignedTeacherLessonSubject(req, res);
+  if (!subject) return;
+  try { return res.json({ student: subject.summary, history: await readStudentLessonHistory(subject.id) }); }
   catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить историю занятий.' }); }
 });
 
 app.post('/api/teacher/students/:studentId/lesson-history', async (req, res) => {
   await refreshAccounts();
-  const student = getAssignedTeacherStudent(req, res);
-  if (!student) return;
-  const { date, time, homeworkGrade, topic, nextHomework, testGrade } = req.body || {};
+  const subject = await getAssignedTeacherLessonSubject(req, res);
+  if (!subject) return;
+  const { date, time, homeworkGrade, topic, nextHomework, testGrade, attendance } = req.body || {};
   const parsedDate = typeof date === 'string' ? new Date(`${date}T00:00:00Z`) : null;
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !parsedDate || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) return res.status(400).json({ error: 'Укажите корректную дату занятия.' });
   if (typeof time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return res.status(400).json({ error: 'Укажите корректное время занятия.' });
-  if (typeof topic !== 'string' || !topic.trim() || topic.trim().length > 300) return res.status(400).json({ error: 'Укажите тему урока (до 300 символов).' });
+  if (typeof topic !== 'string' || topic.trim().length > 300 || (attendance !== false && !topic.trim())) return res.status(400).json({ error: 'Укажите тему урока (до 300 символов).' });
+  if (typeof attendance !== 'boolean') return res.status(400).json({ error: 'Отметьте, присутствовал ли ученик.' });
   if (typeof (homeworkGrade ?? '') !== 'string' || homeworkGrade.length > 30 || typeof (nextHomework ?? '') !== 'string' || nextHomework.length > 2000 || typeof (testGrade ?? '') !== 'string' || testGrade.length > 30) return res.status(400).json({ error: 'Проверьте оценки и домашнее задание.' });
   try {
-    const history = await readStudentLessonHistory(student.id);
-    const entry = { id: crypto.randomUUID(), date, time, studentName: `${student.firstName} ${student.lastName}`, studentClass: student.studentClass || '', homeworkGrade: homeworkGrade.trim(), topic: topic.trim(), nextHomework: nextHomework.trim(), testGrade: testGrade.trim(), createdAt: new Date().toISOString() };
+    const history = await readStudentLessonHistory(subject.id);
+    const entry = { id: crypto.randomUUID(), date, time, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, homeworkGrade: homeworkGrade.trim(), topic: topic.trim(), nextHomework: nextHomework.trim(), testGrade: testGrade.trim(), attendance, createdAt: new Date().toISOString() };
     const nextHistory = [entry, ...history].sort((left, right) => `${right.date}T${right.time}`.localeCompare(`${left.date}T${left.time}`));
-    await writeStudentLessonHistory(student.id, nextHistory);
+    await writeStudentLessonHistory(subject.id, nextHistory);
+    if (subject.trial) {
+      const marked = await saveTrialAttendance(subject.id, attendance, `${getUserSession(req).account.firstName} ${getUserSession(req).account.lastName}`);
+      if (!marked) return res.status(409).json({ error: 'Посещение пробного занятия уже отмечено.' });
+    }
     return res.status(201).json({ entry, history: nextHistory });
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить занятие.' }); }
 });
@@ -1093,10 +1098,24 @@ app.get('/api/auth/portal', async (req, res) => {
       lessons.push(...trialLessons.filter((lesson) => lesson.teacherId === current.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status)).map((lesson) => ({
         ...lesson,
         trial: true,
+        scheduledAt: getTrialScheduledAt(lesson),
         attendanceOpen: Date.now() >= new Date(getTrialScheduledAt(lesson)).getTime() && Date.now() < new Date(getTrialScheduledAt(lesson)).getTime() + 60 * 60 * 1000,
         title: `Пробный урок · ${lesson.firstName} ${lesson.lastName}`,
         student: { id: lesson.id, role: 'student', firstName: lesson.firstName, lastName: lesson.lastName, studentClass: lesson.studentClass },
       })));
+    }
+    let recordedLessonIds = [];
+    if (current.role === 'teacher') {
+      const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+      const part = (type) => parts.find((item) => item.type === type)?.value || '';
+      const today = `${part('year')}-${part('month')}-${part('day')}`;
+      const historyByLesson = await Promise.all(lessons.map(async (lesson) => {
+        const subjectId = lesson.trial ? lesson.id : lesson.studentId;
+        if (!subjectId) return null;
+        const history = await readStudentLessonHistory(subjectId);
+        return history.some((entry) => entry.date === today && entry.time === `${String(lesson.hour).padStart(2, '0')}:00`) ? lesson.id : null;
+      }));
+      recordedLessonIds = historyByLesson.filter(Boolean);
     }
     const messages = await readAccountInbox(current.id);
     return res.json({
@@ -1104,6 +1123,7 @@ app.get('/api/auth/portal', async (req, res) => {
       progress: current.progress || null,
       relatedAccounts: relatedAccounts.map((item) => current.role === 'teacher' ? teacherStudentSummary(item) : publicAccount(item)),
       lessons,
+      recordedLessonIds,
       messages,
     });
   } catch (error) {
