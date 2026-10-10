@@ -790,11 +790,11 @@ app.delete('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось удалить пробный урок.' }); }
 });
 
-async function saveTrialAttendance(trialId, attended, markedBy) {
+async function saveTrialAttendance(trialId, attended, markedBy, attendanceReason = '') {
   const trials = await readTrialLessons();
   const index = trials.findIndex((lesson) => lesson.id === trialId && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status));
   if (index < 0) return null;
-  trials[index] = { ...trials[index], status: attended ? 'attended' : 'no_show', attendance: attended ? 'attended' : 'no_show', attendanceAt: new Date().toISOString(), attendanceMarkedBy: markedBy };
+  trials[index] = { ...trials[index], status: attended ? 'attended' : 'no_show', attendance: attended ? 'attended' : 'no_show', attendanceReason: attended ? '' : attendanceReason, attendanceAt: new Date().toISOString(), attendanceMarkedBy: markedBy };
   await writeTrialLessons(trials);
   return trials[index];
 }
@@ -1041,20 +1041,22 @@ app.post('/api/teacher/students/:studentId/lesson-history', async (req, res) => 
   await refreshAccounts();
   const subject = await getAssignedTeacherLessonSubject(req, res);
   if (!subject) return;
-  const { date, time, homeworkGrade, topic, nextHomework, testGrade, attendance } = req.body || {};
+  const { date, time, homeworkGrade, topic, nextHomework, testGrade, attendance, attendanceReason } = req.body || {};
   const parsedDate = typeof date === 'string' ? new Date(`${date}T00:00:00Z`) : null;
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !parsedDate || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) return res.status(400).json({ error: 'Укажите корректную дату занятия.' });
   if (typeof time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return res.status(400).json({ error: 'Укажите корректное время занятия.' });
   if (typeof topic !== 'string' || topic.trim().length > 300 || (attendance !== false && !topic.trim())) return res.status(400).json({ error: 'Укажите тему урока (до 300 символов).' });
   if (typeof attendance !== 'boolean') return res.status(400).json({ error: 'Отметьте, присутствовал ли ученик.' });
+  const absenceReasons = ['Ученик отменил', 'Заболел', 'По собственной причине'];
+  if (attendance === false && !absenceReasons.includes(attendanceReason)) return res.status(400).json({ error: 'Выберите причину отсутствия.' });
   if (typeof (homeworkGrade ?? '') !== 'string' || homeworkGrade.length > 30 || typeof (nextHomework ?? '') !== 'string' || nextHomework.length > 2000 || typeof (testGrade ?? '') !== 'string' || testGrade.length > 30) return res.status(400).json({ error: 'Проверьте оценки и домашнее задание.' });
   try {
     const history = await readStudentLessonHistory(subject.id);
-    const entry = { id: crypto.randomUUID(), date, time, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, homeworkGrade: homeworkGrade.trim(), topic: topic.trim(), nextHomework: nextHomework.trim(), testGrade: testGrade.trim(), attendance, createdAt: new Date().toISOString() };
+    const entry = { id: crypto.randomUUID(), date, time, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, homeworkGrade: homeworkGrade.trim(), topic: topic.trim(), nextHomework: nextHomework.trim(), testGrade: testGrade.trim(), attendance, attendanceReason: attendance ? '' : attendanceReason, createdAt: new Date().toISOString() };
     const nextHistory = [entry, ...history].sort((left, right) => `${right.date}T${right.time}`.localeCompare(`${left.date}T${left.time}`));
     await writeStudentLessonHistory(subject.id, nextHistory);
     if (subject.trial) {
-      const marked = await saveTrialAttendance(subject.id, attendance, `${getUserSession(req).account.firstName} ${getUserSession(req).account.lastName}`);
+      const marked = await saveTrialAttendance(subject.id, attendance, `${getUserSession(req).account.firstName} ${getUserSession(req).account.lastName}`, attendanceReason);
       if (!marked) return res.status(409).json({ error: 'Посещение пробного занятия уже отмечено.' });
     }
     return res.status(201).json({ entry, history: nextHistory });
