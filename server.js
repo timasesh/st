@@ -557,8 +557,8 @@ app.get('/api/admin/accounts', requireAdmin, async (_req, res) => {
 
 app.post('/api/admin/accounts/:id/messages', requireAdmin, async (req, res) => {
   await refreshAccounts();
-  const recipient = accounts.find((account) => account.id === req.params.id && ['student', 'parent'].includes(account.role) && account.status !== 'withdrawn');
-  if (!recipient) return res.status(404).json({ error: 'Ученик или родитель не найден.' });
+  const recipient = accounts.find((account) => account.id === req.params.id && ['student', 'parent', 'teacher'].includes(account.role) && account.status !== 'withdrawn');
+  if (!recipient) return res.status(404).json({ error: 'Аккаунт получателя не найден.' });
   const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
   if (!body || body.length > 5000) return res.status(400).json({ error: 'Сообщение должно содержать от 1 до 5000 символов.' });
   const message = { id: crypto.randomUUID(), at: new Date().toISOString(), sender: req.adminSession.sub, body, read: false };
