@@ -629,6 +629,68 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
   return res.json(scheduleData);
 });
 
+async function readTrialLessons() {
+  if (!supabase) return readJsonFileOr(path.join(dataDir, 'trial-lessons.json'), []);
+  const result = await supabase.from('app_settings').select('value').eq('key', 'trial_lessons').maybeSingle();
+  if (result.error) throw new Error(`Не удалось загрузить пробные уроки: ${result.error.message}`);
+  return result.data?.value ? JSON.parse(result.data.value) : [];
+}
+
+async function writeTrialLessons(lessons) {
+  if (supabase) {
+    const result = await supabase.from('app_settings').upsert({ key: 'trial_lessons', value: JSON.stringify(lessons) });
+    if (result.error) throw new Error(`Не удалось сохранить пробный урок: ${result.error.message}`);
+    return;
+  }
+  await fs.mkdir(dataDir, { recursive: true });
+  const filePath = path.join(dataDir, 'trial-lessons.json');
+  const temporaryPath = `${filePath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(lessons, null, 2), { mode: 0o600 });
+  await fs.rename(temporaryPath, filePath);
+}
+
+app.get('/api/admin/trial-lessons', requireAdmin, async (_req, res) => {
+  try {
+    await refreshAccounts();
+    const lessons = await readTrialLessons();
+    return res.json(lessons.map((lesson) => ({
+      ...lesson,
+      teacher: publicAccount(accounts.find((account) => account.id === lesson.teacherId) || { id: '', role: 'teacher', phone: '', firstName: 'Удалённый', lastName: 'преподаватель' }),
+    })));
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить пробные уроки.' }); }
+});
+
+app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
+  await refreshAccounts();
+  const firstName = typeof req.body?.firstName === 'string' ? req.body.firstName.trim() : '';
+  const lastName = typeof req.body?.lastName === 'string' ? req.body.lastName.trim() : '';
+  const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
+  const { teacherId, day, hour } = req.body || {};
+  const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
+  if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass)) {
+    return res.status(400).json({ error: 'Укажите имя, фамилию и класс ученика.' });
+  }
+  if (!teacher || !Number.isInteger(day) || day < 0 || day > 5 || !Number.isInteger(hour) || hour < 8 || hour > 20) {
+    return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
+  }
+  try {
+    const savedSchedule = supabase
+      ? await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle()
+      : null;
+    if (savedSchedule?.error) throw savedSchedule.error;
+    const schedule = savedSchedule ? (savedSchedule.data?.value ? JSON.parse(savedSchedule.data.value) : { lessons: [] }) : await readJsonFileOr(schedulePath, { lessons: [] });
+    const plannedLessons = Array.isArray(schedule) ? schedule : schedule.lessons || [];
+    const trials = await readTrialLessons();
+    const occupied = plannedLessons.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)
+      || trials.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour);
+    if (occupied) return res.status(409).json({ error: 'Этот слот преподавателя уже занят. Выберите другое время.' });
+    const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, teacherId, day, hour, createdAt: new Date().toISOString(), status: 'trial' };
+    await writeTrialLessons([trial, ...trials]);
+    await recordAdminAuditSafely(req.adminSession.sub, 'Создан пробный урок', `${firstName} ${lastName}, ${studentClass}; ${teacher.firstName} ${teacher.lastName}; ${day}:${hour}`);
+    return res.status(201).json({ ...trial, teacher: publicAccount(teacher) });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось создать пробный урок.' }); }
+});
+
 app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   await refreshAccounts();
   const { role, phone, password, firstName, lastName, studentClass, children, teacherId } = req.body || {};
@@ -789,6 +851,15 @@ app.get('/api/auth/portal', async (req, res) => {
         ? publicAccount(accounts.find((item) => item.id === lesson.studentId))
         : null,
     }));
+    if (current.role === 'teacher') {
+      const trialLessons = await readTrialLessons();
+      lessons.push(...trialLessons.filter((lesson) => lesson.teacherId === current.id).map((lesson) => ({
+        ...lesson,
+        trial: true,
+        title: `Пробный урок · ${lesson.firstName} ${lesson.lastName}`,
+        student: { id: lesson.id, role: 'student', firstName: lesson.firstName, lastName: lesson.lastName, studentClass: lesson.studentClass },
+      })));
+    }
     const messages = await readAccountInbox(current.id);
     return res.json({
       account,

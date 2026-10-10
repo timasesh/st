@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw, CalendarDays, Clock3, GripVertical, Trash, History, MessageCircle, Mail, Send, BookOpen } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw, CalendarDays, Clock3, GripVertical, Trash, History, MessageCircle, Mail, Send, UserPlus } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 type LoginPageProps = {
@@ -227,7 +227,7 @@ function PasswordField({
 }
 
 type PortalPerson = { id: string; role: 'student' | 'parent' | 'teacher'; firstName: string; lastName: string; studentClass?: string; teacher?: { firstName: string; lastName: string } | null; children?: PortalPerson[] };
-type PortalLesson = { id: string; studentId?: string; day: number; hour: number; title: string; student?: PortalPerson | null };
+type PortalLesson = { id: string; studentId?: string; day: number; hour: number; title: string; trial?: boolean; student?: PortalPerson | null };
 type PortalMessage = { id: string; at: string; sender: string; body: string; read: boolean };
 type PortalPayload = { account: PortalPerson; progress: { stars?: number; xp?: number; level?: number } | null; relatedAccounts: PortalPerson[]; lessons: PortalLesson[]; messages: PortalMessage[] };
 const PORTAL_DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
@@ -299,6 +299,7 @@ type ManagedAccount = {
 type ScheduledLesson = { id: string; studentId?: string; teacherId: string; day: number; hour: number; title: string };
 type WeeklySchedule = { lessons: ScheduledLesson[]; targets: Record<string, number> };
 type AdminHistoryEntry = { id: string; at: string; actor: string; action: string; details?: string };
+type TrialLesson = { id: string; firstName: string; lastName: string; studentClass: string; teacherId: string; teacher: ManagedAccount; day: number; hour: number; createdAt: string; status: 'trial' };
 const SCHEDULE_DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 const SCHEDULE_HOURS = Array.from({ length: 13 }, (_, index) => index + 8);
 
@@ -307,7 +308,7 @@ const ROLE_LABELS: Record<AccountRole, string> = { student: 'Ученики', pa
 export function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
   const [activeRole, setActiveRole] = useState<AccountRole>('student');
-  const [activeView, setActiveView] = useState<'accounts' | 'withdrawn' | 'crm' | 'settings' | 'schedule' | 'history'>('accounts');
+  const [activeView, setActiveView] = useState<'accounts' | 'withdrawn' | 'crm' | 'settings' | 'schedule' | 'history' | 'trial'>('accounts');
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ManagedAccount | null>(null);
@@ -342,6 +343,13 @@ export function AdminDashboardPage() {
   const [draggedLessonId, setDraggedLessonId] = useState<string | null>(null);
   const [historyEntries, setHistoryEntries] = useState<AdminHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [trialLessons, setTrialLessons] = useState<TrialLesson[]>([]);
+  const [showTrialModal, setShowTrialModal] = useState(false);
+  const [trialFirstName, setTrialFirstName] = useState('');
+  const [trialLastName, setTrialLastName] = useState('');
+  const [trialClass, setTrialClass] = useState('5 класс');
+  const [trialTeacherId, setTrialTeacherId] = useState('');
+  const [trialSlot, setTrialSlot] = useState('');
 
   const loadAccounts = async () => {
     const response = await fetch('/api/admin/accounts', { credentials: 'same-origin' });
@@ -355,6 +363,13 @@ export function AdminDashboardPage() {
     const result = await readApiResponse(response);
     if (!response.ok) throw new Error(result.error || 'Не удалось загрузить расписание.');
     setSchedule({ lessons: Array.isArray(result.lessons) ? result.lessons : [], targets: result.targets || {} });
+  };
+
+  const loadTrialLessons = async () => {
+    const response = await fetch('/api/admin/trial-lessons', { credentials: 'same-origin' });
+    const result = await readApiResponse(response);
+    if (!response.ok) throw new Error(result.error || 'Не удалось загрузить пробные уроки.');
+    setTrialLessons(result as TrialLesson[]);
   };
 
   const loadHistory = async () => {
@@ -380,6 +395,7 @@ export function AdminDashboardPage() {
         setAuthorized(true);
         await loadAccounts();
         await loadSchedule();
+        await loadTrialLessons();
       })
       .catch((reason) => {
         if (reason instanceof Error && reason.message.includes('Сервер авторизации')) setError(reason.message);
@@ -400,6 +416,22 @@ export function AdminDashboardPage() {
   const selectedTeacher = teachers.find((teacher) => teacher.id === selectedStudent?.teacherId);
   const studentLessons = schedule.lessons.filter((lesson) => lesson.studentId === selectedStudent?.id);
   const teacherScheduleTarget = selectedStudent ? schedule.targets[selectedStudent.id] : undefined;
+  const availableTrialSlots = SCHEDULE_DAYS.flatMap((day, dayIndex) => SCHEDULE_HOURS.filter((hour) => !schedule.lessons.some((lesson) => lesson.teacherId === trialTeacherId && lesson.day === dayIndex && lesson.hour === hour) && !trialLessons.some((lesson) => lesson.teacherId === trialTeacherId && lesson.day === dayIndex && lesson.hour === hour)).map((hour) => ({ value: `${dayIndex}:${hour}`, label: `${day}, ${String(hour).padStart(2, '0')}:00–${String(hour + 1).padStart(2, '0')}:00` })));
+
+  const createTrialLesson = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const [day, hour] = trialSlot.split(':').map(Number);
+    setSaving(true); setError(''); setSuccess('');
+    try {
+      const response = await fetch('/api/admin/trial-lessons', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ firstName: trialFirstName, lastName: trialLastName, studentClass: trialClass, teacherId: trialTeacherId, day, hour }) });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось создать пробный урок.');
+      await loadTrialLessons();
+      setShowTrialModal(false); setTrialFirstName(''); setTrialLastName(''); setTrialSlot('');
+      setSuccess(`Пробный урок для ${trialFirstName} ${trialLastName} создан.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось создать пробный урок.'); }
+    finally { setSaving(false); }
+  };
 
   useEffect(() => {
     if (selectedStudent && scheduleStudentId !== selectedStudent.id) setScheduleStudentId(selectedStudent.id);
@@ -608,17 +640,24 @@ export function AdminDashboardPage() {
             ))}
             <button type="button" onClick={() => { setActiveRole('student'); setActiveView('withdrawn'); setSearch(''); setSelectedClasses([]); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'withdrawn' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><GraduationCap className="h-5 w-5" /> Выбывшие <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeView === 'withdrawn' ? 'bg-white/20' : 'bg-primary-light'}`}>{accounts.filter((account) => account.role === 'student' && account.status === 'withdrawn').length}</span></button>
             <button type="button" onClick={() => { setActiveView('schedule'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'schedule' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><CalendarDays className="h-5 w-5" /> Расписание</button>
+            <button type="button" onClick={() => { setActiveView('trial'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'trial' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><UserPlus className="h-5 w-5" /> Пробный урок <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeView === 'trial' ? 'bg-white/20' : 'bg-primary-light'}`}>{trialLessons.length}</span></button>
             <button type="button" onClick={() => { setActiveView('crm'); setError(''); setSuccess(''); }} className={`crm-tab flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-extrabold transition ${activeView === 'crm' ? 'bg-blue-700 text-white shadow-md ring-2 ring-blue-300' : 'bg-blue-600 text-white shadow-sm hover:bg-blue-700'}`}><Settings className="h-5 w-5" /> Настройка CRM</button>
           </nav>
         </aside>
 
         <section className="min-w-0 flex-1 p-5 sm:p-8">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
-            <div><p className="text-sm font-bold text-primary">{activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : activeView === 'schedule' ? 'Планирование занятий' : activeView === 'history' ? 'Аудит действий' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : activeView === 'schedule' ? 'Расписание' : activeView === 'history' ? 'История действий' : activeView === 'withdrawn' ? 'Выбывшие' : ROLE_LABELS[activeRole]}</h1></div>
+            <div><p className="text-sm font-bold text-primary">{activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : activeView === 'schedule' ? 'Планирование занятий' : activeView === 'trial' ? 'Знакомство с центром' : activeView === 'history' ? 'Аудит действий' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : activeView === 'schedule' ? 'Расписание' : activeView === 'trial' ? 'Пробный урок' : activeView === 'history' ? 'История действий' : activeView === 'withdrawn' ? 'Выбывшие' : ROLE_LABELS[activeRole]}</h1></div>
             {(activeView === 'accounts' || activeView === 'withdrawn') && <span className="rounded-full bg-white px-4 py-2 text-sm font-bold text-muted shadow-sm">Всего: {roleAccounts.length}</span>}
           </div>
 
-          {activeView === 'history' ? (
+          {activeView === 'trial' ? (
+            <section className="admin-card rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-6">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-4"><div><h2 className="font-display text-lg font-extrabold">Пробные занятия</h2><p className="text-sm text-muted">Здесь собраны заявки и выбранные для них слоты.</p></div><button type="button" onClick={() => { setTrialTeacherId(teachers[0]?.id || ''); setTrialSlot(''); setError(''); setShowTrialModal(true); }} disabled={!teachers.length} className="clay-btn flex items-center gap-2 rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-50"><Plus className="h-5 w-5" /> Создать пробный урок</button></div>
+              {error && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}{success && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
+              {trialLessons.length ? <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[680px] border-collapse text-left text-sm"><thead className="bg-primary-light text-xs uppercase tracking-wide text-muted"><tr><th className="px-4 py-3">Имя ученика</th><th className="px-4 py-3">Класс</th><th className="px-4 py-3">Преподаватель</th><th className="px-4 py-3">Время</th><th className="px-4 py-3">Создан</th></tr></thead><tbody>{trialLessons.map((lesson) => <tr key={lesson.id} className="border-t border-border"><td className="px-4 py-3 font-bold">{lesson.firstName} {lesson.lastName}</td><td className="px-4 py-3">{lesson.studentClass}</td><td className="px-4 py-3">{lesson.teacher?.firstName} {lesson.teacher?.lastName}</td><td className="px-4 py-3">{SCHEDULE_DAYS[lesson.day]}, {String(lesson.hour).padStart(2, '0')}:00–{String(lesson.hour + 1).padStart(2, '0')}:00</td><td className="px-4 py-3 text-muted">{new Date(lesson.createdAt).toLocaleDateString('ru-KZ', { timeZone: 'Asia/Qyzylorda' })}</td></tr>)}</tbody></table></div> : <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><UserPlus className="mx-auto mb-3 h-8 w-8 text-muted" /><p className="font-bold">Пробных уроков пока нет</p><p className="mt-1 text-sm text-muted">Нажмите «Создать пробный урок», чтобы добавить ученика и выбрать время.</p></div>}
+            </section>
+          ) : activeView === 'history' ? (
             <section className="admin-card rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-6">
               <div className="mb-5 flex items-center justify-between gap-3"><div><h2 className="font-display text-lg font-extrabold">Журнал администраторов</h2><p className="text-sm text-muted">События записываются в Supabase с именем аккаунта и временем.</p></div><button type="button" onClick={() => void loadHistory()} disabled={historyLoading} className="rounded-xl border border-border px-3 py-2 text-sm font-bold text-muted hover:bg-primary-light disabled:opacity-50">Обновить</button></div>
               {error && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
@@ -684,6 +723,21 @@ export function AdminDashboardPage() {
               <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[760px] border-collapse text-left text-sm"><thead className="bg-primary-light text-xs uppercase tracking-wide text-muted"><tr><th className="px-4 py-3">Имя и фамилия</th><th className="px-4 py-3">Телефон</th>{activeRole === 'student' && <><th className="px-4 py-3">Класс</th><th className="px-4 py-3">Преподаватель</th></>}{activeRole === 'parent' && <th className="px-4 py-3">Дети</th>}<th className="px-4 py-3 text-right">Действия</th></tr></thead><tbody>{visibleAccounts.map((account) => <tr key={account.id} className="border-t border-border hover:bg-primary-light/50"><td className="px-4 py-3 font-bold">{account.firstName} {account.lastName}</td><td className="px-4 py-3 text-muted">{account.phone}</td>{activeRole === 'student' && <><td className="px-4 py-3">{account.studentClass || '—'}</td><td className="px-4 py-3">{account.teacher ? `${account.teacher.firstName} ${account.teacher.lastName}` : <span className="text-amber-600">Не назначен</span>}</td></>}{activeRole === 'parent' && <td className="max-w-sm px-4 py-3 text-muted">{account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ') || '—'}</td>}<td className="px-4 py-3"><div className="flex justify-end gap-2">{(account.role === 'student' || account.role === 'parent') && activeView !== 'withdrawn' && <button type="button" onClick={() => { setMessageTarget(account); setMessageBody(''); setError(''); }} title="Написать сообщение" aria-label={`Написать ${account.firstName} ${account.lastName}`} className="rounded-lg border border-border p-2 text-blue-600 hover:bg-blue-50"><MessageCircle className="h-4 w-4" /></button>}<button type="button" onClick={() => openEditAccount(account)} title="Редактировать" aria-label={`Редактировать ${account.firstName} ${account.lastName}`} className="rounded-lg border border-border p-2 text-primary hover:bg-primary-light"><Pencil className="h-4 w-4" /></button>{activeView === 'withdrawn' ? <button type="button" onClick={() => restoreStudent(account)} title="Вернуть в список учеников" aria-label={`Вернуть ${account.firstName} ${account.lastName}`} className="rounded-lg border border-emerald-200 p-2 text-emerald-600 hover:bg-emerald-50"><RotateCcw className="h-4 w-4" /></button> : <button type="button" onClick={() => setDeleteTarget(account)} title={account.role === 'student' ? 'Переместить в выбывшие' : 'Удалить'} aria-label={account.role === 'student' ? `Переместить ${account.firstName} ${account.lastName} в выбывшие` : `Удалить ${account.firstName} ${account.lastName}`} className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>}</div></td></tr>)}</tbody></table></div>
             ) : <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><span className="mx-auto mb-3 block w-fit rounded-full bg-primary-light p-3 text-primary">{roleIcon(activeRole)}</span><p className="font-bold">{roleAccounts.length ? 'Ничего не найдено' : 'Аккаунтов пока нет'}</p><p className="mt-1 text-sm text-muted">{roleAccounts.length ? 'Измените поисковый запрос или фильтры.' : 'Нажмите «Добавить», чтобы создать первый аккаунт.'}</p></div>}
           </section>
+          )}
+          {showTrialModal && (
+            <div className="admin-modal fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowTrialModal(false); }}>
+              <section role="dialog" aria-modal="true" aria-labelledby="trial-modal-title" className="admin-card my-auto w-full max-w-xl rounded-2xl border border-border bg-white p-6 shadow-2xl">
+                <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-blue-100 p-2.5 text-blue-700"><UserPlus className="h-5 w-5" /></span><div><h2 id="trial-modal-title" className="font-display text-xl font-extrabold">Создать пробный урок</h2><p className="text-sm text-muted">Ученик пока не получает логин в личный кабинет.</p></div></div>
+                <form onSubmit={createTrialLesson} className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2"><label className="block space-y-1.5 text-sm font-bold">Имя<input autoFocus required maxLength={80} value={trialFirstName} onChange={(event) => setTrialFirstName(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label><label className="block space-y-1.5 text-sm font-bold">Фамилия<input required maxLength={80} value={trialLastName} onChange={(event) => setTrialLastName(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label></div>
+                  <label className="block space-y-1.5 text-sm font-bold">Класс<select required value={trialClass} onChange={(event) => setTrialClass(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none">{[5, 6, 7, 8, 9].map((grade) => <option key={grade} value={`${grade} класс`}>{grade} класс</option>)}</select></label>
+                  <label className="block space-y-1.5 text-sm font-bold">Преподаватель<select required value={trialTeacherId} onChange={(event) => { setTrialTeacherId(event.target.value); setTrialSlot(''); }} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none"><option value="">Выберите преподавателя</option>{teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</option>)}</select></label>
+                  <label className="block space-y-1.5 text-sm font-bold">Свободный слот<select required disabled={!trialTeacherId} value={trialSlot} onChange={(event) => setTrialSlot(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none"><option value="">Выберите день и время</option>{availableTrialSlots.map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}</select><span className="block text-xs font-normal text-muted">Понедельник–суббота, 08:00–21:00. Занятые слоты скрыты.</span></label>
+                  {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+                  <div className="flex justify-end gap-3 pt-2"><button type="button" onClick={() => setShowTrialModal(false)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="submit" disabled={saving || !trialTeacherId || !trialSlot} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? 'Сохраняем…' : 'Создать пробный урок'}</button></div>
+                </form>
+              </section>
+            </div>
           )}
           {scheduleSlot && (
             <div className="admin-modal fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setScheduleSlot(null); }}>
