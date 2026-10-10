@@ -103,6 +103,14 @@ export function StudentLoginPage({ onLoginSuccess }: LoginPageProps) {
 
 type AdminSession = { authenticated: boolean; mustChangePassword?: boolean };
 
+async function readApiResponse(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error('Сервер авторизации не запущен: Render сейчас раздаёт только статические файлы. Для входа переключите сайт на Node Web Service с командой запуска `npm start` и постоянным хранилищем `.data`.');
+  }
+  return response.json();
+}
+
 export function AdminLoginPage() {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
@@ -115,9 +123,12 @@ export function AdminLoginPage() {
 
   useEffect(() => {
     fetch('/api/admin/session', { credentials: 'same-origin' })
-      .then((response) => response.json())
+      .then(readApiResponse)
       .then((result: AdminSession) => setSession(result))
-      .catch(() => setSession({ authenticated: false }));
+      .catch((reason) => {
+        setSession({ authenticated: false });
+        setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу авторизации.');
+      });
   }, []);
 
   const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -131,7 +142,7 @@ export function AdminLoginPage() {
         credentials: 'same-origin',
         body: JSON.stringify({ login, password }),
       });
-      const result = await response.json();
+      const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось войти. Проверьте логин и пароль.');
       setSession({ authenticated: true, mustChangePassword: result.mustChangePassword });
       if (!result.mustChangePassword) window.location.assign('/admin');
@@ -157,7 +168,7 @@ export function AdminLoginPage() {
         credentials: 'same-origin',
         body: JSON.stringify({ newPassword }),
       });
-      const result = await response.json();
+      const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось сменить пароль.');
       window.location.assign('/admin');
     } catch (reason) {
