@@ -730,7 +730,7 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
   await refreshAccounts();
   try {
     const trials = await readTrialLessons();
-    const index = trials.findIndex((lesson) => lesson.id === req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status));
+    const index = trials.findIndex((lesson) => lesson.id === req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status || lesson.status === 'no_show'));
     if (index < 0) return res.status(404).json({ error: 'Активный пробный урок не найден.' });
     const { teacherId, day, hour } = req.body || {};
     const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
@@ -745,7 +745,7 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
     const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
     if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) return res.status(400).json({ error: 'Проверьте имя, фамилию, класс и контакт родителя.' });
     if (planned.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour) || trials.some((lesson) => lesson.id !== req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)) return res.status(409).json({ error: 'Этот слот уже занят.' });
-    trials[index] = { ...trials[index], firstName, lastName, studentClass, teacherId, day, hour, parentPhone, scheduledAt: nextTrialSlotStart(day, hour) };
+    trials[index] = { ...trials[index], firstName, lastName, studentClass, teacherId, day, hour, parentPhone, scheduledAt: nextTrialSlotStart(day, hour), status: 'scheduled', attendance: undefined, attendanceAt: undefined, attendanceMarkedBy: undefined };
     await writeTrialLessons(trials);
     await recordAdminAuditSafely(req.adminSession.sub, 'Перенесён пробный урок', `${trials[index].firstName} ${trials[index].lastName}; ${day}:${hour}; ${teacher.firstName} ${teacher.lastName}`);
     return res.json({ ...trials[index], teacher: publicAccount(teacher) });
@@ -763,6 +763,51 @@ app.delete('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось удалить пробный урок.' }); }
 });
 
+async function saveTrialAttendance(trialId, attended, markedBy) {
+  const trials = await readTrialLessons();
+  const index = trials.findIndex((lesson) => lesson.id === trialId && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status));
+  if (index < 0) return null;
+  trials[index] = { ...trials[index], status: attended ? 'attended' : 'no_show', attendance: attended ? 'attended' : 'no_show', attendanceAt: new Date().toISOString(), attendanceMarkedBy: markedBy };
+  await writeTrialLessons(trials);
+  return trials[index];
+}
+
+app.post('/api/admin/trial-lessons/:id/attendance', requireAdmin, async (req, res) => {
+  if (typeof req.body?.attended !== 'boolean') return res.status(400).json({ error: 'Укажите, пришёл ли ученик.' });
+  try {
+    const trial = await saveTrialAttendance(req.params.id, req.body.attended, req.adminSession.sub);
+    if (!trial) return res.status(404).json({ error: 'Назначенный пробный урок не найден.' });
+    await recordAdminAuditSafely(req.adminSession.sub, req.body.attended ? 'Отмечено посещение пробного урока' : 'Отмечена неявка на пробный урок', `${trial.firstName} ${trial.lastName}`);
+    return res.json({ trial });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить посещаемость.' }); }
+});
+
+app.post('/api/teacher/trial-lessons/:id/attendance', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'teacher') return res.status(403).json({ error: 'Отметить посещаемость может только преподаватель.' });
+  if (typeof req.body?.attended !== 'boolean') return res.status(400).json({ error: 'Укажите, пришёл ли ученик.' });
+  try {
+    const trials = await readTrialLessons();
+    const trial = trials.find((lesson) => lesson.id === req.params.id && lesson.teacherId === user.account.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status));
+    if (!trial) return res.status(404).json({ error: 'Назначенный пробный урок не найден.' });
+    const startsAt = new Date(getTrialScheduledAt(trial)).getTime();
+    if (Date.now() < startsAt || Date.now() >= startsAt + 60 * 60 * 1000) return res.status(409).json({ error: 'Отметить посещение можно только в течение часа пробного урока.' });
+    const updated = await saveTrialAttendance(trial.id, req.body.attended, `${user.account.firstName} ${user.account.lastName}`);
+    await recordAdminAuditSafely(user.account.id, req.body.attended ? 'Преподаватель отметил посещение пробного урока' : 'Преподаватель отметил неявку на пробный урок', `${trial.firstName} ${trial.lastName}`);
+    return res.json({ trial: updated });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить посещаемость.' }); }
+});
+
+app.post('/api/admin/trial-lessons/:id/move-to-past', requireAdmin, async (req, res) => {
+  try {
+    const trial = await saveTrialAttendance(req.params.id, true, req.adminSession.sub);
+    if (!trial) return res.status(404).json({ error: 'Назначенный пробный урок не найден.' });
+    await recordAdminAuditSafely(req.adminSession.sub, 'Пробный урок перенесён в прошедшие', `${trial.firstName} ${trial.lastName}`);
+    return res.json({ trial });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось перенести урок.' }); }
+});
+
 function trialLessonHasEnded(lesson) {
   return new Date(getTrialScheduledAt(lesson)).getTime() + 60 * 60 * 1000 <= Date.now();
 }
@@ -772,9 +817,9 @@ app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) 
   try {
     const trials = await readTrialLessons();
     const outcome = req.body?.outcome;
-    const index = trials.findIndex((lesson) => lesson.id === req.params.id && ((lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) || (outcome === 'enrolled' && lesson.status === 'declined')));
+    const index = trials.findIndex((lesson) => lesson.id === req.params.id && ((lesson.status === 'scheduled' || lesson.status === 'trial' || lesson.status === 'attended' || !lesson.status) || (outcome === 'enrolled' && ['declined', 'no_show'].includes(lesson.status))));
     if (index < 0) return res.status(404).json({ error: 'Пробный урок не найден или уже обработан.' });
-    if (!trialLessonHasEnded(trials[index])) return res.status(409).json({ error: 'Этот пробный урок ещё не завершился по времени Астаны.' });
+    if (!['attended', 'declined', 'no_show'].includes(trials[index].status) && !trialLessonHasEnded(trials[index])) return res.status(409).json({ error: 'Этот пробный урок ещё не завершился по времени Астаны.' });
     if (outcome === 'declined' && trials[index].status !== 'declined') {
       const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
       if (!reason || reason.length > 500) return res.status(400).json({ error: 'Выберите или укажите причину отказа.' });
@@ -977,6 +1022,7 @@ app.get('/api/auth/portal', async (req, res) => {
       lessons.push(...trialLessons.filter((lesson) => lesson.teacherId === current.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status)).map((lesson) => ({
         ...lesson,
         trial: true,
+        attendanceOpen: Date.now() >= new Date(getTrialScheduledAt(lesson)).getTime() && Date.now() < new Date(getTrialScheduledAt(lesson)).getTime() + 60 * 60 * 1000,
         title: `Пробный урок · ${lesson.firstName} ${lesson.lastName}`,
         student: { id: lesson.id, role: 'student', firstName: lesson.firstName, lastName: lesson.lastName, studentClass: lesson.studentClass },
       })));
