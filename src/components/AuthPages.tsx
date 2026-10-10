@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 type LoginPageProps = {
@@ -35,39 +35,49 @@ function AuthShell({ children, eyebrow }: { children: ReactNode; eyebrow: string
 }
 
 export function StudentLoginPage({ onLoginSuccess }: LoginPageProps) {
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
     setError('');
-    // Student credentials are currently handled by the existing demo profile flow.
-    window.setTimeout(() => {
-      onLoginSuccess(email.split('@')[0] || 'Ученик', '5 класс');
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ phone, password }),
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось войти. Проверьте номер телефона и пароль.');
+      const account = result.account as { firstName: string; lastName: string; studentClass?: string };
+      onLoginSuccess(`${account.firstName} ${account.lastName}`, account.studentClass || '');
       window.location.assign('/');
-    }, 450);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <AuthShell eyebrow="ЛИЧНЫЙ КАБИНЕТ УЧЕНИКА">
       <UserRound className="mx-auto mb-2 mt-4 h-9 w-9 text-blue-100" />
       <h1 className="font-display text-2xl font-extrabold">С возвращением!</h1>
-      <p className="mt-1 text-sm text-blue-100">Войди, чтобы продолжить свой путь</p>
+      <p className="mt-1 text-sm text-blue-100">Вход для ученика, родителя или преподавателя</p>
       <form onSubmit={submit} className="space-y-4 bg-surface p-6 text-left">
-        <label className="block space-y-1.5 text-sm font-bold text-foreground" htmlFor="student-email">
-          Электронная почта
+        <label className="block space-y-1.5 text-sm font-bold text-foreground" htmlFor="student-phone">
+          Номер телефона
           <input
-            id="student-email"
-            type="email"
+            id="student-phone"
+            type="tel"
             autoComplete="username"
             required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="name@example.com"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+            placeholder="+7 700 000 00 00"
             className="w-full rounded-xl border-2 border-border bg-primary-light px-4 py-3 font-normal focus:border-primary focus:bg-white focus:outline-none"
           />
         </label>
@@ -250,35 +260,154 @@ function PasswordField({
   );
 }
 
+type AccountRole = 'student' | 'parent' | 'teacher';
+type ManagedAccount = {
+  id: string; role: AccountRole; phone: string; firstName: string; lastName: string;
+  studentClass?: string; children: Array<{ id: string; firstName: string; lastName: string; studentClass?: string }>;
+};
+
+const ROLE_LABELS: Record<AccountRole, string> = { student: 'Ученики', parent: 'Родители', teacher: 'Преподаватели' };
+
 export function AdminDashboardPage() {
-  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [authorized, setAuthorized] = useState(false);
+  const [activeRole, setActiveRole] = useState<AccountRole>('student');
+  const [accounts, setAccounts] = useState<ManagedAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [search, setSearch] = useState('');
+  const [childSearch, setChildSearch] = useState('');
+  const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [studentClass, setStudentClass] = useState('5 класс');
+
+  const loadAccounts = async () => {
+    const response = await fetch('/api/admin/accounts', { credentials: 'same-origin' });
+    const result = await readApiResponse(response);
+    if (!response.ok) throw new Error(result.error || 'Не удалось загрузить аккаунты.');
+    setAccounts(result as ManagedAccount[]);
+  };
 
   useEffect(() => {
     fetch('/api/admin/session', { credentials: 'same-origin' })
-      .then((response) => response.json())
-      .then((result: AdminSession) => {
+      .then(readApiResponse)
+      .then(async (result: AdminSession) => {
         if (!result.authenticated || result.mustChangePassword) {
           window.location.replace('/admin_login');
           return;
         }
         setAuthorized(true);
+        await loadAccounts();
       })
-      .catch(() => window.location.replace('/admin_login'));
+      .catch((reason) => {
+        if (reason instanceof Error && reason.message.includes('Сервер авторизации')) setError(reason.message);
+        else window.location.replace('/admin_login');
+      })
+      .finally(() => setLoading(false));
   }, []);
+
+  const roleAccounts = accounts.filter((account) => account.role === activeRole);
+  const visibleAccounts = roleAccounts.filter((account) => `${account.firstName} ${account.lastName} ${account.phone}`.toLowerCase().includes(search.toLowerCase()));
+  const students = accounts.filter((account) => account.role === 'student');
+  const matchingChildren = students.filter((student) => `${student.firstName} ${student.lastName} ${student.phone}`.toLowerCase().includes(childSearch.toLowerCase()));
+
+  const switchRole = (role: AccountRole) => {
+    setActiveRole(role);
+    setError('');
+    setSuccess('');
+    setSelectedChildren([]);
+    setChildSearch('');
+  };
+
+  const createAccount = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setSaving(true);
+    try {
+      const response = await fetch('/api/admin/accounts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ role: activeRole, firstName, lastName, phone, password, studentClass, children: selectedChildren }),
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось создать аккаунт.');
+      await loadAccounts();
+      setSuccess(`Аккаунт ${firstName} ${lastName} создан. Логин для входа: ${phone}.`);
+      setFirstName(''); setLastName(''); setPhone(''); setPassword(''); setStudentClass('5 класс'); setSelectedChildren([]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const logout = async () => {
     await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
     window.location.replace('/admin_login');
   };
 
+  const roleIcon = (role: AccountRole) => role === 'student' ? <GraduationCap className="h-5 w-5" /> : role === 'parent' ? <Users className="h-5 w-5" /> : <BriefcaseBusiness className="h-5 w-5" />;
+
   return (
-    <AuthShell eyebrow="ЗАЩИЩЁННЫЙ ДОСТУП">
-      <ShieldCheck className="mx-auto mb-2 mt-4 h-9 w-9 text-blue-100" />
-      <h1 className="font-display text-2xl font-extrabold">Панель администратора</h1>
-      <div className="space-y-4 bg-surface p-6 text-center">
-        <p className="text-sm text-muted">{authorized ? 'Вы вошли как study-admin.' : 'Проверяем доступ…'}</p>
-        {authorized && <button type="button" onClick={logout} className="w-full rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark">Выйти</button>}
+    <main className="min-h-screen bg-primary-light text-foreground">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-white px-5 py-4 shadow-sm sm:px-8">
+        <a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">Панель администратора</span></span></a>
+        <button type="button" onClick={logout} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-primary-light"><LogOut className="h-4 w-4" /> Выйти</button>
+      </header>
+      <div className="mx-auto flex min-h-[calc(100vh-73px)] max-w-7xl flex-col lg:flex-row">
+        <aside className="border-b border-border bg-white p-4 lg:w-64 lg:border-b-0 lg:border-r lg:p-5">
+          <p className="mb-3 px-3 text-xs font-extrabold uppercase tracking-wider text-muted">Управление</p>
+          <nav className="flex gap-2 overflow-x-auto lg:flex-col">
+            {(['student', 'parent', 'teacher'] as AccountRole[]).map((role) => (
+              <button key={role} type="button" onClick={() => switchRole(role)} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeRole === role ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}>
+                {roleIcon(role)} {ROLE_LABELS[role]} <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeRole === role ? 'bg-white/20' : 'bg-primary-light'}`}>{accounts.filter((account) => account.role === role).length}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <section className="min-w-0 flex-1 p-5 sm:p-8">
+          <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
+            <div><p className="text-sm font-bold text-primary">Управление аккаунтами</p><h1 className="mt-1 font-display text-3xl font-extrabold">{ROLE_LABELS[activeRole]}</h1></div>
+            <span className="rounded-full bg-white px-4 py-2 text-sm font-bold text-muted shadow-sm">Всего: {roleAccounts.length}</span>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+            <section className="rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
+              <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{roleIcon(activeRole)}</span><div><h2 className="font-display text-lg font-extrabold">Создать аккаунт</h2><p className="text-xs text-muted">Логин для входа — номер телефона</p></div></div>
+              <form onSubmit={createAccount} className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-sm font-bold">Имя<input required maxLength={80} value={firstName} onChange={(event) => setFirstName(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="Имя" /></label>
+                  <label className="space-y-1.5 text-sm font-bold">Фамилия<input required maxLength={80} value={lastName} onChange={(event) => setLastName(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="Фамилия" /></label>
+                </div>
+                <label className="block space-y-1.5 text-sm font-bold">Номер телефона<input required type="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="+7 700 000 00 00" /></label>
+                <label className="block space-y-1.5 text-sm font-bold">Пароль<input required type="password" autoComplete="new-password" minLength={8} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="Минимум 8 символов" /></label>
+                {activeRole === 'student' && <label className="block space-y-1.5 text-sm font-bold">Класс<select value={studentClass} onChange={(event) => setStudentClass(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none">{[5, 6, 7, 8, 9].map((grade) => <option key={grade}>{grade} класс</option>)}</select></label>}
+                {activeRole === 'parent' && <div className="space-y-2">
+                  <div className="flex items-center justify-between"><span className="text-sm font-bold">Дети <span className="text-rose-600">*</span></span><span className="text-xs text-muted">Выбрано: {selectedChildren.length}</span></div>
+                  <div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted" /><input value={childSearch} onChange={(event) => setChildSearch(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light py-2.5 pl-9 pr-3 text-sm focus:border-primary focus:outline-none" placeholder="Поиск ученика по имени или телефону" /></div>
+                  <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
+                    {matchingChildren.length ? matchingChildren.map((child) => <label key={child.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-primary-light"><input type="checkbox" checked={selectedChildren.includes(child.id)} onChange={(event) => setSelectedChildren((current) => event.target.checked ? [...current, child.id] : current.filter((id) => id !== child.id))} className="h-4 w-4 accent-primary" /><span className="min-w-0 flex-1"><strong>{child.firstName} {child.lastName}</strong><span className="ml-2 text-xs text-muted">{child.studentClass}</span></span></label>) : <p className="p-3 text-center text-xs text-muted">{students.length ? 'Ничего не найдено.' : 'Сначала создайте аккаунт ученика.'}</p>}
+                  </div>
+                </div>}
+                {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+                {success && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
+                <button type="submit" disabled={saving || loading || (activeRole === 'parent' && selectedChildren.length === 0)} className="clay-btn flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" />{saving ? 'Создаём…' : 'Создать аккаунт'}</button>
+              </form>
+            </section>
+
+            <section className="min-w-0 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-display text-lg font-extrabold">Список: {ROLE_LABELS[activeRole].toLowerCase()}</h2><p className="text-xs text-muted">Созданные аккаунты</p></div><div className="relative w-full sm:w-52"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none" placeholder="Поиск" /></div></div>
+              {loading ? <p className="py-8 text-center text-sm text-muted">Загружаем аккаунты…</p> : visibleAccounts.length ? <div className="space-y-3">{visibleAccounts.map((account) => <article key={account.id} className="rounded-xl border border-border p-4"><div className="flex items-start gap-3"><span className="rounded-lg bg-primary-light p-2 text-primary">{roleIcon(account.role)}</span><div className="min-w-0 flex-1"><strong className="block truncate">{account.firstName} {account.lastName}</strong><span className="text-sm text-muted">{account.phone}{account.studentClass ? ` · ${account.studentClass}` : ''}</span>{account.role === 'parent' && <p className="mt-1 text-xs text-muted">Дети: {account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ')}</p>}</div></div></article>)}</div> : <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center"><span className="mx-auto mb-3 block w-fit rounded-full bg-primary-light p-3 text-primary">{roleIcon(activeRole)}</span><p className="font-bold">Аккаунтов пока нет</p><p className="mt-1 text-sm text-muted">Создайте первый аккаунт через форму.</p></div>}
+            </section>
+          </div>
+          {authorized && <p className="mt-6 text-center text-xs text-muted">Вы вошли как study-admin. Пароли хранятся в защищённом виде.</p>}
+        </section>
       </div>
-    </AuthShell>
+    </main>
   );
 }

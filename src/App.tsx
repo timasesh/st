@@ -141,8 +141,6 @@ export default function App() {
   const handleLoginSuccess = (name: string, studentClass: string) => {
     setUserName(name);
     setUserClass(studentClass);
-    // Give a small login reward
-    handleAddRewards(10, 40);
   };
 
   // Reset simulator
