@@ -148,15 +148,15 @@ function getUserSession(req) {
   const session = getCookieToken(req, userCookieName);
   if (!session || session.role !== 'user') return null;
   const account = accounts.find((entry) => entry.id === session.sub);
-  return account ? { session, account } : null;
+  return account && account.status !== 'withdrawn' ? { session, account } : null;
 }
 
 function publicAccount(account) {
-  const { id, role, phone, firstName, lastName, studentClass, children = [], teacherId } = account;
+  const { id, role, phone, firstName, lastName, studentClass, children = [], teacherId, status = 'active' } = account;
   const childAccounts = children.map((id) => accounts.find((entry) => entry.id === id)).filter(Boolean);
   const teacherAccount = accounts.find((entry) => entry.id === teacherId && entry.role === 'teacher');
   return {
-    id, role, phone, firstName, lastName, studentClass,
+    id, role, phone, firstName, lastName, studentClass, status,
     teacherId: teacherAccount?.id,
     teacher: teacherAccount ? { id: teacherAccount.id, firstName: teacherAccount.firstName, lastName: teacherAccount.lastName } : null,
     children: childAccounts.map(({ id: childId, firstName: childFirstName, lastName: childLastName, studentClass: childClass }) => ({ id: childId, firstName: childFirstName, lastName: childLastName, studentClass: childClass })),
@@ -303,7 +303,7 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   const salt = crypto.randomBytes(16);
   const passwordHash = await hashPassword(password, salt);
   const account = {
-    id: crypto.randomUUID(), role, phone: normalizedPhone, firstName: firstName.trim(), lastName: lastName.trim(),
+    id: crypto.randomUUID(), role, phone: normalizedPhone, firstName: firstName.trim(), lastName: lastName.trim(), status: 'active',
     studentClass: role === 'student' ? studentClass : '', teacherId: role === 'student' ? teacherId : undefined, children: linkedChildren,
     salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString(),
   };
@@ -354,7 +354,7 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
 app.delete('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
   const account = accounts.find((entry) => entry.id === req.params.id);
   if (!account) return res.status(404).json({ error: 'Аккаунт не найден.' });
-  if (account.role === 'teacher' && accounts.some((entry) => entry.role === 'student' && entry.teacherId === account.id)) {
+  if (account.role === 'teacher' && accounts.some((entry) => entry.role === 'student' && entry.status !== 'withdrawn' && entry.teacherId === account.id)) {
     return res.status(409).json({ error: 'К преподавателю прикреплены ученики. Сначала назначьте им другого преподавателя.' });
   }
   const nextAccounts = accounts
@@ -364,6 +364,28 @@ app.delete('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
       if (entry.role === 'student' && account.role === 'teacher' && entry.teacherId === account.id) return { ...entry, teacherId: undefined };
       return entry;
     });
+  await writeAccounts(nextAccounts);
+  return res.json({ ok: true });
+});
+
+app.post('/api/admin/accounts/:id/archive', requireAdmin, async (req, res) => {
+  const index = accounts.findIndex((entry) => entry.id === req.params.id && entry.role === 'student');
+  if (index < 0) return res.status(404).json({ error: 'Ученик не найден.' });
+  if (accounts[index].status === 'withdrawn') return res.status(409).json({ error: 'Ученик уже находится в разделе «Выбывшие».' });
+  const nextAccounts = [...accounts];
+  nextAccounts[index] = { ...nextAccounts[index], status: 'withdrawn', withdrawnAt: new Date().toISOString() };
+  await writeAccounts(nextAccounts);
+  return res.json({ ok: true });
+});
+
+app.post('/api/admin/accounts/:id/restore', requireAdmin, async (req, res) => {
+  const index = accounts.findIndex((entry) => entry.id === req.params.id && entry.role === 'student');
+  if (index < 0) return res.status(404).json({ error: 'Ученик не найден.' });
+  if (accounts[index].status !== 'withdrawn') return res.status(409).json({ error: 'Ученик уже находится в активном списке.' });
+  if (!accounts.some((entry) => entry.id === accounts[index].teacherId && entry.role === 'teacher')) return res.status(409).json({ error: 'Нельзя вернуть ученика без преподавателя. Отредактируйте аккаунт и выберите преподавателя.' });
+  const nextAccounts = [...accounts];
+  const { withdrawnAt: _withdrawnAt, ...rest } = nextAccounts[index];
+  nextAccounts[index] = { ...rest, status: 'active' };
   await writeAccounts(nextAccounts);
   return res.json({ ok: true });
 });
@@ -379,7 +401,7 @@ app.post('/api/auth/login', async (req, res) => {
   const phone = normalizePhone(req.body?.phone);
   const password = req.body?.password;
   const account = accounts.find((entry) => entry.phone === phone);
-  const validPassword = account && typeof password === 'string' && password.length <= 128
+  const validPassword = account && account.status !== 'withdrawn' && typeof password === 'string' && password.length <= 128
     ? await passwordsMatch(password, account.salt, account.passwordHash)
     : false;
   if (!validPassword) {

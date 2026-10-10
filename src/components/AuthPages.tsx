@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 type LoginPageProps = {
@@ -223,6 +223,7 @@ type AccountRole = 'student' | 'parent' | 'teacher';
 type ManagedAccount = {
   id: string; role: AccountRole; phone: string; firstName: string; lastName: string;
   studentClass?: string; teacherId?: string; teacher?: { id: string; firstName: string; lastName: string } | null;
+  status?: 'active' | 'withdrawn';
   children: Array<{ id: string; firstName: string; lastName: string; studentClass?: string }>;
 };
 
@@ -231,7 +232,7 @@ const ROLE_LABELS: Record<AccountRole, string> = { student: 'Ученики', pa
 export function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
   const [activeRole, setActiveRole] = useState<AccountRole>('student');
-  const [activeView, setActiveView] = useState<'accounts' | 'crm' | 'settings'>('accounts');
+  const [activeView, setActiveView] = useState<'accounts' | 'withdrawn' | 'crm' | 'settings'>('accounts');
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ManagedAccount | null>(null);
@@ -286,11 +287,11 @@ export function AdminDashboardPage() {
     try { localStorage.setItem('study_admin_theme', darkTheme ? 'dark' : 'light'); } catch { /* Theme still applies for this session. */ }
   }, [darkTheme]);
 
-  const roleAccounts = accounts.filter((account) => account.role === activeRole);
+  const roleAccounts = accounts.filter((account) => account.role === activeRole && (activeView === 'withdrawn' ? account.status === 'withdrawn' : activeRole !== 'student' || account.status !== 'withdrawn'));
   const visibleAccounts = roleAccounts.filter((account) => `${account.firstName} ${account.lastName}`.toLowerCase().includes(search.toLowerCase()) && (activeRole !== 'student' || selectedClasses.length === 0 || selectedClasses.includes(account.studentClass || '')));
-  const students = accounts.filter((account) => account.role === 'student');
+  const students = accounts.filter((account) => account.role === 'student' && account.status !== 'withdrawn');
   const teachers = accounts.filter((account) => account.role === 'teacher');
-  const matchingChildren = students.filter((student) => `${student.firstName} ${student.lastName} ${student.phone}`.toLowerCase().includes(childSearch.toLowerCase()));
+  const matchingChildren = accounts.filter((student) => student.role === 'student' && (student.status !== 'withdrawn' || selectedChildren.includes(student.id)) && `${student.firstName} ${student.lastName} ${student.phone}`.toLowerCase().includes(childSearch.toLowerCase()));
 
   const switchRole = (role: AccountRole) => {
     setActiveRole(role);
@@ -339,17 +340,32 @@ export function AdminDashboardPage() {
     setError('');
     setSaving(true);
     try {
-      const response = await fetch(`/api/admin/accounts/${deleteTarget.id}`, { method: 'DELETE', credentials: 'same-origin' });
+      const isStudentArchive = deleteTarget.role === 'student' && activeView !== 'withdrawn';
+      const response = await fetch(isStudentArchive ? `/api/admin/accounts/${deleteTarget.id}/archive` : `/api/admin/accounts/${deleteTarget.id}`, { method: isStudentArchive ? 'POST' : 'DELETE', credentials: 'same-origin' });
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось удалить аккаунт.');
       await loadAccounts();
-      setSuccess(`Аккаунт ${deleteTarget.firstName} ${deleteTarget.lastName} удалён.`);
+      setSuccess(isStudentArchive ? `${deleteTarget.firstName} ${deleteTarget.lastName} перемещён во вкладку «Выбывшие».` : `Аккаунт ${deleteTarget.firstName} ${deleteTarget.lastName} удалён.`);
       setDeleteTarget(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось удалить аккаунт.');
       setDeleteTarget(null);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const restoreStudent = async (student: ManagedAccount) => {
+    setError('');
+    setSuccess('');
+    try {
+      const response = await fetch(`/api/admin/accounts/${student.id}/restore`, { method: 'POST', credentials: 'same-origin' });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось вернуть ученика.');
+      await loadAccounts();
+      setSuccess(`${student.firstName} ${student.lastName} возвращён в список учеников.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось вернуть ученика.');
     }
   };
 
@@ -388,29 +404,27 @@ export function AdminDashboardPage() {
   return (
     <main className={`admin-dashboard min-h-screen bg-primary-light text-foreground ${darkTheme ? 'theme-dark' : ''}`}>
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-white px-5 py-4 shadow-sm sm:px-8">
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={() => setActiveView('settings')} title="Настройки" aria-label="Открыть настройки" className={`rounded-xl border border-border p-2.5 text-muted transition hover:text-primary ${activeView === 'settings' ? 'bg-primary-light text-primary' : ''}`}><Settings className="h-5 w-5" /></button>
-          <a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">Панель администратора</span></span></a>
-        </div>
+        <a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">Панель администратора</span></span></a>
         <button type="button" onClick={logout} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-primary-light"><LogOut className="h-4 w-4" /> Выйти</button>
       </header>
       <div className="flex min-h-[calc(100vh-73px)] w-full flex-col lg:flex-row">
         <aside className="border-b border-border bg-white p-4 lg:w-64 lg:border-b-0 lg:border-r lg:p-5">
-          <p className="mb-3 px-3 text-xs font-extrabold uppercase tracking-wider text-muted">Управление</p>
+          <div className="mb-3 flex items-center justify-between px-3"><p className="text-xs font-extrabold uppercase tracking-wider text-muted">Управление</p><button type="button" onClick={() => setActiveView('settings')} title="Настройки" aria-label="Открыть настройки" className={`rounded p-0.5 text-muted transition hover:text-primary ${activeView === 'settings' ? 'text-primary' : ''}`}><Settings className="h-4 w-4" /></button></div>
           <nav className="flex gap-2 overflow-x-auto lg:flex-col">
             {(['student', 'parent', 'teacher'] as AccountRole[]).map((role) => (
               <button key={role} type="button" onClick={() => { switchRole(role); setActiveView('accounts'); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'accounts' && activeRole === role ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}>
-                {roleIcon(role)} {ROLE_LABELS[role]} <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeRole === role ? 'bg-white/20' : 'bg-primary-light'}`}>{accounts.filter((account) => account.role === role).length}</span>
+                {roleIcon(role)} {ROLE_LABELS[role]} <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeView === 'accounts' && activeRole === role ? 'bg-white/20' : 'bg-primary-light'}`}>{accounts.filter((account) => account.role === role && (role !== 'student' || account.status !== 'withdrawn')).length}</span>
               </button>
             ))}
+            <button type="button" onClick={() => { setActiveRole('student'); setActiveView('withdrawn'); setSearch(''); setSelectedClasses([]); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'withdrawn' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><GraduationCap className="h-5 w-5" /> Выбывшие <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeView === 'withdrawn' ? 'bg-white/20' : 'bg-primary-light'}`}>{accounts.filter((account) => account.role === 'student' && account.status === 'withdrawn').length}</span></button>
             <button type="button" onClick={() => { setActiveView('crm'); setError(''); setSuccess(''); }} className={`crm-tab flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-extrabold transition ${activeView === 'crm' ? 'bg-blue-700 text-white shadow-md ring-2 ring-blue-300' : 'bg-blue-600 text-white shadow-sm hover:bg-blue-700'}`}><Settings className="h-5 w-5" /> Настройка CRM</button>
           </nav>
         </aside>
 
         <section className="min-w-0 flex-1 p-5 sm:p-8">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
-            <div><p className="text-sm font-bold text-primary">{activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : ROLE_LABELS[activeRole]}</h1></div>
-            {activeView === 'accounts' && <span className="rounded-full bg-white px-4 py-2 text-sm font-bold text-muted shadow-sm">Всего: {roleAccounts.length}</span>}
+            <div><p className="text-sm font-bold text-primary">{activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : activeView === 'withdrawn' ? 'Выбывшие' : ROLE_LABELS[activeRole]}</h1></div>
+            {(activeView === 'accounts' || activeView === 'withdrawn') && <span className="rounded-full bg-white px-4 py-2 text-sm font-bold text-muted shadow-sm">Всего: {roleAccounts.length}</span>}
           </div>
 
           {activeView === 'crm' ? (
@@ -441,16 +455,16 @@ export function AdminDashboardPage() {
           <section className="admin-card w-full rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-7">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{roleIcon(activeRole)}</span><div><h2 className="font-display text-lg font-extrabold">Список: {ROLE_LABELS[activeRole].toLowerCase()}</h2><p className="text-sm text-muted">Найдено: {visibleAccounts.length}</p></div></div>
-              <button type="button" onClick={openCreateAccount} className="clay-btn flex items-center gap-2 rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark"><Plus className="h-5 w-5" /> Добавить</button>
+              {activeView !== 'withdrawn' && <button type="button" onClick={openCreateAccount} className="clay-btn flex items-center gap-2 rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark"><Plus className="h-5 w-5" /> Добавить</button>}
             </div>
             <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center">
-              <div className="relative min-w-64 max-w-xl flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-muted" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="admin-input w-full rounded-xl border border-border bg-primary-light py-2.5 pl-10 pr-3 text-sm focus:border-primary focus:outline-none" placeholder={`Поиск ${activeRole === 'student' ? 'ученика' : activeRole === 'parent' ? 'родителя' : 'преподавателя'} по имени`} /></div>
+              <div className="relative min-w-64 max-w-xl flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-muted" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="admin-input w-full rounded-xl border border-border bg-primary-light py-2.5 pl-10 pr-3 text-sm focus:border-primary focus:outline-none" placeholder={`Поиск ${activeView === 'withdrawn' ? 'выбывшего ученика' : activeRole === 'student' ? 'ученика' : activeRole === 'parent' ? 'родителя' : 'преподавателя'} по имени`} /></div>
               {activeRole === 'student' && <div className="flex flex-wrap items-center gap-2"><span className="mr-1 text-sm font-bold text-muted">Класс:</span>{[5, 6, 7, 8, 9].map((grade) => { const value = `${grade} класс`; const checked = selectedClasses.includes(value); return <label key={grade} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-bold transition ${checked ? 'border-primary bg-primary text-white' : 'border-border bg-primary-light text-muted hover:border-primary'}`}><input type="checkbox" className="sr-only" checked={checked} onChange={() => setSelectedClasses((current) => checked ? current.filter((item) => item !== value) : [...current, value])} />{grade} класс</label>; })}{selectedClasses.length > 0 && <button type="button" onClick={() => setSelectedClasses([])} className="px-2 text-xs font-bold text-primary">Сбросить</button>}</div>}
             </div>
             {success && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
             {error && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
-            {loading ? <p className="py-16 text-center text-sm text-muted">Загружаем список…</p> : visibleAccounts.length ? (
-              <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[760px] border-collapse text-left text-sm"><thead className="bg-primary-light text-xs uppercase tracking-wide text-muted"><tr><th className="px-4 py-3">Имя и фамилия</th><th className="px-4 py-3">Телефон</th>{activeRole === 'student' && <><th className="px-4 py-3">Класс</th><th className="px-4 py-3">Преподаватель</th></>}{activeRole === 'parent' && <th className="px-4 py-3">Дети</th>}<th className="px-4 py-3 text-right">Действия</th></tr></thead><tbody>{visibleAccounts.map((account) => <tr key={account.id} className="border-t border-border hover:bg-primary-light/50"><td className="px-4 py-3 font-bold">{account.firstName} {account.lastName}</td><td className="px-4 py-3 text-muted">{account.phone}</td>{activeRole === 'student' && <><td className="px-4 py-3">{account.studentClass || '—'}</td><td className="px-4 py-3">{account.teacher ? `${account.teacher.firstName} ${account.teacher.lastName}` : <span className="text-amber-600">Не назначен</span>}</td></>}{activeRole === 'parent' && <td className="max-w-sm px-4 py-3 text-muted">{account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ') || '—'}</td>}<td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => openEditAccount(account)} title="Редактировать" aria-label={`Редактировать ${account.firstName} ${account.lastName}`} className="rounded-lg border border-border p-2 text-primary hover:bg-primary-light"><Pencil className="h-4 w-4" /></button><button type="button" onClick={() => setDeleteTarget(account)} title="Удалить" aria-label={`Удалить ${account.firstName} ${account.lastName}`} className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button></div></td></tr>)}</tbody></table></div>
+              {loading ? <p className="py-16 text-center text-sm text-muted">Загружаем список…</p> : visibleAccounts.length ? (
+              <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[760px] border-collapse text-left text-sm"><thead className="bg-primary-light text-xs uppercase tracking-wide text-muted"><tr><th className="px-4 py-3">Имя и фамилия</th><th className="px-4 py-3">Телефон</th>{activeRole === 'student' && <><th className="px-4 py-3">Класс</th><th className="px-4 py-3">Преподаватель</th></>}{activeRole === 'parent' && <th className="px-4 py-3">Дети</th>}<th className="px-4 py-3 text-right">Действия</th></tr></thead><tbody>{visibleAccounts.map((account) => <tr key={account.id} className="border-t border-border hover:bg-primary-light/50"><td className="px-4 py-3 font-bold">{account.firstName} {account.lastName}</td><td className="px-4 py-3 text-muted">{account.phone}</td>{activeRole === 'student' && <><td className="px-4 py-3">{account.studentClass || '—'}</td><td className="px-4 py-3">{account.teacher ? `${account.teacher.firstName} ${account.teacher.lastName}` : <span className="text-amber-600">Не назначен</span>}</td></>}{activeRole === 'parent' && <td className="max-w-sm px-4 py-3 text-muted">{account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ') || '—'}</td>}<td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => openEditAccount(account)} title="Редактировать" aria-label={`Редактировать ${account.firstName} ${account.lastName}`} className="rounded-lg border border-border p-2 text-primary hover:bg-primary-light"><Pencil className="h-4 w-4" /></button>{activeView === 'withdrawn' ? <button type="button" onClick={() => restoreStudent(account)} title="Вернуть в список учеников" aria-label={`Вернуть ${account.firstName} ${account.lastName}`} className="rounded-lg border border-emerald-200 p-2 text-emerald-600 hover:bg-emerald-50"><RotateCcw className="h-4 w-4" /></button> : <button type="button" onClick={() => setDeleteTarget(account)} title={account.role === 'student' ? 'Переместить в выбывшие' : 'Удалить'} aria-label={account.role === 'student' ? `Переместить ${account.firstName} ${account.lastName} в выбывшие` : `Удалить ${account.firstName} ${account.lastName}`} className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>}</div></td></tr>)}</tbody></table></div>
             ) : <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><span className="mx-auto mb-3 block w-fit rounded-full bg-primary-light p-3 text-primary">{roleIcon(activeRole)}</span><p className="font-bold">{roleAccounts.length ? 'Ничего не найдено' : 'Аккаунтов пока нет'}</p><p className="mt-1 text-sm text-muted">{roleAccounts.length ? 'Измените поисковый запрос или фильтры.' : 'Нажмите «Добавить», чтобы создать первый аккаунт.'}</p></div>}
           </section>
           )}
@@ -472,10 +486,9 @@ export function AdminDashboardPage() {
           )}
           {deleteTarget && (
             <div className="admin-modal fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}>
-              <section role="alertdialog" aria-modal="true" aria-labelledby="delete-modal-title" className="admin-card w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-2xl"><span className="mb-4 inline-flex rounded-xl bg-rose-50 p-3 text-rose-600"><Trash2 className="h-6 w-6" /></span><h2 id="delete-modal-title" className="font-display text-xl font-extrabold">Удалить аккаунт?</h2><p className="mt-2 text-sm text-muted">Аккаунт «{deleteTarget.firstName} {deleteTarget.lastName}» будет удалён без возможности восстановления.</p>{deleteTarget.role === 'student' && <p className="mt-2 text-xs text-muted">Ученик будет отвязан от связанных аккаунтов родителей.</p>}{deleteTarget.role === 'teacher' && <p className="mt-2 text-xs text-muted">У учеников этого преподавателя связь будет снята.</p>}<div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setDeleteTarget(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="button" disabled={saving} onClick={confirmDeleteAccount} className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-60">{saving ? 'Удаляем…' : 'Удалить'}</button></div></section>
+              <section role="alertdialog" aria-modal="true" aria-labelledby="delete-modal-title" className="admin-card w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-2xl"><span className="mb-4 inline-flex rounded-xl bg-rose-50 p-3 text-rose-600"><Trash2 className="h-6 w-6" /></span><h2 id="delete-modal-title" className="font-display text-xl font-extrabold">{deleteTarget.role === 'student' ? 'Переместить в «Выбывшие»?' : 'Удалить аккаунт?'}</h2><p className="mt-2 text-sm text-muted">{deleteTarget.role === 'student' ? `Ученик «${deleteTarget.firstName} ${deleteTarget.lastName}» будет перемещён из активного списка в архив выбывших.` : `Аккаунт «${deleteTarget.firstName} ${deleteTarget.lastName}» будет удалён без возможности восстановления.`}</p>{deleteTarget.role === 'student' && <p className="mt-2 text-xs text-muted">Ученик не сможет войти в профиль, пока находится в архиве. Его можно будет вернуть из вкладки «Выбывшие».</p>}{deleteTarget.role === 'teacher' && <p className="mt-2 text-xs text-muted">К преподавателю не должны быть прикреплены активные ученики.</p>}<div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setDeleteTarget(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="button" disabled={saving} onClick={confirmDeleteAccount} className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-60">{saving ? 'Обрабатываем…' : deleteTarget.role === 'student' ? 'Переместить' : 'Удалить'}</button></div></section>
             </div>
           )}
-          {authorized && <p className="mt-6 text-center text-xs text-muted">Вы вошли как study-admin. Пароли хранятся в защищённом виде.</p>}
         </section>
       </div>
     </main>
