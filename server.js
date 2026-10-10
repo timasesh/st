@@ -504,19 +504,24 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
       || typeof lesson.title !== 'string' || !lesson.title.trim() || lesson.title.trim().length > 100) {
       return res.status(400).json({ error: 'Проверьте преподавателя, день, час и название каждого урока.' });
     }
-    const teacher = accounts.find((account) => account.id === lesson.teacherId && account.role === 'teacher');
-    if (!teacher) return res.status(400).json({ error: 'В расписании выбран неизвестный преподаватель.' });
-    const slotKey = `${lesson.teacherId}:${lesson.day}:${lesson.hour}`;
-    if (occupied.has(slotKey)) return res.status(409).json({ error: 'У преподавателя уже есть урок в этом часовом слоте.' });
-    occupied.add(slotKey);
-    cleaned.push({ id: lesson.id, teacherId: lesson.teacherId, day: lesson.day, hour: lesson.hour, title: lesson.title.trim() });
+    const student = accounts.find((account) => account.id === lesson.studentId && account.role === 'student' && account.status !== 'withdrawn');
+    const teacherId = student?.teacherId || lesson.teacherId;
+    const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
+    if (lesson.studentId && !student) return res.status(400).json({ error: 'В расписании выбран неизвестный ученик.' });
+    if (student && student.teacherId !== teacherId) return res.status(400).json({ error: 'У ученика изменился преподаватель. Обновите страницу и выберите ученика заново.' });
+    if (!teacher) return res.status(400).json({ error: 'У ученика не назначен преподаватель.' });
+    const normalizedSlotKey = `${teacherId}:${lesson.day}:${lesson.hour}`;
+    if (occupied.has(normalizedSlotKey)) return res.status(409).json({ error: 'У преподавателя уже есть урок в этом часовом слоте.' });
+    occupied.add(normalizedSlotKey);
+    cleaned.push({ id: lesson.id, ...(student ? { studentId: student.id } : {}), teacherId, day: lesson.day, hour: lesson.hour, title: lesson.title.trim() });
   }
   const targets = {};
-  for (const [teacherId, count] of Object.entries(incomingTargets)) {
-    if (!accounts.some((account) => account.id === teacherId && account.role === 'teacher') || !Number.isInteger(count) || count < 0 || count > 100) {
-      return res.status(400).json({ error: 'Укажите количество занятий от 0 до 100 для существующего преподавателя.' });
+  for (const [studentId, count] of Object.entries(incomingTargets)) {
+    if (accounts.some((account) => account.id === studentId && account.role === 'teacher') && Number.isInteger(count) && count >= 0 && count <= 100) continue;
+    if (!accounts.some((account) => account.id === studentId && account.role === 'student') || !Number.isInteger(count) || count < 0 || count > 100) {
+      return res.status(400).json({ error: 'Укажите количество занятий от 0 до 100 для существующего ученика.' });
     }
-    targets[teacherId] = count;
+    targets[studentId] = count;
   }
   const scheduleData = { lessons: cleaned, targets };
   if (supabase) {

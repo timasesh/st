@@ -232,7 +232,7 @@ type ManagedAccount = {
   children: Array<{ id: string; firstName: string; lastName: string; studentClass?: string }>;
 };
 
-type ScheduledLesson = { id: string; teacherId: string; day: number; hour: number; title: string };
+type ScheduledLesson = { id: string; studentId?: string; teacherId: string; day: number; hour: number; title: string };
 type WeeklySchedule = { lessons: ScheduledLesson[]; targets: Record<string, number> };
 const SCHEDULE_DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 const SCHEDULE_HOURS = Array.from({ length: 13 }, (_, index) => index + 8);
@@ -268,11 +268,10 @@ export function AdminDashboardPage() {
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
   const [schedule, setSchedule] = useState<WeeklySchedule>({ lessons: [], targets: {} });
-  const [scheduleTeacherId, setScheduleTeacherId] = useState('');
-  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleStudentId, setScheduleStudentId] = useState('');
   const [scheduleSlot, setScheduleSlot] = useState<{ day: number; hour: number } | null>(null);
   const [scheduleTitle, setScheduleTitle] = useState('');
-  const [scheduleTargetDraft, setScheduleTargetDraft] = useState('0');
+  const [scheduleTargetDraft, setScheduleTargetDraft] = useState('');
   const [draggedLessonId, setDraggedLessonId] = useState<string | null>(null);
 
   const loadAccounts = async () => {
@@ -316,16 +315,18 @@ export function AdminDashboardPage() {
   const visibleAccounts = roleAccounts.filter((account) => `${account.firstName} ${account.lastName}`.toLowerCase().includes(search.toLowerCase()) && (activeRole !== 'student' || selectedClasses.length === 0 || selectedClasses.includes(account.studentClass || '')));
   const students = accounts.filter((account) => account.role === 'student' && account.status !== 'withdrawn');
   const teachers = accounts.filter((account) => account.role === 'teacher');
-  const selectedTeacher = teachers.find((teacher) => teacher.id === scheduleTeacherId) || teachers[0];
-  const teacherLessons = schedule.lessons.filter((lesson) => lesson.teacherId === selectedTeacher?.id);
+  const selectedStudent = students.find((student) => student.id === scheduleStudentId) || students[0];
+  const selectedTeacher = teachers.find((teacher) => teacher.id === selectedStudent?.teacherId);
+  const studentLessons = schedule.lessons.filter((lesson) => lesson.studentId === selectedStudent?.id);
+  const teacherScheduleTarget = selectedStudent ? schedule.targets[selectedStudent.id] : undefined;
 
   useEffect(() => {
-    if (selectedTeacher && scheduleTeacherId !== selectedTeacher.id) setScheduleTeacherId(selectedTeacher.id);
-  }, [selectedTeacher?.id, scheduleTeacherId]);
+    if (selectedStudent && scheduleStudentId !== selectedStudent.id) setScheduleStudentId(selectedStudent.id);
+  }, [selectedStudent?.id, scheduleStudentId]);
 
   useEffect(() => {
-    if (selectedTeacher) setScheduleTargetDraft(String(schedule.targets[selectedTeacher.id] ?? teacherLessons.length));
-  }, [selectedTeacher?.id, schedule.targets[selectedTeacher?.id || ''], teacherLessons.length]);
+    if (selectedStudent) setScheduleTargetDraft(teacherScheduleTarget === undefined ? '' : String(teacherScheduleTarget));
+  }, [selectedStudent?.id, teacherScheduleTarget]);
   const matchingChildren = accounts.filter((student) => student.role === 'student' && (student.status !== 'withdrawn' || selectedChildren.includes(student.id)) && `${student.firstName} ${student.lastName} ${student.phone}`.toLowerCase().includes(childSearch.toLowerCase()));
 
   const switchRole = (role: AccountRole) => {
@@ -422,11 +423,13 @@ export function AdminDashboardPage() {
 
   const createScheduledLesson = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!scheduleSlot || !selectedTeacher) return;
+    if (!scheduleSlot || !selectedTeacher || !selectedStudent) return;
+    if (teacherScheduleTarget === undefined || teacherScheduleTarget < 1) { setError('Сначала сохраните план занятий на неделю.'); return; }
+    if (studentLessons.length >= teacherScheduleTarget) { setError('Все запланированные занятия уже добавлены. Увеличьте план, чтобы добавить ещё.'); return; }
     if (schedule.lessons.some((lesson) => lesson.teacherId === selectedTeacher.id && lesson.day === scheduleSlot.day && lesson.hour === scheduleSlot.hour)) {
       setError('Этот час уже занят.'); return;
     }
-    const lesson: ScheduledLesson = { id: crypto.randomUUID(), teacherId: selectedTeacher.id, day: scheduleSlot.day, hour: scheduleSlot.hour, title: scheduleTitle.trim() };
+    const lesson: ScheduledLesson = { id: crypto.randomUUID(), studentId: selectedStudent.id, teacherId: selectedTeacher.id, day: scheduleSlot.day, hour: scheduleSlot.hour, title: scheduleTitle.trim() };
     await saveSchedule({ ...schedule, lessons: [...schedule.lessons, lesson] });
     setScheduleSlot(null); setScheduleTitle('');
   };
@@ -443,9 +446,9 @@ export function AdminDashboardPage() {
     await saveSchedule({ ...schedule, lessons: schedule.lessons.filter((lesson) => lesson.id !== lessonId) });
   };
 
-  const setTeacherLessonTarget = async (count: number) => {
-    if (!selectedTeacher) return;
-    await saveSchedule({ ...schedule, targets: { ...schedule.targets, [selectedTeacher.id]: count } });
+  const setStudentLessonTarget = async (count: number) => {
+    if (!selectedStudent) return;
+    await saveSchedule({ ...schedule, targets: { ...schedule.targets, [selectedStudent.id]: count } });
   };
 
   const logout = async () => {
@@ -510,20 +513,20 @@ export function AdminDashboardPage() {
           {activeView === 'schedule' ? (
             <section className="admin-card rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-6">
               <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                <label className="block w-full max-w-sm space-y-1.5 text-sm font-bold">Расписание преподавателя<select value={selectedTeacher?.id || ''} onChange={(event) => setScheduleTeacherId(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 focus:border-primary focus:outline-none"><option value="">Выберите преподавателя</option>{teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</option>)}</select></label>
-                {selectedTeacher && <div className="flex flex-wrap items-end gap-4"><label className="block space-y-1.5 text-sm font-bold">План занятий в неделю<input type="number" min={0} max={100} value={scheduleTargetDraft} onChange={(event) => setScheduleTargetDraft(event.target.value)} onBlur={() => { const count = Number(scheduleTargetDraft); if (Number.isInteger(count) && count >= 0 && count <= 100) void setTeacherLessonTarget(count); else setScheduleTargetDraft(String(schedule.targets[selectedTeacher.id] ?? teacherLessons.length)); }} className="admin-input w-40 rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 focus:border-primary focus:outline-none" /></label><span className="pb-3 text-sm text-muted">В расписании: <strong>{teacherLessons.length}</strong></span></div>}
+                <label className="block w-full max-w-sm space-y-1.5 text-sm font-bold">Ученик<select value={selectedStudent?.id || ''} onChange={(event) => setScheduleStudentId(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 focus:border-primary focus:outline-none"><option value="">Выберите ученика</option>{students.map((student) => <option key={student.id} value={student.id}>{student.firstName} {student.lastName} · {student.studentClass}</option>)}</select></label>
+                {selectedStudent && <div className="flex flex-wrap items-end gap-3"><label className="block space-y-1.5 text-sm font-bold">Уроков в неделю<input type="number" min={1} max={100} value={scheduleTargetDraft} onChange={(event) => setScheduleTargetDraft(event.target.value)} className="admin-input w-36 rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 focus:border-primary focus:outline-none" /></label><button type="button" disabled={saving || !Number.isInteger(Number(scheduleTargetDraft)) || Number(scheduleTargetDraft) < 1 || Number(scheduleTargetDraft) > 100} onClick={() => void setStudentLessonTarget(Number(scheduleTargetDraft))} className="mb-px rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-50">Сохранить план</button><span className="pb-3 text-sm text-muted">Уже внесено: <strong>{studentLessons.length}</strong></span></div>}
               </div>
               {error && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
               {success && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
-              {!selectedTeacher ? <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><CalendarDays className="mx-auto mb-3 h-8 w-8 text-muted" /><p className="font-bold">Сначала добавьте преподавателя</p><p className="mt-1 text-sm text-muted">Затем выберите его здесь, чтобы заполнить недельное расписание.</p></div> : (
+              {!selectedStudent ? <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><CalendarDays className="mx-auto mb-3 h-8 w-8 text-muted" /><p className="font-bold">Сначала добавьте ученика</p><p className="mt-1 text-sm text-muted">Ученик должен быть закреплён за преподавателем.</p></div> : !selectedTeacher ? <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><CalendarDays className="mx-auto mb-3 h-8 w-8 text-muted" /><p className="font-bold">У ученика не назначен преподаватель</p><p className="mt-1 text-sm text-muted">Сначала назначьте преподавателя в карточке ученика.</p></div> : teacherScheduleTarget === undefined || teacherScheduleTarget < 1 ? <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center"><p className="font-bold">Сначала укажите количество уроков в неделю</p><p className="mt-1 text-sm text-muted">Введите план выше и нажмите «Сохранить план», чтобы открыть расписание.</p></div> : (
                 <>
                   <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted"><span className="inline-flex items-center gap-1 rounded-full bg-primary-light px-3 py-1.5"><Clock3 className="h-3.5 w-3.5" /> Каждый слот — 1 час</span><span>Пн–Сб, 08:00–21:00</span><span className="ml-auto inline-flex items-center gap-1"><GripVertical className="h-3.5 w-3.5" /> Перетащите урок в другой свободный слот</span></div>
                   <div className="overflow-x-auto rounded-xl border border-border"><div className="min-w-[1040px]"><div className="grid grid-cols-[76px_repeat(6,minmax(150px,1fr))] border-b border-border bg-primary-light text-xs font-extrabold text-muted"><div className="p-3">Время</div>{SCHEDULE_DAYS.map((day) => <div key={day} className="border-l border-border p-3">{day}</div>)}</div>
-                    {SCHEDULE_HOURS.map((hour) => <div key={hour} className="grid min-h-[82px] grid-cols-[76px_repeat(6,minmax(150px,1fr))] border-b border-border last:border-b-0"><div className="flex items-start gap-1 p-3 text-xs font-bold text-muted"><Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />{String(hour).padStart(2, '0')}:00</div>{SCHEDULE_DAYS.map((day, dayIndex) => { const lesson = teacherLessons.find((item) => item.day === dayIndex && item.hour === hour); return <div key={`${dayIndex}-${hour}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (draggedLessonId) void moveScheduledLesson(draggedLessonId, dayIndex, hour); setDraggedLessonId(null); }} className={`border-l border-border p-1.5 transition ${draggedLessonId ? 'bg-blue-50/70' : ''}`}>
-                      {lesson ? <article draggable onDragStart={() => setDraggedLessonId(lesson.id)} onDragEnd={() => setDraggedLessonId(null)} className="group h-full min-h-[68px] cursor-grab rounded-lg border border-blue-200 bg-blue-50 p-2 text-blue-950 shadow-sm active:cursor-grabbing"><div className="flex items-start justify-between gap-1"><span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700"><GripVertical className="h-3 w-3" />{String(hour).padStart(2, '0')}:00–{String(hour + 1).padStart(2, '0')}:00</span><button type="button" disabled={saving} onClick={() => void removeScheduledLesson(lesson.id)} title="Удалить урок" aria-label={`Удалить урок ${lesson.title}`} className="rounded p-0.5 text-blue-500 hover:bg-rose-100 hover:text-rose-600"><Trash className="h-3.5 w-3.5" /></button></div><p className="mt-1 line-clamp-2 text-xs font-extrabold">{lesson.title}</p></article> : <button type="button" onClick={() => { setScheduleSlot({ day: dayIndex, hour }); setScheduleTitle(''); setError(''); setSuccess(''); }} className="flex h-full min-h-[68px] w-full items-center justify-center rounded-lg border border-dashed border-transparent text-muted/50 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"><Plus className="h-4 w-4" /><span className="sr-only">Добавить урок: {day}, {hour}:00</span></button>}
+                    {SCHEDULE_HOURS.map((hour) => <div key={hour} className="grid min-h-[82px] grid-cols-[76px_repeat(6,minmax(150px,1fr))] border-b border-border last:border-b-0"><div className="flex items-start gap-1 p-3 text-xs font-bold text-muted"><Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />{String(hour).padStart(2, '0')}:00</div>{SCHEDULE_DAYS.map((day, dayIndex) => { const lesson = studentLessons.find((item) => item.day === dayIndex && item.hour === hour); const legacyLesson = schedule.lessons.find((item) => !item.studentId && item.teacherId === selectedTeacher.id && item.day === dayIndex && item.hour === hour); const teacherBusy = schedule.lessons.some((item) => item.teacherId === selectedTeacher.id && item.day === dayIndex && item.hour === hour && item.studentId !== selectedStudent.id); return <div key={`${dayIndex}-${hour}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (draggedLessonId) void moveScheduledLesson(draggedLessonId, dayIndex, hour); setDraggedLessonId(null); }} className={`border-l border-border p-1.5 transition ${draggedLessonId ? 'bg-blue-50/70' : ''}`}>
+                      {lesson ? <article draggable onDragStart={() => setDraggedLessonId(lesson.id)} onDragEnd={() => setDraggedLessonId(null)} className="group h-full min-h-[68px] cursor-grab rounded-lg border border-blue-200 bg-blue-50 p-2 text-blue-950 shadow-sm active:cursor-grabbing"><div className="flex items-start justify-between gap-1"><span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700"><GripVertical className="h-3 w-3" />{String(hour).padStart(2, '0')}:00–{String(hour + 1).padStart(2, '0')}:00</span><button type="button" disabled={saving} onClick={() => void removeScheduledLesson(lesson.id)} title="Удалить урок" aria-label={`Удалить урок ${lesson.title}`} className="rounded p-0.5 text-blue-500 hover:bg-rose-100 hover:text-rose-600"><Trash className="h-3.5 w-3.5" /></button></div><p className="mt-1 line-clamp-2 text-xs font-extrabold">{lesson.title}</p></article> : legacyLesson ? <article className="flex h-full min-h-[68px] items-center justify-between gap-1 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900"><span className="text-[10px] font-semibold">Старый урок без ученика</span><button type="button" disabled={saving} onClick={() => void removeScheduledLesson(legacyLesson.id)} aria-label="Удалить непривязанный старый урок" className="rounded p-1 text-amber-700 hover:bg-rose-100 hover:text-rose-600"><Trash className="h-3.5 w-3.5" /></button></article> : teacherBusy ? <div className="flex h-full min-h-[68px] items-center justify-center rounded-lg bg-slate-100 px-2 text-center text-[10px] font-semibold text-slate-500">Преподаватель занят</div> : <button type="button" disabled={studentLessons.length >= teacherScheduleTarget} onClick={() => { setScheduleSlot({ day: dayIndex, hour }); setScheduleTitle(''); setError(''); setSuccess(''); }} className="flex h-full min-h-[68px] w-full items-center justify-center rounded-lg border border-dashed border-transparent text-muted/50 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-30"><Plus className="h-4 w-4" /><span className="sr-only">Добавить урок: {day}, {hour}:00</span></button>}
                     </div>; })}</div>)}
                   </div></div>
-                  <p className="mt-3 text-xs text-muted">Кликните на свободный час, чтобы добавить урок. Расписание сохраняется в базе данных автоматически.</p>
+                  <p className="mt-3 text-xs text-muted">Преподаватель: <strong>{selectedTeacher.firstName} {selectedTeacher.lastName}</strong> · Уроки сохраняются с привязкой к выбранному ученику и его преподавателю.</p>
                 </>
               )}
             </section>
@@ -570,7 +573,7 @@ export function AdminDashboardPage() {
           )}
           {scheduleSlot && (
             <div className="admin-modal fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setScheduleSlot(null); }}>
-              <section role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title" className="admin-card w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-2xl"><div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-blue-100 p-2.5 text-blue-700"><CalendarDays className="h-5 w-5" /></span><div><h2 id="schedule-modal-title" className="font-display text-xl font-extrabold">Новый урок</h2><p className="text-sm text-muted">{SCHEDULE_DAYS[scheduleSlot.day]}, {String(scheduleSlot.hour).padStart(2, '0')}:00–{String(scheduleSlot.hour + 1).padStart(2, '0')}:00</p></div></div><form onSubmit={createScheduledLesson} className="space-y-4"><label className="block space-y-1.5 text-sm font-bold">Название урока или группы<input autoFocus required maxLength={100} value={scheduleTitle} onChange={(event) => setScheduleTitle(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="Например: Математика, 7 класс" /></label><p className="text-sm text-muted">Преподаватель: <strong>{selectedTeacher?.firstName} {selectedTeacher?.lastName}</strong></p>{error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" onClick={() => setScheduleSlot(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="submit" disabled={saving} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60">Добавить урок</button></div></form></section>
+              <section role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title" className="admin-card w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-2xl"><div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-blue-100 p-2.5 text-blue-700"><CalendarDays className="h-5 w-5" /></span><div><h2 id="schedule-modal-title" className="font-display text-xl font-extrabold">Новый урок</h2><p className="text-sm text-muted">{SCHEDULE_DAYS[scheduleSlot.day]}, {String(scheduleSlot.hour).padStart(2, '0')}:00–{String(scheduleSlot.hour + 1).padStart(2, '0')}:00</p></div></div><form onSubmit={createScheduledLesson} className="space-y-4"><label className="block space-y-1.5 text-sm font-bold">Название урока или группы<input autoFocus required maxLength={100} value={scheduleTitle} onChange={(event) => setScheduleTitle(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="Например: Математика, 7 класс" /></label><p className="text-sm text-muted">Ученик: <strong>{selectedStudent?.firstName} {selectedStudent?.lastName}</strong><br />Преподаватель: <strong>{selectedTeacher?.firstName} {selectedTeacher?.lastName}</strong></p>{error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" onClick={() => setScheduleSlot(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="submit" disabled={saving} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60">Добавить урок</button></div></form></section>
             </div>
           )}
           {showAccountModal && (
