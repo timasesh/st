@@ -22,10 +22,11 @@ const userCookieName = 'study_user_session';
 const sessionDurationSeconds = 12 * 60 * 60;
 const DEFAULT_CREDENTIALS = {
   username: 'timaadmin',
-  salt: 'MD+0kK7dVBWtuVpZmBwK2g==',
-  passwordHash: 'PVp1UE40/4mVYCL30qMrK8eDOEP2Wi4okglSmBMh6Wl+gIVWxFmx9AiUrlhKn5r7jjCNMvO+bMEdD0odlgyScA==',
-  mustChangePassword: false,
+  salt: '8eaDDuWATmBuSe0bN9yY6g==',
+  passwordHash: 'xBlWaStWhFYz1ClSRAWhhn4kMQsOo2s9k/EUHNPkcu7IeZA4PZ6R05E+xaqKpg7IlVmARYa7OKT8cvDBszOqfA==',
+  mustChangePassword: true,
 };
+const LEGACY_DEFAULT_PASSWORD_HASH = 'PVp1UE40/4mVYCL30qMrK8eDOEP2Wi4okglSmBMh6Wl+gIVWxFmx9AiUrlhKn5r7jjCNMvO+bMEdD0odlgyScA==';
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -106,7 +107,13 @@ async function initializeFileStorage() {
   credentials = await readJsonFileOr(credentialsPath, DEFAULT_CREDENTIALS);
   const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
   const bootstrapUsername = process.env.ADMIN_BOOTSTRAP_USERNAME || DEFAULT_CREDENTIALS.username;
-  if (bootstrapPassword && credentials.username !== bootstrapUsername) {
+  if (credentials.username !== bootstrapUsername || credentials.passwordHash === LEGACY_DEFAULT_PASSWORD_HASH) {
+    if (!bootstrapPassword && credentials.username === bootstrapUsername && credentials.passwordHash !== LEGACY_DEFAULT_PASSWORD_HASH) {
+      // Keep an already-customized administrator password.
+    } else if (!bootstrapPassword) {
+      credentials = DEFAULT_CREDENTIALS;
+      await writeCredentials(credentials);
+    } else {
     if (bootstrapPassword.length < 8 || bootstrapPassword.length > 128) throw new Error('ADMIN_BOOTSTRAP_PASSWORD must contain 8–128 characters.');
     const salt = crypto.randomBytes(16);
     credentials = {
@@ -116,6 +123,7 @@ async function initializeFileStorage() {
       mustChangePassword: true,
     };
     await writeCredentials(credentials);
+    }
   }
   if (!(await fs.stat(credentialsPath).catch(() => null))) await writeCredentials(credentials);
   try {
@@ -152,9 +160,24 @@ async function initializeSupabaseStorage(secretKey) {
   } else if (bootstrapAccountExists) {
     const row = rows.find((item) => item.username === bootstrapUsername);
     credentials = { username: row.username, salt: row.password_salt, passwordHash: row.password_hash, mustChangePassword: row.must_change_password };
+    if (credentials.passwordHash === LEGACY_DEFAULT_PASSWORD_HASH) {
+      credentials = DEFAULT_CREDENTIALS;
+      await writeCredentials(credentials);
+    }
   } else if (rows.length) {
-    const row = rows[0];
-    credentials = { username: row.username, salt: row.password_salt, passwordHash: row.password_hash, mustChangePassword: row.must_change_password };
+    if (bootstrapPassword) {
+      if (bootstrapPassword.length < 8 || bootstrapPassword.length > 128) throw new Error('ADMIN_BOOTSTRAP_PASSWORD must contain 8–128 characters.');
+      const salt = crypto.randomBytes(16);
+      credentials = {
+        username: bootstrapUsername,
+        salt: salt.toString('base64'),
+        passwordHash: (await hashPassword(bootstrapPassword, salt)).toString('base64'),
+        mustChangePassword: true,
+      };
+    } else {
+      credentials = DEFAULT_CREDENTIALS;
+    }
+    await writeCredentials(credentials);
   } else {
     credentials = await readJsonFileOr(credentialsPath, DEFAULT_CREDENTIALS);
     await writeCredentials(credentials);
