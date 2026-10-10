@@ -18,6 +18,7 @@ const credentialsPath = path.join(dataDir, 'admin.json');
 const sessionSecretPath = path.join(dataDir, 'session-secret');
 const accountsPath = path.join(dataDir, 'accounts.json');
 const schedulePath = path.join(dataDir, 'schedule.json');
+const auditLogPath = path.join(dataDir, 'admin-audit.json');
 const cookieName = 'study_admin_session';
 const userCookieName = 'study_user_session';
 const sessionDurationSeconds = 12 * 60 * 60;
@@ -245,6 +246,40 @@ async function writeCredentials(nextCredentials) {
   credentials = nextCredentials;
 }
 
+async function recordAdminAudit(actor, action, details = '') {
+  const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), actor, action, details };
+  if (supabase) {
+    const result = await supabase.from('app_settings').insert({ key: `admin_audit:${entry.id}`, value: JSON.stringify(entry) });
+    if (result.error) throw new Error(`Could not record admin audit event: ${result.error.message}`);
+    return entry;
+  }
+  const entries = await readJsonFileOr(auditLogPath, []);
+  await fs.mkdir(dataDir, { recursive: true });
+  const temporaryPath = `${auditLogPath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify([entry, ...entries], null, 2), { mode: 0o600 });
+  await fs.rename(temporaryPath, auditLogPath);
+  return entry;
+}
+
+async function listAdminAuditHistory() {
+  if (supabase) {
+    const entries = [];
+    for (let offset = 0; ; offset += 1000) {
+      const result = await supabase.from('app_settings').select('value').like('key', 'admin_audit:%').order('updated_at', { ascending: false }).range(offset, offset + 999);
+      if (result.error) throw new Error(`Could not load admin audit history: ${result.error.message}`);
+      entries.push(...result.data.map((row) => JSON.parse(row.value)));
+      if (result.data.length < 1000) break;
+    }
+    return entries;
+  }
+  return readJsonFileOr(auditLogPath, []);
+}
+
+async function recordAdminAuditSafely(actor, action, details = '') {
+  try { await recordAdminAudit(actor, action, details); }
+  catch (error) { console.error('Admin audit write failed:', error); }
+}
+
 async function writeAccounts(nextAccounts) {
   if (supabase) {
     const previousById = new Map(persistedAccountsSnapshot.map((account) => [account.id, account]));
@@ -415,6 +450,18 @@ app.get('/api/admin/session', (req, res) => {
   });
 });
 
+app.get('/api/admin/history', requireAdmin, async (_req, res) => {
+  try { return res.json(await listAdminAuditHistory()); }
+  catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить историю действий.' }); }
+});
+
+app.post('/api/admin/history/theme', requireAdmin, async (req, res) => {
+  const theme = req.body?.theme;
+  if (theme !== 'dark' && theme !== 'light') return res.status(400).json({ error: 'Неизвестная тема оформления.' });
+  await recordAdminAuditSafely(req.adminSession.sub, 'Изменена тема панели', theme === 'dark' ? 'Тёмная' : 'Светлая');
+  return res.json({ ok: true });
+});
+
 app.post('/api/admin/login', async (req, res) => {
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (isLoginRateLimited(ip)) {
@@ -433,6 +480,7 @@ app.post('/api/admin/login', async (req, res) => {
 
   failedLoginAttempts.delete(ip);
   setSessionCookie(res);
+  await recordAdminAuditSafely(credentials.username, 'Вход в админ-панель');
   return res.json({ ok: true });
 });
 
@@ -456,10 +504,13 @@ app.post('/api/admin/change-password', requireAdmin, async (req, res) => {
     passwordHash: passwordHash.toString('base64'),
     mustChangePassword: false,
   });
+  await recordAdminAuditSafely(req.adminSession.sub, 'Сменён пароль администратора');
   return res.json({ ok: true });
 });
 
 app.post('/api/admin/logout', (req, res) => {
+  const session = getSession(req);
+  if (session) void recordAdminAuditSafely(session.sub, 'Выход из админ-панели');
   clearSessionCookie(res);
   res.json({ ok: true });
 });
@@ -533,6 +584,7 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
     await fs.writeFile(temporaryPath, JSON.stringify(scheduleData, null, 2), { mode: 0o600 });
     await fs.rename(temporaryPath, schedulePath);
   }
+  await recordAdminAuditSafely(req.adminSession.sub, 'Изменено расписание ученика', `Занятий в расписании: ${cleaned.length}`);
   return res.json(scheduleData);
 });
 
@@ -564,6 +616,7 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
     salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString(),
   };
   await writeAccounts([...accounts, account]);
+  await recordAdminAuditSafely(req.adminSession.sub, 'Создан аккаунт', `${role}: ${account.firstName} ${account.lastName}`);
   return res.status(201).json({ account: publicAccount(account) });
 });
 
@@ -605,6 +658,7 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
   const nextAccounts = [...accounts];
   nextAccounts[index] = updated;
   await writeAccounts(nextAccounts);
+  await recordAdminAuditSafely(req.adminSession.sub, 'Изменён аккаунт', `${current.role}: ${updated.firstName} ${updated.lastName}`);
   return res.json({ account: publicAccount(updated) });
 });
 
@@ -621,8 +675,9 @@ app.delete('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
       if (entry.role === 'parent' && account.role === 'student') return { ...entry, children: (entry.children || []).filter((id) => id !== account.id) };
       if (entry.role === 'student' && account.role === 'teacher' && entry.teacherId === account.id) return { ...entry, teacherId: undefined };
       return entry;
-    });
+  });
   await writeAccounts(nextAccounts);
+  await recordAdminAuditSafely(req.adminSession.sub, 'Удалён аккаунт', `${account.role}: ${account.firstName} ${account.lastName}`);
   return res.json({ ok: true });
 });
 
@@ -634,6 +689,7 @@ app.post('/api/admin/accounts/:id/archive', requireAdmin, async (req, res) => {
   const nextAccounts = [...accounts];
   nextAccounts[index] = { ...nextAccounts[index], status: 'withdrawn', withdrawnAt: new Date().toISOString() };
   await writeAccounts(nextAccounts);
+  await recordAdminAuditSafely(req.adminSession.sub, 'Ученик перемещён в выбывшие', `${nextAccounts[index].firstName} ${nextAccounts[index].lastName}`);
   return res.json({ ok: true });
 });
 
@@ -647,6 +703,7 @@ app.post('/api/admin/accounts/:id/restore', requireAdmin, async (req, res) => {
   const { withdrawnAt: _withdrawnAt, ...rest } = nextAccounts[index];
   nextAccounts[index] = { ...rest, status: 'active' };
   await writeAccounts(nextAccounts);
+  await recordAdminAuditSafely(req.adminSession.sub, 'Ученик восстановлен', `${nextAccounts[index].firstName} ${nextAccounts[index].lastName}`);
   return res.json({ ok: true });
 });
 

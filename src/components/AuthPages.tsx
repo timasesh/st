@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw, CalendarDays, Clock3, GripVertical, Trash } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw, CalendarDays, Clock3, GripVertical, Trash, History } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 type LoginPageProps = {
@@ -234,6 +234,7 @@ type ManagedAccount = {
 
 type ScheduledLesson = { id: string; studentId?: string; teacherId: string; day: number; hour: number; title: string };
 type WeeklySchedule = { lessons: ScheduledLesson[]; targets: Record<string, number> };
+type AdminHistoryEntry = { id: string; at: string; actor: string; action: string; details?: string };
 const SCHEDULE_DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 const SCHEDULE_HOURS = Array.from({ length: 13 }, (_, index) => index + 8);
 
@@ -242,7 +243,7 @@ const ROLE_LABELS: Record<AccountRole, string> = { student: 'Ученики', pa
 export function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
   const [activeRole, setActiveRole] = useState<AccountRole>('student');
-  const [activeView, setActiveView] = useState<'accounts' | 'withdrawn' | 'crm' | 'settings' | 'schedule'>('accounts');
+  const [activeView, setActiveView] = useState<'accounts' | 'withdrawn' | 'crm' | 'settings' | 'schedule' | 'history'>('accounts');
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ManagedAccount | null>(null);
@@ -273,6 +274,8 @@ export function AdminDashboardPage() {
   const [scheduleTitle, setScheduleTitle] = useState('');
   const [scheduleTargetDraft, setScheduleTargetDraft] = useState('');
   const [draggedLessonId, setDraggedLessonId] = useState<string | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<AdminHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const loadAccounts = async () => {
     const response = await fetch('/api/admin/accounts', { credentials: 'same-origin' });
@@ -286,6 +289,18 @@ export function AdminDashboardPage() {
     const result = await readApiResponse(response);
     if (!response.ok) throw new Error(result.error || 'Не удалось загрузить расписание.');
     setSchedule({ lessons: Array.isArray(result.lessons) ? result.lessons : [], targets: result.targets || {} });
+  };
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await fetch('/api/admin/history', { credentials: 'same-origin' });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось загрузить историю.');
+      setHistoryEntries(result as AdminHistoryEntry[]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось загрузить историю действий.');
+    } finally { setHistoryLoading(false); }
   };
 
   useEffect(() => {
@@ -451,6 +466,15 @@ export function AdminDashboardPage() {
     await saveSchedule({ ...schedule, targets: { ...schedule.targets, [selectedStudent.id]: count } });
   };
 
+  const toggleAdminTheme = () => {
+    const nextTheme = !darkTheme;
+    setDarkTheme(nextTheme);
+    void fetch('/api/admin/history/theme', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+      body: JSON.stringify({ theme: nextTheme ? 'dark' : 'light' }),
+    });
+  };
+
   const logout = async () => {
     await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
     window.location.replace('/admin_login');
@@ -491,7 +515,7 @@ export function AdminDashboardPage() {
       </header>
       <div className="flex min-h-[calc(100vh-73px)] w-full flex-col lg:flex-row">
         <aside className="border-b border-border bg-white p-4 lg:w-64 lg:border-b-0 lg:border-r lg:p-5">
-          <div className="mb-3 flex items-center justify-between px-3"><p className="text-xs font-extrabold uppercase tracking-wider text-muted">Управление</p><button type="button" onClick={() => setActiveView('settings')} title="Настройки" aria-label="Открыть настройки" className={`rounded p-0.5 text-muted transition hover:text-primary ${activeView === 'settings' ? 'text-primary' : ''}`}><Settings className="h-4 w-4" /></button></div>
+          <div className="mb-3 flex items-center justify-between px-3"><p className="text-xs font-extrabold uppercase tracking-wider text-muted">Управление</p><div className="flex items-center gap-2"><button type="button" onClick={() => { setActiveView('history'); setError(''); setSuccess(''); void loadHistory(); }} title="История действий" aria-label="Открыть историю действий" className={`rounded p-0.5 text-muted transition hover:text-primary ${activeView === 'history' ? 'text-primary' : ''}`}><History className="h-4 w-4" /></button><button type="button" onClick={() => setActiveView('settings')} title="Настройки" aria-label="Открыть настройки" className={`rounded p-0.5 text-muted transition hover:text-primary ${activeView === 'settings' ? 'text-primary' : ''}`}><Settings className="h-4 w-4" /></button></div></div>
           <nav className="flex gap-2 overflow-x-auto lg:flex-col">
             {(['student', 'parent', 'teacher'] as AccountRole[]).map((role) => (
               <button key={role} type="button" onClick={() => { switchRole(role); setActiveView('accounts'); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'accounts' && activeRole === role ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}>
@@ -506,11 +530,17 @@ export function AdminDashboardPage() {
 
         <section className="min-w-0 flex-1 p-5 sm:p-8">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
-            <div><p className="text-sm font-bold text-primary">{activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : activeView === 'schedule' ? 'Планирование занятий' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : activeView === 'schedule' ? 'Расписание' : activeView === 'withdrawn' ? 'Выбывшие' : ROLE_LABELS[activeRole]}</h1></div>
+            <div><p className="text-sm font-bold text-primary">{activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : activeView === 'schedule' ? 'Планирование занятий' : activeView === 'history' ? 'Аудит действий' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : activeView === 'schedule' ? 'Расписание' : activeView === 'history' ? 'История действий' : activeView === 'withdrawn' ? 'Выбывшие' : ROLE_LABELS[activeRole]}</h1></div>
             {(activeView === 'accounts' || activeView === 'withdrawn') && <span className="rounded-full bg-white px-4 py-2 text-sm font-bold text-muted shadow-sm">Всего: {roleAccounts.length}</span>}
           </div>
 
-          {activeView === 'schedule' ? (
+          {activeView === 'history' ? (
+            <section className="admin-card rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-6">
+              <div className="mb-5 flex items-center justify-between gap-3"><div><h2 className="font-display text-lg font-extrabold">Журнал администраторов</h2><p className="text-sm text-muted">События записываются в Supabase с именем аккаунта и временем.</p></div><button type="button" onClick={() => void loadHistory()} disabled={historyLoading} className="rounded-xl border border-border px-3 py-2 text-sm font-bold text-muted hover:bg-primary-light disabled:opacity-50">Обновить</button></div>
+              {error && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+              {historyLoading ? <p className="py-12 text-center text-sm text-muted">Загружаем историю…</p> : historyEntries.length ? <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[620px] border-collapse text-left text-sm"><thead className="bg-primary-light text-xs uppercase tracking-wide text-muted"><tr><th className="px-4 py-3">Дата и время</th><th className="px-4 py-3">Администратор</th><th className="px-4 py-3">Действие</th><th className="px-4 py-3">Подробности</th></tr></thead><tbody>{historyEntries.map((entry) => <tr key={entry.id} className="border-t border-border"><td className="whitespace-nowrap px-4 py-3 text-muted">{new Date(entry.at).toLocaleString('ru-KZ', { timeZone: 'Asia/Qyzylorda' })}</td><td className="px-4 py-3 font-bold">{entry.actor}</td><td className="px-4 py-3">{entry.action}</td><td className="px-4 py-3 text-muted">{entry.details || '—'}</td></tr>)}</tbody></table></div> : <div className="rounded-xl border border-dashed border-border px-4 py-14 text-center"><History className="mx-auto mb-3 h-8 w-8 text-muted" /><p className="font-bold">Действий пока нет</p><p className="mt-1 text-sm text-muted">Новые действия панели появятся здесь.</p></div>}
+            </section>
+          ) : activeView === 'schedule' ? (
             <section className="admin-card rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-6">
               <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <label className="block w-full max-w-sm space-y-1.5 text-sm font-bold">Ученик<select value={selectedStudent?.id || ''} onChange={(event) => setScheduleStudentId(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 focus:border-primary focus:outline-none"><option value="">Выберите ученика</option>{students.map((student) => <option key={student.id} value={student.id}>{student.firstName} {student.lastName} · {student.studentClass}</option>)}</select></label>
@@ -540,7 +570,7 @@ export function AdminDashboardPage() {
             <div className="grid max-w-3xl gap-6">
               <section className="admin-card rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                 <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{darkTheme ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}</span><div><h2 className="font-display text-lg font-extrabold">Оформление</h2><p className="text-sm text-muted">Настройте внешний вид панели для этого браузера.</p></div></div>
-                <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border p-4"><span><strong className="block">Тёмная тема</strong><span className="text-sm text-muted">{darkTheme ? 'Включена' : 'Выключена'}</span></span><button type="button" role="switch" aria-checked={darkTheme} onClick={() => setDarkTheme((value) => !value)} className={`relative h-7 w-12 rounded-full transition ${darkTheme ? 'bg-blue-600' : 'bg-slate-300'}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${darkTheme ? 'left-6' : 'left-1'}`} /></button></div>
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border p-4"><span><strong className="block">Тёмная тема</strong><span className="text-sm text-muted">{darkTheme ? 'Включена' : 'Выключена'}</span></span><button type="button" role="switch" aria-checked={darkTheme} onClick={toggleAdminTheme} className={`relative h-7 w-12 rounded-full transition ${darkTheme ? 'bg-blue-600' : 'bg-slate-300'}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${darkTheme ? 'left-6' : 'left-1'}`} /></button></div>
               </section>
               <section className="admin-card rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                 <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary"><KeyRound className="h-5 w-5" /></span><div><h2 className="font-display text-lg font-extrabold">Смена пароля</h2><p className="text-sm text-muted">Подтвердите текущий пароль и задайте новый.</p></div></div>
