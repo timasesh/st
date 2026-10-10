@@ -3,7 +3,12 @@ import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, User
 import { AnimatePresence, motion } from 'motion/react';
 
 type LoginPageProps = {
-  onLoginSuccess: (name: string, studentClass: string) => void;
+  onLoginSuccess: (name: string, studentClass: string, accountId: string, progress: Partial<LoginProgress> | null, role: 'student' | 'parent' | 'teacher') => void;
+};
+
+type LoginProgress = {
+  stars: number; xp: number; level: number; claimedPrizes: string[]; unlockedAchievements: string[];
+  userName: string; userClass: string;
 };
 
 function AuthShell({ children, eyebrow }: { children: ReactNode; eyebrow: string }) {
@@ -52,8 +57,8 @@ export function StudentLoginPage({ onLoginSuccess }: LoginPageProps) {
       });
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось войти. Проверьте номер телефона и пароль.');
-      const account = result.account as { firstName: string; lastName: string; studentClass?: string };
-      onLoginSuccess(`${account.firstName} ${account.lastName}`, account.studentClass || '');
+      const account = result.account as { id: string; role: 'student' | 'parent' | 'teacher'; firstName: string; lastName: string; studentClass?: string };
+      onLoginSuccess(`${account.firstName} ${account.lastName}`, account.studentClass || '', account.id, result.progress || null, account.role);
       window.location.assign('/');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.');

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(ROOT, '.env.local') });
@@ -33,17 +34,77 @@ app.use(express.json({ limit: '10kb' }));
 let sessionSecret;
 let credentials;
 let accounts = [];
+let supabase = null;
+let persistedAccountsSnapshot = [];
 
-async function initializeAuth() {
-  await fs.mkdir(dataDir, { recursive: true });
-  try {
-    credentials = JSON.parse(await fs.readFile(credentialsPath, 'utf8'));
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-    credentials = DEFAULT_CREDENTIALS;
-    await writeCredentials(credentials);
+function snapshotAccounts(nextAccounts) {
+  return JSON.parse(JSON.stringify(nextAccounts));
+}
+
+async function fetchSupabaseAccounts() {
+  const allRows = [];
+  for (let offset = 0; ; offset += 1000) {
+    const result = await supabase.from('accounts').select('*').order('created_at', { ascending: true }).range(offset, offset + 999);
+    if (result.error) throw new Error(`Could not read accounts from Supabase: ${result.error.message}`);
+    allRows.push(...result.data);
+    if (result.data.length < 1000) break;
   }
+  return allRows.map(accountFromDatabase);
+}
 
+async function refreshAccounts() {
+  if (!supabase) return;
+  accounts = await fetchSupabaseAccounts();
+  persistedAccountsSnapshot = snapshotAccounts(accounts);
+}
+
+function accountFromDatabase(row) {
+  return {
+    id: row.id,
+    role: row.role,
+    phone: row.phone,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    studentClass: row.student_class || '',
+    teacherId: row.teacher_id || undefined,
+    children: row.children || [],
+    status: row.status || 'active',
+    salt: row.password_salt,
+    passwordHash: row.password_hash,
+    createdAt: row.created_at,
+    withdrawnAt: row.withdrawn_at || undefined,
+    progress: row.progress || null,
+  };
+}
+
+function accountToDatabase(account) {
+  return {
+    id: account.id,
+    role: account.role,
+    phone: account.phone,
+    first_name: account.firstName,
+    last_name: account.lastName,
+    student_class: account.studentClass || null,
+    teacher_id: account.teacherId || null,
+    children: account.children || [],
+    status: account.status || 'active',
+    password_salt: account.salt,
+    password_hash: account.passwordHash,
+    created_at: account.createdAt || new Date().toISOString(),
+    withdrawn_at: account.withdrawnAt || null,
+    progress: account.progress || null,
+  };
+}
+
+async function readJsonFileOr(filePath, fallback) {
+  try { return JSON.parse(await fs.readFile(filePath, 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return fallback; throw error; }
+}
+
+async function initializeFileStorage() {
+  await fs.mkdir(dataDir, { recursive: true });
+  credentials = await readJsonFileOr(credentialsPath, DEFAULT_CREDENTIALS);
+  if (!(await fs.stat(credentialsPath).catch(() => null))) await writeCredentials(credentials);
   try {
     sessionSecret = await fs.readFile(sessionSecretPath);
   } catch (error) {
@@ -51,29 +112,103 @@ async function initializeAuth() {
     sessionSecret = crypto.randomBytes(48);
     await fs.writeFile(sessionSecretPath, sessionSecret, { mode: 0o600, flag: 'wx' });
   }
+  accounts = await readJsonFileOr(accountsPath, []);
+}
+
+async function initializeSupabaseStorage(secretKey) {
+  supabase = createClient(process.env.SUPABASE_URL, secretKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+
+  const credentialResult = await supabase.from('admin_credentials').select('*').eq('username', DEFAULT_CREDENTIALS.username).maybeSingle();
+  if (credentialResult.error) throw new Error(`Supabase admin_credentials: ${credentialResult.error.message}. Выполните SQL из supabase/schema.sql.`);
+  if (credentialResult.data) {
+    const row = credentialResult.data;
+    credentials = { username: row.username, salt: row.password_salt, passwordHash: row.password_hash, mustChangePassword: row.must_change_password };
+  } else {
+    credentials = await readJsonFileOr(credentialsPath, DEFAULT_CREDENTIALS);
+    await writeCredentials(credentials);
+  }
+
+  const settingsResult = await supabase.from('app_settings').select('value').eq('key', 'session_secret').maybeSingle();
+  if (settingsResult.error) throw new Error(`Supabase app_settings: ${settingsResult.error.message}. Выполните SQL из supabase/schema.sql.`);
+  if (settingsResult.data?.value) {
+    sessionSecret = Buffer.from(settingsResult.data.value, 'base64');
+  } else {
+    try { sessionSecret = await fs.readFile(sessionSecretPath); }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      sessionSecret = crypto.randomBytes(48);
+    }
+    const settingWrite = await supabase.from('app_settings').upsert({ key: 'session_secret', value: sessionSecret.toString('base64') });
+    if (settingWrite.error) throw new Error(`Supabase app_settings: ${settingWrite.error.message}`);
+  }
 
   try {
-    accounts = JSON.parse(await fs.readFile(accountsPath, 'utf8'));
-    if (!Array.isArray(accounts)) throw new Error('Invalid account store');
+    accounts = await fetchSupabaseAccounts();
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-    accounts = [];
-    await writeAccounts(accounts);
+    throw new Error(`Supabase accounts: ${error.message}. Выполните SQL из supabase/schema.sql.`);
+  }
+  if (accounts.length) {
+    persistedAccountsSnapshot = snapshotAccounts(accounts);
+  } else {
+    const localAccounts = await readJsonFileOr(accountsPath, []);
+    accounts = Array.isArray(localAccounts) ? localAccounts : [];
+    persistedAccountsSnapshot = [];
+    if (accounts.length) await writeAccounts(accounts);
   }
 }
 
+async function initializeAuth() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const secretKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (Boolean(supabaseUrl) !== Boolean(secretKey)) throw new Error('Set both SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) in the service environment.');
+  if (supabaseUrl && secretKey) return initializeSupabaseStorage(secretKey);
+  return initializeFileStorage();
+}
+
 async function writeCredentials(nextCredentials) {
+  if (supabase) {
+    const result = await supabase.from('admin_credentials').upsert({
+      username: nextCredentials.username,
+      password_salt: nextCredentials.salt,
+      password_hash: nextCredentials.passwordHash,
+      must_change_password: Boolean(nextCredentials.mustChangePassword),
+    }, { onConflict: 'username' });
+    if (result.error) throw new Error(`Could not save admin credentials to Supabase: ${result.error.message}`);
+  }
   const temporaryPath = `${credentialsPath}.tmp`;
-  await fs.writeFile(temporaryPath, JSON.stringify(nextCredentials, null, 2), { mode: 0o600 });
-  await fs.rename(temporaryPath, credentialsPath);
+  if (!supabase) {
+    await fs.mkdir(dataDir, { recursive: true });
+    await fs.writeFile(temporaryPath, JSON.stringify(nextCredentials, null, 2), { mode: 0o600 });
+    await fs.rename(temporaryPath, credentialsPath);
+  }
   credentials = nextCredentials;
 }
 
 async function writeAccounts(nextAccounts) {
-  const temporaryPath = `${accountsPath}.tmp`;
-  await fs.writeFile(temporaryPath, JSON.stringify(nextAccounts, null, 2), { mode: 0o600 });
-  await fs.rename(temporaryPath, accountsPath);
+  if (supabase) {
+    const previousById = new Map(persistedAccountsSnapshot.map((account) => [account.id, account]));
+    const nextById = new Map(nextAccounts.map((account) => [account.id, account]));
+    const changedAccounts = nextAccounts.filter((account) => JSON.stringify(account) !== JSON.stringify(previousById.get(account.id)));
+    const nextRows = changedAccounts.map(accountToDatabase);
+    if (nextRows.length) {
+      const upsertResult = await supabase.from('accounts').upsert(nextRows, { onConflict: 'id' });
+      if (upsertResult.error) throw new Error(`Could not save accounts to Supabase: ${upsertResult.error.message}`);
+    }
+    const removedIds = persistedAccountsSnapshot.map((account) => account.id).filter((id) => !nextById.has(id));
+    if (removedIds.length) {
+      const deleteResult = await supabase.from('accounts').delete().in('id', removedIds);
+      if (deleteResult.error) throw new Error(`Could not remove accounts from Supabase: ${deleteResult.error.message}`);
+    }
+  } else {
+    const temporaryPath = `${accountsPath}.tmp`;
+    await fs.mkdir(dataDir, { recursive: true });
+    await fs.writeFile(temporaryPath, JSON.stringify(nextAccounts, null, 2), { mode: 0o600 });
+    await fs.rename(temporaryPath, accountsPath);
+  }
   accounts = nextAccounts;
+  if (supabase) persistedAccountsSnapshot = snapshotAccounts(nextAccounts);
 }
 
 function hashPassword(password, salt) {
@@ -273,15 +408,18 @@ app.post('/api/admin/logout', (req, res) => {
 const accountRoles = new Set(['student', 'parent', 'teacher']);
 const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
 
-app.get('/api/admin/students', requireAdmin, (_req, res) => {
+app.get('/api/admin/students', requireAdmin, async (_req, res) => {
+  await refreshAccounts();
   res.json(accounts.filter((account) => account.role === 'student').map(publicAccount));
 });
 
-app.get('/api/admin/accounts', requireAdmin, (_req, res) => {
+app.get('/api/admin/accounts', requireAdmin, async (_req, res) => {
+  await refreshAccounts();
   res.json(accounts.map(publicAccount));
 });
 
 app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
+  await refreshAccounts();
   const { role, phone, password, firstName, lastName, studentClass, children, teacherId } = req.body || {};
   const normalizedPhone = normalizePhone(phone);
   if (!accountRoles.has(role)) return res.status(400).json({ error: 'Выберите тип аккаунта.' });
@@ -312,6 +450,7 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
+  await refreshAccounts();
   const index = accounts.findIndex((account) => account.id === req.params.id);
   if (index < 0) return res.status(404).json({ error: 'Аккаунт не найден.' });
   const current = accounts[index];
@@ -352,6 +491,7 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
 });
 
 app.delete('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
+  await refreshAccounts();
   const account = accounts.find((entry) => entry.id === req.params.id);
   if (!account) return res.status(404).json({ error: 'Аккаунт не найден.' });
   if (account.role === 'teacher' && accounts.some((entry) => entry.role === 'student' && entry.status !== 'withdrawn' && entry.teacherId === account.id)) {
@@ -369,6 +509,7 @@ app.delete('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/accounts/:id/archive', requireAdmin, async (req, res) => {
+  await refreshAccounts();
   const index = accounts.findIndex((entry) => entry.id === req.params.id && entry.role === 'student');
   if (index < 0) return res.status(404).json({ error: 'Ученик не найден.' });
   if (accounts[index].status === 'withdrawn') return res.status(409).json({ error: 'Ученик уже находится в разделе «Выбывшие».' });
@@ -379,6 +520,7 @@ app.post('/api/admin/accounts/:id/archive', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/accounts/:id/restore', requireAdmin, async (req, res) => {
+  await refreshAccounts();
   const index = accounts.findIndex((entry) => entry.id === req.params.id && entry.role === 'student');
   if (index < 0) return res.status(404).json({ error: 'Ученик не найден.' });
   if (accounts[index].status !== 'withdrawn') return res.status(409).json({ error: 'Ученик уже находится в активном списке.' });
@@ -390,12 +532,19 @@ app.post('/api/admin/accounts/:id/restore', requireAdmin, async (req, res) => {
   return res.json({ ok: true });
 });
 
-app.get('/api/auth/session', (req, res) => {
+app.get('/api/auth/session', async (req, res) => {
+  await refreshAccounts();
   const user = getUserSession(req);
-  res.json({ authenticated: Boolean(user), account: user ? publicAccount(user.account) : null });
+  const progress = user?.account.progress ? {
+    ...user.account.progress,
+    userName: `${user.account.firstName} ${user.account.lastName}`,
+    userClass: user.account.studentClass || '',
+  } : null;
+  res.json({ authenticated: Boolean(user), account: user ? publicAccount(user.account) : null, progress });
 });
 
 app.post('/api/auth/login', async (req, res) => {
+  await refreshAccounts();
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (isLoginRateLimited(ip)) return res.status(429).json({ error: 'Слишком много попыток. Попробуйте ещё раз через 15 минут.' });
   const phone = normalizePhone(req.body?.phone);
@@ -411,7 +560,36 @@ app.post('/api/auth/login', async (req, res) => {
   }
   failedLoginAttempts.delete(ip);
   setUserSessionCookie(res, account);
-  return res.json({ account: publicAccount(account) });
+  const progress = account.progress ? {
+    ...account.progress,
+    userName: `${account.firstName} ${account.lastName}`,
+    userClass: account.studentClass || '',
+  } : null;
+  return res.json({ account: publicAccount(account), progress });
+});
+
+app.put('/api/auth/progress', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user) return res.status(401).json({ error: 'Войдите в аккаунт, чтобы сохранить прогресс.' });
+  if (user.account.role !== 'student') return res.status(403).json({ error: 'Прогресс доступен только для аккаунта ученика.' });
+  const { stars, xp, level, claimedPrizes, unlockedAchievements } = req.body || {};
+  if (!Number.isSafeInteger(stars) || stars < 0 || stars > 10000000 || !Number.isSafeInteger(xp) || xp < 0 || xp > 100000000 || !Number.isSafeInteger(level) || level < 1 || level > 100000) {
+    return res.status(400).json({ error: 'Некорректные значения прогресса.' });
+  }
+  if (!Array.isArray(claimedPrizes) || claimedPrizes.length > 100 || claimedPrizes.some((id) => typeof id !== 'string' || id.length > 120)) {
+    return res.status(400).json({ error: 'Некорректный список призов.' });
+  }
+  if (!Array.isArray(unlockedAchievements) || unlockedAchievements.length > 200 || unlockedAchievements.some((id) => typeof id !== 'string' || id.length > 120)) {
+    return res.status(400).json({ error: 'Некорректный список достижений.' });
+  }
+  const progress = {
+    stars, xp, level, claimedPrizes: [...new Set(claimedPrizes)], unlockedAchievements: [...new Set(unlockedAchievements)],
+    userName: `${user.account.firstName} ${user.account.lastName}`, userClass: user.account.studentClass || '',
+  };
+  const nextAccounts = accounts.map((account) => account.id === user.account.id ? { ...account, progress } : account);
+  await writeAccounts(nextAccounts);
+  return res.json({ ok: true });
 });
 
 app.post('/api/auth/logout', (_req, res) => {

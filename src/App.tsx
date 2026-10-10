@@ -60,6 +60,9 @@ export default function App() {
   // Custom user profile state
   const [userName, setUserName] = useState<string>(initialProgress.userName);
   const [userClass, setUserClass] = useState<string>(initialProgress.userClass);
+  const [loggedInAccountId, setLoggedInAccountId] = useState<string | null>(() => {
+    try { return sessionStorage.getItem('study_task_account_id'); } catch { return null; }
+  });
 
   // Modals / Overlays
   const [showLevelUpModal, setShowLevelUpModal] = useState<boolean>(false);
@@ -78,10 +81,18 @@ export default function App() {
         userClass,
       };
       localStorage.setItem('study_task_progress', JSON.stringify(stateObj));
+      if (loggedInAccountId) {
+        fetch('/api/auth/progress', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ stars, xp, level, claimedPrizes, unlockedAchievements }),
+        }).catch((e) => console.warn('Could not sync student progress:', e));
+      }
     } catch (e) {
       console.warn('Could not save localStorage progress:', e);
     }
-  }, [stars, xp, level, claimedPrizes, unlockedAchievements, userName, userClass]);
+  }, [stars, xp, level, claimedPrizes, unlockedAchievements, userName, userClass, loggedInAccountId]);
 
   // Handle Rewards & Level Up logic
   const handleAddRewards = (starsAdded: number, xpAdded: number) => {
@@ -138,9 +149,24 @@ export default function App() {
   };
 
   // Custom User details sync
-  const handleLoginSuccess = (name: string, studentClass: string) => {
+  const handleLoginSuccess = (name: string, studentClass: string, accountId: string, savedProgress: Partial<StoredProgress> | null, role: 'student' | 'parent' | 'teacher') => {
+    const accountProgress = role === 'student' ? (savedProgress || loadStoredProgress()) : null;
+    const nextProgress = { ...DEFAULT_PROGRESS, ...(accountProgress || {}), userName: name, userClass: studentClass };
     setUserName(name);
     setUserClass(studentClass);
+    setStars(nextProgress.stars);
+    setXp(nextProgress.xp);
+    setLevel(nextProgress.level);
+    setClaimedPrizes(nextProgress.claimedPrizes);
+    setUnlockedAchievements(nextProgress.unlockedAchievements);
+    setLoggedInAccountId(role === 'student' ? accountId : null);
+    try {
+      if (role === 'student') sessionStorage.setItem('study_task_account_id', accountId);
+      else sessionStorage.removeItem('study_task_account_id');
+      localStorage.setItem('study_task_progress', JSON.stringify(nextProgress));
+    } catch (e) {
+      console.warn('Could not cache signed-in profile:', e);
+    }
   };
 
   // Reset simulator
