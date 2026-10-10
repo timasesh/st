@@ -406,12 +406,12 @@ function getUserSession(req) {
 }
 
 function publicAccount(account) {
-  const { id, role, phone, firstName, lastName, studentClass, children = [], teacherId, status = 'active' } = account;
+  const { id, role, phone, firstName, lastName, studentClass, children = [], teacherId, status = 'active', createdAt, withdrawnAt } = account;
   const childAccounts = children.map((id) => accounts.find((entry) => entry.id === id)).filter(Boolean);
   const teacherAccount = accounts.find((entry) => entry.id === teacherId && entry.role === 'teacher');
   const parentAccount = role === 'student' ? accounts.find((entry) => entry.role === 'parent' && (entry.children || []).includes(id)) : null;
   return {
-    id, role, phone, firstName, lastName, studentClass, status,
+    id, role, phone, firstName, lastName, studentClass, status, createdAt, withdrawnAt,
     teacherId: teacherAccount?.id,
     teacher: teacherAccount ? { id: teacherAccount.id, firstName: teacherAccount.firstName, lastName: teacherAccount.lastName } : null,
     parent: parentAccount ? { id: parentAccount.id, firstName: parentAccount.firstName, lastName: parentAccount.lastName, phone: parentAccount.phone } : null,
@@ -808,10 +808,6 @@ app.post('/api/admin/trial-lessons/:id/move-to-past', requireAdmin, async (req, 
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось перенести урок.' }); }
 });
 
-function trialLessonHasEnded(lesson) {
-  return new Date(getTrialScheduledAt(lesson)).getTime() + 60 * 60 * 1000 <= Date.now();
-}
-
 app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) => {
   await refreshAccounts();
   try {
@@ -819,7 +815,6 @@ app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) 
     const outcome = req.body?.outcome;
     const index = trials.findIndex((lesson) => lesson.id === req.params.id && ((lesson.status === 'scheduled' || lesson.status === 'trial' || lesson.status === 'attended' || !lesson.status) || (outcome === 'enrolled' && ['declined', 'no_show'].includes(lesson.status))));
     if (index < 0) return res.status(404).json({ error: 'Пробный урок не найден или уже обработан.' });
-    if (!['attended', 'declined', 'no_show'].includes(trials[index].status) && !trialLessonHasEnded(trials[index])) return res.status(409).json({ error: 'Этот пробный урок ещё не завершился по времени Астаны.' });
     if (outcome === 'declined' && trials[index].status !== 'declined') {
       const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
       if (!reason || reason.length > 500) return res.status(400).json({ error: 'Выберите или укажите причину отказа.' });
@@ -1059,7 +1054,7 @@ app.post('/api/auth/login', async (req, res) => {
   const password = req.body?.password;
   const audience = req.body?.audience;
   const account = accounts.find((entry) => entry.phone === phone);
-  const roleAllowed = audience === 'teacher' ? account?.role === 'teacher' : account && ['student', 'parent'].includes(account.role);
+  const roleAllowed = account && account.status !== 'withdrawn' && (audience === 'teacher' ? account.role === 'teacher' : ['student', 'parent'].includes(account.role));
   const validPassword = account && account.status !== 'withdrawn' && typeof password === 'string' && password.length <= 128
     ? await passwordsMatch(password, account.salt, account.passwordHash)
     : false;

@@ -175,6 +175,17 @@ body {
   color: #fff !important;
 }
 
+.admin-dashboard.theme-dark button:hover:not(:disabled),
+.admin-dashboard.theme-dark tr:hover,
+.admin-dashboard.theme-dark label:hover,
+.admin-dashboard.theme-dark [role="button"]:hover {
+  background-color: #1b3557 !important;
+}
+
+.admin-dashboard.theme-dark button:hover:not(:disabled) {
+  border-color: #355982;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-float-soft,
   .animate-float-soft-reverse,
