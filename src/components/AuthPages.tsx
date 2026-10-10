@@ -106,7 +106,7 @@ type AdminSession = { authenticated: boolean; mustChangePassword?: boolean };
 async function readApiResponse(response: Response) {
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
-    throw new Error('Сервер авторизации не запущен: Render сейчас раздаёт только статические файлы. Для входа переключите сайт на Node Web Service с командой запуска `npm start` и постоянным хранилищем `.data`.');
+    throw new Error('Сервер авторизации не запущен. В Render откройте Settings → Build & Deploy и замените Start Command `npx vite preview ...` на `npm start`, затем выполните Deploy.');
   }
   return response.json();
 }
