@@ -21,7 +21,7 @@ const cookieName = 'study_admin_session';
 const userCookieName = 'study_user_session';
 const sessionDurationSeconds = 12 * 60 * 60;
 const DEFAULT_CREDENTIALS = {
-  username: 'study-admin',
+  username: 'timaadmin',
   salt: 'MD+0kK7dVBWtuVpZmBwK2g==',
   passwordHash: 'PVp1UE40/4mVYCL30qMrK8eDOEP2Wi4okglSmBMh6Wl+gIVWxFmx9AiUrlhKn5r7jjCNMvO+bMEdD0odlgyScA==',
   mustChangePassword: false,
@@ -104,6 +104,19 @@ async function readJsonFileOr(filePath, fallback) {
 async function initializeFileStorage() {
   await fs.mkdir(dataDir, { recursive: true });
   credentials = await readJsonFileOr(credentialsPath, DEFAULT_CREDENTIALS);
+  const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
+  const bootstrapUsername = process.env.ADMIN_BOOTSTRAP_USERNAME || DEFAULT_CREDENTIALS.username;
+  if (bootstrapPassword && credentials.username !== bootstrapUsername) {
+    if (bootstrapPassword.length < 8 || bootstrapPassword.length > 128) throw new Error('ADMIN_BOOTSTRAP_PASSWORD must contain 8–128 characters.');
+    const salt = crypto.randomBytes(16);
+    credentials = {
+      username: bootstrapUsername,
+      salt: salt.toString('base64'),
+      passwordHash: (await hashPassword(bootstrapPassword, salt)).toString('base64'),
+      mustChangePassword: true,
+    };
+    await writeCredentials(credentials);
+  }
   if (!(await fs.stat(credentialsPath).catch(() => null))) await writeCredentials(credentials);
   try {
     sessionSecret = await fs.readFile(sessionSecretPath);
@@ -120,14 +133,36 @@ async function initializeSupabaseStorage(secretKey) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
-  const credentialResult = await supabase.from('admin_credentials').select('*').eq('username', DEFAULT_CREDENTIALS.username).maybeSingle();
+  const credentialResult = await supabase.from('admin_credentials').select('*');
   if (credentialResult.error) throw new Error(`Supabase admin_credentials: ${credentialResult.error.message}. Выполните SQL из supabase/schema.sql.`);
-  if (credentialResult.data) {
-    const row = credentialResult.data;
+  const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
+  const bootstrapUsername = process.env.ADMIN_BOOTSTRAP_USERNAME || DEFAULT_CREDENTIALS.username;
+  const rows = credentialResult.data || [];
+  const bootstrapAccountExists = rows.some((row) => row.username === bootstrapUsername);
+  if (bootstrapPassword && !bootstrapAccountExists) {
+    if (bootstrapPassword.length < 8 || bootstrapPassword.length > 128) throw new Error('ADMIN_BOOTSTRAP_PASSWORD must contain 8–128 characters.');
+    const salt = crypto.randomBytes(16);
+    credentials = {
+      username: bootstrapUsername,
+      salt: salt.toString('base64'),
+      passwordHash: (await hashPassword(bootstrapPassword, salt)).toString('base64'),
+      mustChangePassword: true,
+    };
+    await writeCredentials(credentials);
+  } else if (bootstrapAccountExists) {
+    const row = rows.find((item) => item.username === bootstrapUsername);
+    credentials = { username: row.username, salt: row.password_salt, passwordHash: row.password_hash, mustChangePassword: row.must_change_password };
+  } else if (rows.length) {
+    const row = rows[0];
     credentials = { username: row.username, salt: row.password_salt, passwordHash: row.password_hash, mustChangePassword: row.must_change_password };
   } else {
     credentials = await readJsonFileOr(credentialsPath, DEFAULT_CREDENTIALS);
     await writeCredentials(credentials);
+  }
+  const obsoleteUsernames = rows.map((row) => row.username).filter((username) => username !== credentials.username);
+  if (obsoleteUsernames.length) {
+    const deleteResult = await supabase.from('admin_credentials').delete().in('username', obsoleteUsernames);
+    if (deleteResult.error) throw new Error(`Could not remove obsolete admin credentials from Supabase: ${deleteResult.error.message}`);
   }
 
   const settingsResult = await supabase.from('app_settings').select('value').eq('key', 'session_secret').maybeSingle();
