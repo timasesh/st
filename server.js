@@ -152,10 +152,13 @@ function getUserSession(req) {
 }
 
 function publicAccount(account) {
-  const { id, role, phone, firstName, lastName, studentClass, children = [] } = account;
+  const { id, role, phone, firstName, lastName, studentClass, children = [], teacherId } = account;
   const childAccounts = children.map((id) => accounts.find((entry) => entry.id === id)).filter(Boolean);
+  const teacherAccount = accounts.find((entry) => entry.id === teacherId && entry.role === 'teacher');
   return {
     id, role, phone, firstName, lastName, studentClass,
+    teacherId: teacherAccount?.id,
+    teacher: teacherAccount ? { id: teacherAccount.id, firstName: teacherAccount.firstName, lastName: teacherAccount.lastName } : null,
     children: childAccounts.map(({ id: childId, firstName: childFirstName, lastName: childLastName, studentClass: childClass }) => ({ id: childId, firstName: childFirstName, lastName: childLastName, studentClass: childClass })),
   };
 }
@@ -279,7 +282,7 @@ app.get('/api/admin/accounts', requireAdmin, (_req, res) => {
 });
 
 app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
-  const { role, phone, password, firstName, lastName, studentClass, children } = req.body || {};
+  const { role, phone, password, firstName, lastName, studentClass, children, teacherId } = req.body || {};
   const normalizedPhone = normalizePhone(phone);
   if (!accountRoles.has(role)) return res.status(400).json({ error: 'Выберите тип аккаунта.' });
   if (normalizedPhone.length < 10 || normalizedPhone.length > 16) return res.status(400).json({ error: 'Введите корректный номер телефона.' });
@@ -289,6 +292,7 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'Укажите имя и фамилию (до 80 символов каждое).' });
   }
   if (role === 'student' && !/^([5-9]) класс$/.test(studentClass || '')) return res.status(400).json({ error: 'Выберите класс ученика с 5 по 9.' });
+  if (role === 'student' && !accounts.some((account) => account.id === teacherId && account.role === 'teacher')) return res.status(400).json({ error: 'Выберите преподавателя для ученика.' });
   let linkedChildren = [];
   if (role === 'parent') {
     linkedChildren = [...new Set(Array.isArray(children) ? children : [])];
@@ -300,11 +304,68 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   const passwordHash = await hashPassword(password, salt);
   const account = {
     id: crypto.randomUUID(), role, phone: normalizedPhone, firstName: firstName.trim(), lastName: lastName.trim(),
-    studentClass: role === 'student' ? studentClass : '', children: linkedChildren,
+    studentClass: role === 'student' ? studentClass : '', teacherId: role === 'student' ? teacherId : undefined, children: linkedChildren,
     salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString(),
   };
   await writeAccounts([...accounts, account]);
   return res.status(201).json({ account: publicAccount(account) });
+});
+
+app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
+  const index = accounts.findIndex((account) => account.id === req.params.id);
+  if (index < 0) return res.status(404).json({ error: 'Аккаунт не найден.' });
+  const current = accounts[index];
+  const { phone, password, firstName, lastName, studentClass, children, teacherId } = req.body || {};
+  const normalizedPhone = normalizePhone(phone);
+  if (normalizedPhone.length < 10 || normalizedPhone.length > 16) return res.status(400).json({ error: 'Введите корректный номер телефона.' });
+  if (accounts.some((account) => account.id !== current.id && account.phone === normalizedPhone)) return res.status(409).json({ error: 'Аккаунт с таким номером телефона уже существует.' });
+  if (typeof firstName !== 'string' || !firstName.trim() || firstName.trim().length > 80 || typeof lastName !== 'string' || !lastName.trim() || lastName.trim().length > 80) {
+    return res.status(400).json({ error: 'Укажите имя и фамилию (до 80 символов каждое).' });
+  }
+  if (password !== undefined && password !== '' && (typeof password !== 'string' || password.length < 8 || password.length > 128)) return res.status(400).json({ error: 'Новый пароль должен содержать от 8 до 128 символов.' });
+  let linkedChildren = current.children || [];
+  if (current.role === 'student') {
+    if (!/^([5-9]) класс$/.test(studentClass || '')) return res.status(400).json({ error: 'Выберите класс ученика с 5 по 9.' });
+    if (!accounts.some((account) => account.id === teacherId && account.role === 'teacher')) return res.status(400).json({ error: 'Выберите преподавателя для ученика.' });
+  }
+  if (current.role === 'parent') {
+    linkedChildren = [...new Set(Array.isArray(children) ? children : [])];
+    if (!linkedChildren.length) return res.status(400).json({ error: 'Для аккаунта родителя выберите хотя бы одного ученика.' });
+    if (linkedChildren.some((id) => !accounts.some((account) => account.id === id && account.role === 'student'))) return res.status(400).json({ error: 'В списке есть неизвестный ученик.' });
+  }
+
+  let updated = {
+    ...current, phone: normalizedPhone, firstName: firstName.trim(), lastName: lastName.trim(),
+    studentClass: current.role === 'student' ? studentClass : '',
+    teacherId: current.role === 'student' ? teacherId : undefined,
+    children: current.role === 'parent' ? linkedChildren : [],
+  };
+  if (typeof password === 'string' && password.length) {
+    const salt = crypto.randomBytes(16);
+    const passwordHash = await hashPassword(password, salt);
+    updated = { ...updated, salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64') };
+  }
+  const nextAccounts = [...accounts];
+  nextAccounts[index] = updated;
+  await writeAccounts(nextAccounts);
+  return res.json({ account: publicAccount(updated) });
+});
+
+app.delete('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
+  const account = accounts.find((entry) => entry.id === req.params.id);
+  if (!account) return res.status(404).json({ error: 'Аккаунт не найден.' });
+  if (account.role === 'teacher' && accounts.some((entry) => entry.role === 'student' && entry.teacherId === account.id)) {
+    return res.status(409).json({ error: 'К преподавателю прикреплены ученики. Сначала назначьте им другого преподавателя.' });
+  }
+  const nextAccounts = accounts
+    .filter((entry) => entry.id !== account.id)
+    .map((entry) => {
+      if (entry.role === 'parent' && account.role === 'student') return { ...entry, children: (entry.children || []).filter((id) => id !== account.id) };
+      if (entry.role === 'student' && account.role === 'teacher' && entry.teacherId === account.id) return { ...entry, teacherId: undefined };
+      return entry;
+    });
+  await writeAccounts(nextAccounts);
+  return res.json({ ok: true });
 });
 
 app.get('/api/auth/session', (req, res) => {

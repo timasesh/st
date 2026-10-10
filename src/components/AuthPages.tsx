@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 type LoginPageProps = {
@@ -222,7 +222,8 @@ function PasswordField({
 type AccountRole = 'student' | 'parent' | 'teacher';
 type ManagedAccount = {
   id: string; role: AccountRole; phone: string; firstName: string; lastName: string;
-  studentClass?: string; children: Array<{ id: string; firstName: string; lastName: string; studentClass?: string }>;
+  studentClass?: string; teacherId?: string; teacher?: { id: string; firstName: string; lastName: string } | null;
+  children: Array<{ id: string; firstName: string; lastName: string; studentClass?: string }>;
 };
 
 const ROLE_LABELS: Record<AccountRole, string> = { student: 'Ученики', parent: 'Родители', teacher: 'Преподаватели' };
@@ -231,6 +232,9 @@ export function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
   const [activeRole, setActiveRole] = useState<AccountRole>('student');
   const [activeView, setActiveView] = useState<'accounts' | 'crm' | 'settings'>('accounts');
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ManagedAccount | null>(null);
   const [darkTheme, setDarkTheme] = useState(() => {
     try { return localStorage.getItem('study_admin_theme') === 'dark'; } catch { return false; }
   });
@@ -247,6 +251,8 @@ export function AdminDashboardPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [studentClass, setStudentClass] = useState('5 класс');
+  const [teacherId, setTeacherId] = useState('');
+  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [currentAdminPassword, setCurrentAdminPassword] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
@@ -281,8 +287,9 @@ export function AdminDashboardPage() {
   }, [darkTheme]);
 
   const roleAccounts = accounts.filter((account) => account.role === activeRole);
-  const visibleAccounts = roleAccounts.filter((account) => `${account.firstName} ${account.lastName} ${account.phone}`.toLowerCase().includes(search.toLowerCase()));
+  const visibleAccounts = roleAccounts.filter((account) => `${account.firstName} ${account.lastName}`.toLowerCase().includes(search.toLowerCase()) && (activeRole !== 'student' || selectedClasses.length === 0 || selectedClasses.includes(account.studentClass || '')));
   const students = accounts.filter((account) => account.role === 'student');
+  const teachers = accounts.filter((account) => account.role === 'teacher');
   const matchingChildren = students.filter((student) => `${student.firstName} ${student.lastName} ${student.phone}`.toLowerCase().includes(childSearch.toLowerCase()));
 
   const switchRole = (role: AccountRole) => {
@@ -290,26 +297,57 @@ export function AdminDashboardPage() {
     setError('');
     setSuccess('');
     setSelectedChildren([]);
+    setSelectedClasses([]);
     setChildSearch('');
   };
 
-  const createAccount = async (event: FormEvent<HTMLFormElement>) => {
+  const openCreateAccount = () => {
+    setEditingAccountId(null); setFirstName(''); setLastName(''); setPhone(''); setPassword('');
+    setStudentClass('5 класс'); setTeacherId(''); setSelectedChildren([]); setError(''); setSuccess(''); setShowAccountModal(true);
+  };
+
+  const openEditAccount = (account: ManagedAccount) => {
+    setEditingAccountId(account.id); setFirstName(account.firstName); setLastName(account.lastName); setPhone(account.phone);
+    setPassword(''); setStudentClass(account.studentClass || '5 класс'); setTeacherId(account.teacherId || '');
+    setSelectedChildren(account.children.map((child) => child.id)); setError(''); setSuccess(''); setShowAccountModal(true);
+  };
+
+  const saveAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
     setSuccess('');
     setSaving(true);
     try {
-      const response = await fetch('/api/admin/accounts', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-        body: JSON.stringify({ role: activeRole, firstName, lastName, phone, password, studentClass, children: selectedChildren }),
+      const response = await fetch(editingAccountId ? `/api/admin/accounts/${editingAccountId}` : '/api/admin/accounts', {
+        method: editingAccountId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ role: activeRole, firstName, lastName, phone, ...(password ? { password } : {}), studentClass, teacherId, children: selectedChildren }),
       });
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось создать аккаунт.');
       await loadAccounts();
-      setSuccess(`Аккаунт ${firstName} ${lastName} создан. Логин для входа: ${phone}.`);
-      setFirstName(''); setLastName(''); setPhone(''); setPassword(''); setStudentClass('5 класс'); setSelectedChildren([]);
+      setSuccess(editingAccountId ? 'Изменения сохранены.' : `Аккаунт ${firstName} ${lastName} создан. Логин для входа: ${phone}.`);
+      setShowAccountModal(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (!deleteTarget) return;
+    setError('');
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/admin/accounts/${deleteTarget.id}`, { method: 'DELETE', credentials: 'same-origin' });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось удалить аккаунт.');
+      await loadAccounts();
+      setSuccess(`Аккаунт ${deleteTarget.firstName} ${deleteTarget.lastName} удалён.`);
+      setDeleteTarget(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось удалить аккаунт.');
+      setDeleteTarget(null);
     } finally {
       setSaving(false);
     }
@@ -356,7 +394,7 @@ export function AdminDashboardPage() {
         </div>
         <button type="button" onClick={logout} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-primary-light"><LogOut className="h-4 w-4" /> Выйти</button>
       </header>
-      <div className="mx-auto flex min-h-[calc(100vh-73px)] max-w-7xl flex-col lg:flex-row">
+      <div className="flex min-h-[calc(100vh-73px)] w-full flex-col lg:flex-row">
         <aside className="border-b border-border bg-white p-4 lg:w-64 lg:border-b-0 lg:border-r lg:p-5">
           <p className="mb-3 px-3 text-xs font-extrabold uppercase tracking-wider text-muted">Управление</p>
           <nav className="flex gap-2 overflow-x-auto lg:flex-col">
@@ -400,35 +438,42 @@ export function AdminDashboardPage() {
               </section>
             </div>
           ) : (
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-            <section className="rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
-              <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{roleIcon(activeRole)}</span><div><h2 className="font-display text-lg font-extrabold">Создать аккаунт</h2><p className="text-xs text-muted">Логин для входа — номер телефона</p></div></div>
-              <form onSubmit={createAccount} className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="space-y-1.5 text-sm font-bold">Имя<input required maxLength={80} value={firstName} onChange={(event) => setFirstName(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="Имя" /></label>
-                  <label className="space-y-1.5 text-sm font-bold">Фамилия<input required maxLength={80} value={lastName} onChange={(event) => setLastName(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="Фамилия" /></label>
-                </div>
-                <label className="block space-y-1.5 text-sm font-bold">Номер телефона<input required type="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="+7 700 000 00 00" /></label>
-                <label className="block space-y-1.5 text-sm font-bold">Пароль<input required type="password" autoComplete="new-password" minLength={8} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="Минимум 8 символов" /></label>
-                {activeRole === 'student' && <label className="block space-y-1.5 text-sm font-bold">Класс<select value={studentClass} onChange={(event) => setStudentClass(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none">{[5, 6, 7, 8, 9].map((grade) => <option key={grade}>{grade} класс</option>)}</select></label>}
-                {activeRole === 'parent' && <div className="space-y-2">
-                  <div className="flex items-center justify-between"><span className="text-sm font-bold">Дети <span className="text-rose-600">*</span></span><span className="text-xs text-muted">Выбрано: {selectedChildren.length}</span></div>
-                  <div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted" /><input value={childSearch} onChange={(event) => setChildSearch(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light py-2.5 pl-9 pr-3 text-sm focus:border-primary focus:outline-none" placeholder="Поиск ученика по имени или телефону" /></div>
-                  <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
-                    {matchingChildren.length ? matchingChildren.map((child) => <label key={child.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-primary-light"><input type="checkbox" checked={selectedChildren.includes(child.id)} onChange={(event) => setSelectedChildren((current) => event.target.checked ? [...current, child.id] : current.filter((id) => id !== child.id))} className="h-4 w-4 accent-primary" /><span className="min-w-0 flex-1"><strong>{child.firstName} {child.lastName}</strong><span className="ml-2 text-xs text-muted">{child.studentClass}</span></span></label>) : <p className="p-3 text-center text-xs text-muted">{students.length ? 'Ничего не найдено.' : 'Сначала создайте аккаунт ученика.'}</p>}
-                  </div>
-                </div>}
-                {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
-                {success && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
-                <button type="submit" disabled={saving || loading || (activeRole === 'parent' && selectedChildren.length === 0)} className="clay-btn flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" />{saving ? 'Создаём…' : 'Создать аккаунт'}</button>
-              </form>
-            </section>
-
-            <section className="min-w-0 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-display text-lg font-extrabold">Список: {ROLE_LABELS[activeRole].toLowerCase()}</h2><p className="text-xs text-muted">Созданные аккаунты</p></div><div className="relative w-full sm:w-52"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none" placeholder="Поиск" /></div></div>
-              {loading ? <p className="py-8 text-center text-sm text-muted">Загружаем аккаунты…</p> : visibleAccounts.length ? <div className="space-y-3">{visibleAccounts.map((account) => <article key={account.id} className="rounded-xl border border-border p-4"><div className="flex items-start gap-3"><span className="rounded-lg bg-primary-light p-2 text-primary">{roleIcon(account.role)}</span><div className="min-w-0 flex-1"><strong className="block truncate">{account.firstName} {account.lastName}</strong><span className="text-sm text-muted">{account.phone}{account.studentClass ? ` · ${account.studentClass}` : ''}</span>{account.role === 'parent' && <p className="mt-1 text-xs text-muted">Дети: {account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ')}</p>}</div></div></article>)}</div> : <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center"><span className="mx-auto mb-3 block w-fit rounded-full bg-primary-light p-3 text-primary">{roleIcon(activeRole)}</span><p className="font-bold">Аккаунтов пока нет</p><p className="mt-1 text-sm text-muted">Создайте первый аккаунт через форму.</p></div>}
-            </section>
-          </div>
+          <section className="admin-card w-full rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-7">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{roleIcon(activeRole)}</span><div><h2 className="font-display text-lg font-extrabold">Список: {ROLE_LABELS[activeRole].toLowerCase()}</h2><p className="text-sm text-muted">Найдено: {visibleAccounts.length}</p></div></div>
+              <button type="button" onClick={openCreateAccount} className="clay-btn flex items-center gap-2 rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark"><Plus className="h-5 w-5" /> Добавить</button>
+            </div>
+            <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center">
+              <div className="relative min-w-64 max-w-xl flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-muted" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="admin-input w-full rounded-xl border border-border bg-primary-light py-2.5 pl-10 pr-3 text-sm focus:border-primary focus:outline-none" placeholder={`Поиск ${activeRole === 'student' ? 'ученика' : activeRole === 'parent' ? 'родителя' : 'преподавателя'} по имени`} /></div>
+              {activeRole === 'student' && <div className="flex flex-wrap items-center gap-2"><span className="mr-1 text-sm font-bold text-muted">Класс:</span>{[5, 6, 7, 8, 9].map((grade) => { const value = `${grade} класс`; const checked = selectedClasses.includes(value); return <label key={grade} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-bold transition ${checked ? 'border-primary bg-primary text-white' : 'border-border bg-primary-light text-muted hover:border-primary'}`}><input type="checkbox" className="sr-only" checked={checked} onChange={() => setSelectedClasses((current) => checked ? current.filter((item) => item !== value) : [...current, value])} />{grade} класс</label>; })}{selectedClasses.length > 0 && <button type="button" onClick={() => setSelectedClasses([])} className="px-2 text-xs font-bold text-primary">Сбросить</button>}</div>}
+            </div>
+            {success && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
+            {error && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+            {loading ? <p className="py-16 text-center text-sm text-muted">Загружаем список…</p> : visibleAccounts.length ? (
+              <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[760px] border-collapse text-left text-sm"><thead className="bg-primary-light text-xs uppercase tracking-wide text-muted"><tr><th className="px-4 py-3">Имя и фамилия</th><th className="px-4 py-3">Телефон</th>{activeRole === 'student' && <><th className="px-4 py-3">Класс</th><th className="px-4 py-3">Преподаватель</th></>}{activeRole === 'parent' && <th className="px-4 py-3">Дети</th>}<th className="px-4 py-3 text-right">Действия</th></tr></thead><tbody>{visibleAccounts.map((account) => <tr key={account.id} className="border-t border-border hover:bg-primary-light/50"><td className="px-4 py-3 font-bold">{account.firstName} {account.lastName}</td><td className="px-4 py-3 text-muted">{account.phone}</td>{activeRole === 'student' && <><td className="px-4 py-3">{account.studentClass || '—'}</td><td className="px-4 py-3">{account.teacher ? `${account.teacher.firstName} ${account.teacher.lastName}` : <span className="text-amber-600">Не назначен</span>}</td></>}{activeRole === 'parent' && <td className="max-w-sm px-4 py-3 text-muted">{account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ') || '—'}</td>}<td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => openEditAccount(account)} title="Редактировать" aria-label={`Редактировать ${account.firstName} ${account.lastName}`} className="rounded-lg border border-border p-2 text-primary hover:bg-primary-light"><Pencil className="h-4 w-4" /></button><button type="button" onClick={() => setDeleteTarget(account)} title="Удалить" aria-label={`Удалить ${account.firstName} ${account.lastName}`} className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button></div></td></tr>)}</tbody></table></div>
+            ) : <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><span className="mx-auto mb-3 block w-fit rounded-full bg-primary-light p-3 text-primary">{roleIcon(activeRole)}</span><p className="font-bold">{roleAccounts.length ? 'Ничего не найдено' : 'Аккаунтов пока нет'}</p><p className="mt-1 text-sm text-muted">{roleAccounts.length ? 'Измените поисковый запрос или фильтры.' : 'Нажмите «Добавить», чтобы создать первый аккаунт.'}</p></div>}
+          </section>
+          )}
+          {showAccountModal && (
+            <div className="admin-modal fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowAccountModal(false); }}>
+              <section role="dialog" aria-modal="true" aria-labelledby="account-modal-title" className="admin-card my-auto w-full max-w-2xl rounded-2xl border border-border bg-white shadow-2xl">
+                <header className="flex items-center justify-between border-b border-border px-5 py-4 sm:px-7"><div className="flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{roleIcon(activeRole)}</span><div><h2 id="account-modal-title" className="font-display text-xl font-extrabold">{editingAccountId ? 'Редактировать аккаунт' : `Новый аккаунт: ${ROLE_LABELS[activeRole].toLowerCase()}`}</h2><p className="text-xs text-muted">Логин — номер телефона</p></div></div><button type="button" onClick={() => setShowAccountModal(false)} aria-label="Закрыть" className="rounded-lg p-2 text-muted hover:bg-primary-light"><X className="h-5 w-5" /></button></header>
+                <form onSubmit={saveAccount} className="max-h-[calc(100vh-8rem)] space-y-4 overflow-y-auto p-5 sm:p-7">
+                  <div className="grid gap-4 sm:grid-cols-2"><label className="space-y-1.5 text-sm font-bold">Имя<input required maxLength={80} value={firstName} onChange={(event) => setFirstName(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label><label className="space-y-1.5 text-sm font-bold">Фамилия<input required maxLength={80} value={lastName} onChange={(event) => setLastName(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label></div>
+                  <label className="block space-y-1.5 text-sm font-bold">Номер телефона<input required type="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="+7 700 000 00 00" /></label>
+                  <label className="block space-y-1.5 text-sm font-bold">{editingAccountId ? 'Новый пароль (необязательно)' : 'Пароль'}<input required={!editingAccountId} type="password" autoComplete="new-password" minLength={8} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder={editingAccountId ? 'Оставьте пустым, чтобы не менять' : 'Минимум 8 символов'} /></label>
+                  {activeRole === 'student' && <><label className="block space-y-1.5 text-sm font-bold">Класс<select required value={studentClass} onChange={(event) => setStudentClass(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none">{[5, 6, 7, 8, 9].map((grade) => <option key={grade}>{grade} класс</option>)}</select></label><label className="block space-y-1.5 text-sm font-bold">Преподаватель<select required value={teacherId} onChange={(event) => setTeacherId(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none"><option value="">Выберите преподавателя</option>{teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</option>)}</select>{teachers.length === 0 && <span className="block text-xs font-normal text-amber-700">Сначала создайте аккаунт преподавателя.</span>}</label></>}
+                  {activeRole === 'parent' && <div className="space-y-2"><div className="flex items-center justify-between"><span className="text-sm font-bold">Привязать детей <span className="text-rose-600">*</span></span><span className="text-xs text-muted">Выбрано: {selectedChildren.length}</span></div><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted" /><input value={childSearch} onChange={(event) => setChildSearch(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light py-2.5 pl-9 pr-3 text-sm focus:border-primary focus:outline-none" placeholder="Поиск ученика по имени" /></div><div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-border p-2">{matchingChildren.length ? matchingChildren.map((child) => <label key={child.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-primary-light"><input type="checkbox" checked={selectedChildren.includes(child.id)} onChange={(event) => setSelectedChildren((current) => event.target.checked ? [...current, child.id] : current.filter((id) => id !== child.id))} className="h-4 w-4 accent-primary" /><span className="min-w-0 flex-1"><strong>{child.firstName} {child.lastName}</strong><span className="ml-2 text-xs text-muted">{child.studentClass}</span></span></label>) : <p className="p-3 text-center text-xs text-muted">{students.length ? 'Ученики не найдены.' : 'Сначала создайте аккаунт ученика.'}</p>}</div></div>}
+                  {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+                  <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setShowAccountModal(false)} className="rounded-xl border border-border px-5 py-3 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="submit" disabled={saving || (activeRole === 'parent' && selectedChildren.length === 0) || (activeRole === 'student' && teachers.length === 0)} className="clay-btn rounded-xl bg-primary px-6 py-3 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? 'Сохраняем…' : editingAccountId ? 'Сохранить изменения' : 'Создать аккаунт'}</button></div>
+                </form>
+              </section>
+            </div>
+          )}
+          {deleteTarget && (
+            <div className="admin-modal fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}>
+              <section role="alertdialog" aria-modal="true" aria-labelledby="delete-modal-title" className="admin-card w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-2xl"><span className="mb-4 inline-flex rounded-xl bg-rose-50 p-3 text-rose-600"><Trash2 className="h-6 w-6" /></span><h2 id="delete-modal-title" className="font-display text-xl font-extrabold">Удалить аккаунт?</h2><p className="mt-2 text-sm text-muted">Аккаунт «{deleteTarget.firstName} {deleteTarget.lastName}» будет удалён без возможности восстановления.</p>{deleteTarget.role === 'student' && <p className="mt-2 text-xs text-muted">Ученик будет отвязан от связанных аккаунтов родителей.</p>}{deleteTarget.role === 'teacher' && <p className="mt-2 text-xs text-muted">У учеников этого преподавателя связь будет снята.</p>}<div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setDeleteTarget(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="button" disabled={saving} onClick={confirmDeleteAccount} className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-60">{saving ? 'Удаляем…' : 'Удалить'}</button></div></section>
+            </div>
           )}
           {authorized && <p className="mt-6 text-center text-xs text-muted">Вы вошли как study-admin. Пароли хранятся в защищённом виде.</p>}
         </section>
