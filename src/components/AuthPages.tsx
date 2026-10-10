@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw, CalendarDays, Clock3, GripVertical, Trash } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 type LoginPageProps = {
@@ -232,12 +232,17 @@ type ManagedAccount = {
   children: Array<{ id: string; firstName: string; lastName: string; studentClass?: string }>;
 };
 
+type ScheduledLesson = { id: string; teacherId: string; day: number; hour: number; title: string };
+type WeeklySchedule = { lessons: ScheduledLesson[]; targets: Record<string, number> };
+const SCHEDULE_DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+const SCHEDULE_HOURS = Array.from({ length: 13 }, (_, index) => index + 8);
+
 const ROLE_LABELS: Record<AccountRole, string> = { student: 'Ученики', parent: 'Родители', teacher: 'Преподаватели' };
 
 export function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
   const [activeRole, setActiveRole] = useState<AccountRole>('student');
-  const [activeView, setActiveView] = useState<'accounts' | 'withdrawn' | 'crm' | 'settings'>('accounts');
+  const [activeView, setActiveView] = useState<'accounts' | 'withdrawn' | 'crm' | 'settings' | 'schedule'>('accounts');
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ManagedAccount | null>(null);
@@ -262,12 +267,26 @@ export function AdminDashboardPage() {
   const [currentAdminPassword, setCurrentAdminPassword] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
+  const [schedule, setSchedule] = useState<WeeklySchedule>({ lessons: [], targets: {} });
+  const [scheduleTeacherId, setScheduleTeacherId] = useState('');
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSlot, setScheduleSlot] = useState<{ day: number; hour: number } | null>(null);
+  const [scheduleTitle, setScheduleTitle] = useState('');
+  const [scheduleTargetDraft, setScheduleTargetDraft] = useState('0');
+  const [draggedLessonId, setDraggedLessonId] = useState<string | null>(null);
 
   const loadAccounts = async () => {
     const response = await fetch('/api/admin/accounts', { credentials: 'same-origin' });
     const result = await readApiResponse(response);
     if (!response.ok) throw new Error(result.error || 'Не удалось загрузить аккаунты.');
     setAccounts(result as ManagedAccount[]);
+  };
+
+  const loadSchedule = async () => {
+    const response = await fetch('/api/admin/schedule', { credentials: 'same-origin' });
+    const result = await readApiResponse(response);
+    if (!response.ok) throw new Error(result.error || 'Не удалось загрузить расписание.');
+    setSchedule({ lessons: Array.isArray(result.lessons) ? result.lessons : [], targets: result.targets || {} });
   };
 
   useEffect(() => {
@@ -280,6 +299,7 @@ export function AdminDashboardPage() {
         }
         setAuthorized(true);
         await loadAccounts();
+        await loadSchedule();
       })
       .catch((reason) => {
         if (reason instanceof Error && reason.message.includes('Сервер авторизации')) setError(reason.message);
@@ -296,6 +316,16 @@ export function AdminDashboardPage() {
   const visibleAccounts = roleAccounts.filter((account) => `${account.firstName} ${account.lastName}`.toLowerCase().includes(search.toLowerCase()) && (activeRole !== 'student' || selectedClasses.length === 0 || selectedClasses.includes(account.studentClass || '')));
   const students = accounts.filter((account) => account.role === 'student' && account.status !== 'withdrawn');
   const teachers = accounts.filter((account) => account.role === 'teacher');
+  const selectedTeacher = teachers.find((teacher) => teacher.id === scheduleTeacherId) || teachers[0];
+  const teacherLessons = schedule.lessons.filter((lesson) => lesson.teacherId === selectedTeacher?.id);
+
+  useEffect(() => {
+    if (selectedTeacher && scheduleTeacherId !== selectedTeacher.id) setScheduleTeacherId(selectedTeacher.id);
+  }, [selectedTeacher?.id, scheduleTeacherId]);
+
+  useEffect(() => {
+    if (selectedTeacher) setScheduleTargetDraft(String(schedule.targets[selectedTeacher.id] ?? teacherLessons.length));
+  }, [selectedTeacher?.id, schedule.targets[selectedTeacher?.id || ''], teacherLessons.length]);
   const matchingChildren = accounts.filter((student) => student.role === 'student' && (student.status !== 'withdrawn' || selectedChildren.includes(student.id)) && `${student.firstName} ${student.lastName} ${student.phone}`.toLowerCase().includes(childSearch.toLowerCase()));
 
   const switchRole = (role: AccountRole) => {
@@ -374,6 +404,50 @@ export function AdminDashboardPage() {
     }
   };
 
+  const saveSchedule = async (nextSchedule: WeeklySchedule) => {
+    setSaving(true); setError(''); setSuccess('');
+    try {
+      const response = await fetch('/api/admin/schedule', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify(nextSchedule),
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось сохранить расписание.');
+      setSchedule({ lessons: result.lessons, targets: result.targets || {} });
+      setSuccess('Расписание сохранено.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить расписание.');
+    } finally { setSaving(false); }
+  };
+
+  const createScheduledLesson = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!scheduleSlot || !selectedTeacher) return;
+    if (schedule.lessons.some((lesson) => lesson.teacherId === selectedTeacher.id && lesson.day === scheduleSlot.day && lesson.hour === scheduleSlot.hour)) {
+      setError('Этот час уже занят.'); return;
+    }
+    const lesson: ScheduledLesson = { id: crypto.randomUUID(), teacherId: selectedTeacher.id, day: scheduleSlot.day, hour: scheduleSlot.hour, title: scheduleTitle.trim() };
+    await saveSchedule({ ...schedule, lessons: [...schedule.lessons, lesson] });
+    setScheduleSlot(null); setScheduleTitle('');
+  };
+
+  const moveScheduledLesson = async (lessonId: string, day: number, hour: number) => {
+    const lesson = schedule.lessons.find((item) => item.id === lessonId);
+    if (!lesson || schedule.lessons.some((item) => item.id !== lessonId && item.teacherId === lesson.teacherId && item.day === day && item.hour === hour)) {
+      setError('Время занято другим уроком этого преподавателя.'); return;
+    }
+    await saveSchedule({ ...schedule, lessons: schedule.lessons.map((item) => item.id === lessonId ? { ...item, day, hour } : item) });
+  };
+
+  const removeScheduledLesson = async (lessonId: string) => {
+    await saveSchedule({ ...schedule, lessons: schedule.lessons.filter((lesson) => lesson.id !== lessonId) });
+  };
+
+  const setTeacherLessonTarget = async (count: number) => {
+    if (!selectedTeacher) return;
+    await saveSchedule({ ...schedule, targets: { ...schedule.targets, [selectedTeacher.id]: count } });
+  };
+
   const logout = async () => {
     await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
     window.location.replace('/admin_login');
@@ -422,17 +496,38 @@ export function AdminDashboardPage() {
               </button>
             ))}
             <button type="button" onClick={() => { setActiveRole('student'); setActiveView('withdrawn'); setSearch(''); setSelectedClasses([]); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'withdrawn' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><GraduationCap className="h-5 w-5" /> Выбывшие <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeView === 'withdrawn' ? 'bg-white/20' : 'bg-primary-light'}`}>{accounts.filter((account) => account.role === 'student' && account.status === 'withdrawn').length}</span></button>
+            <button type="button" onClick={() => { setActiveView('schedule'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'schedule' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><CalendarDays className="h-5 w-5" /> Расписание</button>
             <button type="button" onClick={() => { setActiveView('crm'); setError(''); setSuccess(''); }} className={`crm-tab flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-extrabold transition ${activeView === 'crm' ? 'bg-blue-700 text-white shadow-md ring-2 ring-blue-300' : 'bg-blue-600 text-white shadow-sm hover:bg-blue-700'}`}><Settings className="h-5 w-5" /> Настройка CRM</button>
           </nav>
         </aside>
 
         <section className="min-w-0 flex-1 p-5 sm:p-8">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
-            <div><p className="text-sm font-bold text-primary">{activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : activeView === 'withdrawn' ? 'Выбывшие' : ROLE_LABELS[activeRole]}</h1></div>
+            <div><p className="text-sm font-bold text-primary">{activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : activeView === 'schedule' ? 'Планирование занятий' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : activeView === 'schedule' ? 'Расписание' : activeView === 'withdrawn' ? 'Выбывшие' : ROLE_LABELS[activeRole]}</h1></div>
             {(activeView === 'accounts' || activeView === 'withdrawn') && <span className="rounded-full bg-white px-4 py-2 text-sm font-bold text-muted shadow-sm">Всего: {roleAccounts.length}</span>}
           </div>
 
-          {activeView === 'crm' ? (
+          {activeView === 'schedule' ? (
+            <section className="admin-card rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-6">
+              <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <label className="block w-full max-w-sm space-y-1.5 text-sm font-bold">Расписание преподавателя<select value={selectedTeacher?.id || ''} onChange={(event) => setScheduleTeacherId(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 focus:border-primary focus:outline-none"><option value="">Выберите преподавателя</option>{teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.firstName} {teacher.lastName}</option>)}</select></label>
+                {selectedTeacher && <div className="flex flex-wrap items-end gap-4"><label className="block space-y-1.5 text-sm font-bold">План занятий в неделю<input type="number" min={0} max={100} value={scheduleTargetDraft} onChange={(event) => setScheduleTargetDraft(event.target.value)} onBlur={() => { const count = Number(scheduleTargetDraft); if (Number.isInteger(count) && count >= 0 && count <= 100) void setTeacherLessonTarget(count); else setScheduleTargetDraft(String(schedule.targets[selectedTeacher.id] ?? teacherLessons.length)); }} className="admin-input w-40 rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 focus:border-primary focus:outline-none" /></label><span className="pb-3 text-sm text-muted">В расписании: <strong>{teacherLessons.length}</strong></span></div>}
+              </div>
+              {error && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+              {success && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
+              {!selectedTeacher ? <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><CalendarDays className="mx-auto mb-3 h-8 w-8 text-muted" /><p className="font-bold">Сначала добавьте преподавателя</p><p className="mt-1 text-sm text-muted">Затем выберите его здесь, чтобы заполнить недельное расписание.</p></div> : (
+                <>
+                  <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted"><span className="inline-flex items-center gap-1 rounded-full bg-primary-light px-3 py-1.5"><Clock3 className="h-3.5 w-3.5" /> Каждый слот — 1 час</span><span>Пн–Сб, 08:00–21:00</span><span className="ml-auto inline-flex items-center gap-1"><GripVertical className="h-3.5 w-3.5" /> Перетащите урок в другой свободный слот</span></div>
+                  <div className="overflow-x-auto rounded-xl border border-border"><div className="min-w-[1040px]"><div className="grid grid-cols-[76px_repeat(6,minmax(150px,1fr))] border-b border-border bg-primary-light text-xs font-extrabold text-muted"><div className="p-3">Время</div>{SCHEDULE_DAYS.map((day) => <div key={day} className="border-l border-border p-3">{day}</div>)}</div>
+                    {SCHEDULE_HOURS.map((hour) => <div key={hour} className="grid min-h-[82px] grid-cols-[76px_repeat(6,minmax(150px,1fr))] border-b border-border last:border-b-0"><div className="flex items-start gap-1 p-3 text-xs font-bold text-muted"><Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />{String(hour).padStart(2, '0')}:00</div>{SCHEDULE_DAYS.map((day, dayIndex) => { const lesson = teacherLessons.find((item) => item.day === dayIndex && item.hour === hour); return <div key={`${dayIndex}-${hour}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (draggedLessonId) void moveScheduledLesson(draggedLessonId, dayIndex, hour); setDraggedLessonId(null); }} className={`border-l border-border p-1.5 transition ${draggedLessonId ? 'bg-blue-50/70' : ''}`}>
+                      {lesson ? <article draggable onDragStart={() => setDraggedLessonId(lesson.id)} onDragEnd={() => setDraggedLessonId(null)} className="group h-full min-h-[68px] cursor-grab rounded-lg border border-blue-200 bg-blue-50 p-2 text-blue-950 shadow-sm active:cursor-grabbing"><div className="flex items-start justify-between gap-1"><span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700"><GripVertical className="h-3 w-3" />{String(hour).padStart(2, '0')}:00–{String(hour + 1).padStart(2, '0')}:00</span><button type="button" disabled={saving} onClick={() => void removeScheduledLesson(lesson.id)} title="Удалить урок" aria-label={`Удалить урок ${lesson.title}`} className="rounded p-0.5 text-blue-500 hover:bg-rose-100 hover:text-rose-600"><Trash className="h-3.5 w-3.5" /></button></div><p className="mt-1 line-clamp-2 text-xs font-extrabold">{lesson.title}</p></article> : <button type="button" onClick={() => { setScheduleSlot({ day: dayIndex, hour }); setScheduleTitle(''); setError(''); setSuccess(''); }} className="flex h-full min-h-[68px] w-full items-center justify-center rounded-lg border border-dashed border-transparent text-muted/50 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"><Plus className="h-4 w-4" /><span className="sr-only">Добавить урок: {day}, {hour}:00</span></button>}
+                    </div>; })}</div>)}
+                  </div></div>
+                  <p className="mt-3 text-xs text-muted">Кликните на свободный час, чтобы добавить урок. Расписание сохраняется в базе данных автоматически.</p>
+                </>
+              )}
+            </section>
+          ) : activeView === 'crm' ? (
             <section className="crm-empty rounded-2xl border border-blue-200 bg-white p-8 text-center shadow-sm sm:p-12">
               <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white"><Settings className="h-7 w-7" /></span>
               <h2 className="font-display text-xl font-extrabold">Настройка CRM</h2>
@@ -472,6 +567,11 @@ export function AdminDashboardPage() {
               <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[760px] border-collapse text-left text-sm"><thead className="bg-primary-light text-xs uppercase tracking-wide text-muted"><tr><th className="px-4 py-3">Имя и фамилия</th><th className="px-4 py-3">Телефон</th>{activeRole === 'student' && <><th className="px-4 py-3">Класс</th><th className="px-4 py-3">Преподаватель</th></>}{activeRole === 'parent' && <th className="px-4 py-3">Дети</th>}<th className="px-4 py-3 text-right">Действия</th></tr></thead><tbody>{visibleAccounts.map((account) => <tr key={account.id} className="border-t border-border hover:bg-primary-light/50"><td className="px-4 py-3 font-bold">{account.firstName} {account.lastName}</td><td className="px-4 py-3 text-muted">{account.phone}</td>{activeRole === 'student' && <><td className="px-4 py-3">{account.studentClass || '—'}</td><td className="px-4 py-3">{account.teacher ? `${account.teacher.firstName} ${account.teacher.lastName}` : <span className="text-amber-600">Не назначен</span>}</td></>}{activeRole === 'parent' && <td className="max-w-sm px-4 py-3 text-muted">{account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ') || '—'}</td>}<td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => openEditAccount(account)} title="Редактировать" aria-label={`Редактировать ${account.firstName} ${account.lastName}`} className="rounded-lg border border-border p-2 text-primary hover:bg-primary-light"><Pencil className="h-4 w-4" /></button>{activeView === 'withdrawn' ? <button type="button" onClick={() => restoreStudent(account)} title="Вернуть в список учеников" aria-label={`Вернуть ${account.firstName} ${account.lastName}`} className="rounded-lg border border-emerald-200 p-2 text-emerald-600 hover:bg-emerald-50"><RotateCcw className="h-4 w-4" /></button> : <button type="button" onClick={() => setDeleteTarget(account)} title={account.role === 'student' ? 'Переместить в выбывшие' : 'Удалить'} aria-label={account.role === 'student' ? `Переместить ${account.firstName} ${account.lastName} в выбывшие` : `Удалить ${account.firstName} ${account.lastName}`} className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>}</div></td></tr>)}</tbody></table></div>
             ) : <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><span className="mx-auto mb-3 block w-fit rounded-full bg-primary-light p-3 text-primary">{roleIcon(activeRole)}</span><p className="font-bold">{roleAccounts.length ? 'Ничего не найдено' : 'Аккаунтов пока нет'}</p><p className="mt-1 text-sm text-muted">{roleAccounts.length ? 'Измените поисковый запрос или фильтры.' : 'Нажмите «Добавить», чтобы создать первый аккаунт.'}</p></div>}
           </section>
+          )}
+          {scheduleSlot && (
+            <div className="admin-modal fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setScheduleSlot(null); }}>
+              <section role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title" className="admin-card w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-2xl"><div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-blue-100 p-2.5 text-blue-700"><CalendarDays className="h-5 w-5" /></span><div><h2 id="schedule-modal-title" className="font-display text-xl font-extrabold">Новый урок</h2><p className="text-sm text-muted">{SCHEDULE_DAYS[scheduleSlot.day]}, {String(scheduleSlot.hour).padStart(2, '0')}:00–{String(scheduleSlot.hour + 1).padStart(2, '0')}:00</p></div></div><form onSubmit={createScheduledLesson} className="space-y-4"><label className="block space-y-1.5 text-sm font-bold">Название урока или группы<input autoFocus required maxLength={100} value={scheduleTitle} onChange={(event) => setScheduleTitle(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" placeholder="Например: Математика, 7 класс" /></label><p className="text-sm text-muted">Преподаватель: <strong>{selectedTeacher?.firstName} {selectedTeacher?.lastName}</strong></p>{error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" onClick={() => setScheduleSlot(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="submit" disabled={saving} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60">Добавить урок</button></div></form></section>
+            </div>
           )}
           {showAccountModal && (
             <div className="admin-modal fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowAccountModal(false); }}>

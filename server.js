@@ -17,6 +17,7 @@ const dataDir = path.resolve(process.env.DATA_DIR || path.join(ROOT, '.data'));
 const credentialsPath = path.join(dataDir, 'admin.json');
 const sessionSecretPath = path.join(dataDir, 'session-secret');
 const accountsPath = path.join(dataDir, 'accounts.json');
+const schedulePath = path.join(dataDir, 'schedule.json');
 const cookieName = 'study_admin_session';
 const userCookieName = 'study_user_session';
 const sessionDurationSeconds = 12 * 60 * 60;
@@ -474,6 +475,60 @@ app.get('/api/admin/students', requireAdmin, async (_req, res) => {
 app.get('/api/admin/accounts', requireAdmin, async (_req, res) => {
   await refreshAccounts();
   res.json(accounts.map(publicAccount));
+});
+
+app.get('/api/admin/schedule', requireAdmin, async (_req, res) => {
+  if (!supabase) {
+    const saved = await readJsonFileOr(schedulePath, { lessons: [], targets: {} });
+    return res.json(Array.isArray(saved) ? { lessons: saved, targets: {} } : saved);
+  }
+  const result = await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle();
+  if (result.error) return res.status(500).json({ error: `Не удалось загрузить расписание: ${result.error.message}` });
+  try {
+    const saved = result.data?.value ? JSON.parse(result.data.value) : { lessons: [], targets: {} };
+    return res.json(Array.isArray(saved) ? { lessons: saved, targets: {} } : saved);
+  }
+  catch { return res.status(500).json({ error: 'Данные расписания в базе повреждены.' }); }
+});
+
+app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
+  const lessons = req.body?.lessons;
+  const incomingTargets = req.body?.targets || {};
+  if (!Array.isArray(lessons) || lessons.length > 1000) return res.status(400).json({ error: 'Некорректный список занятий.' });
+  const cleaned = [];
+  const occupied = new Set();
+  for (const lesson of lessons) {
+    if (!lesson || typeof lesson.id !== 'string' || typeof lesson.teacherId !== 'string'
+      || !Number.isInteger(lesson.day) || lesson.day < 0 || lesson.day > 5
+      || !Number.isInteger(lesson.hour) || lesson.hour < 8 || lesson.hour > 20
+      || typeof lesson.title !== 'string' || !lesson.title.trim() || lesson.title.trim().length > 100) {
+      return res.status(400).json({ error: 'Проверьте преподавателя, день, час и название каждого урока.' });
+    }
+    const teacher = accounts.find((account) => account.id === lesson.teacherId && account.role === 'teacher');
+    if (!teacher) return res.status(400).json({ error: 'В расписании выбран неизвестный преподаватель.' });
+    const slotKey = `${lesson.teacherId}:${lesson.day}:${lesson.hour}`;
+    if (occupied.has(slotKey)) return res.status(409).json({ error: 'У преподавателя уже есть урок в этом часовом слоте.' });
+    occupied.add(slotKey);
+    cleaned.push({ id: lesson.id, teacherId: lesson.teacherId, day: lesson.day, hour: lesson.hour, title: lesson.title.trim() });
+  }
+  const targets = {};
+  for (const [teacherId, count] of Object.entries(incomingTargets)) {
+    if (!accounts.some((account) => account.id === teacherId && account.role === 'teacher') || !Number.isInteger(count) || count < 0 || count > 100) {
+      return res.status(400).json({ error: 'Укажите количество занятий от 0 до 100 для существующего преподавателя.' });
+    }
+    targets[teacherId] = count;
+  }
+  const scheduleData = { lessons: cleaned, targets };
+  if (supabase) {
+    const result = await supabase.from('app_settings').upsert({ key: 'weekly_schedule', value: JSON.stringify(scheduleData) });
+    if (result.error) return res.status(500).json({ error: `Не удалось сохранить расписание: ${result.error.message}` });
+  } else {
+    await fs.mkdir(dataDir, { recursive: true });
+    const temporaryPath = `${schedulePath}.tmp`;
+    await fs.writeFile(temporaryPath, JSON.stringify(scheduleData, null, 2), { mode: 0o600 });
+    await fs.rename(temporaryPath, schedulePath);
+  }
+  return res.json(scheduleData);
 });
 
 app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
