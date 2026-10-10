@@ -604,7 +604,7 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
     if (student && student.teacherId !== teacherId) return res.status(400).json({ error: 'У ученика изменился преподаватель. Обновите страницу и выберите ученика заново.' });
     if (!teacher) return res.status(400).json({ error: 'У ученика не назначен преподаватель.' });
     const normalizedSlotKey = `${teacherId}:${lesson.day}:${lesson.hour}`;
-    if (trialLessons.some((trial) => trial.teacherId === teacherId && trial.day === lesson.day && trial.hour === lesson.hour)) {
+    if (trialLessons.some((trial) => (trial.status === 'scheduled' || trial.status === 'trial' || !trial.status) && trial.teacherId === teacherId && trial.day === lesson.day && trial.hour === lesson.hour)) {
       return res.status(409).json({ error: 'Этот слот занят пробным уроком. Выберите другое время.' });
     }
     if (occupied.has(normalizedSlotKey)) return res.status(409).json({ error: 'У преподавателя уже есть урок в этом часовом слоте.' });
@@ -669,10 +669,11 @@ app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
   const firstName = typeof req.body?.firstName === 'string' ? req.body.firstName.trim() : '';
   const lastName = typeof req.body?.lastName === 'string' ? req.body.lastName.trim() : '';
   const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
+  const parentPhone = normalizePhone(req.body?.parentPhone);
   const { teacherId, day, hour } = req.body || {};
   const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
-  if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass)) {
-    return res.status(400).json({ error: 'Укажите имя, фамилию и класс ученика.' });
+  if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) {
+    return res.status(400).json({ error: 'Укажите имя, фамилию, класс ученика и корректный номер родителя.' });
   }
   if (!teacher || !Number.isInteger(day) || day < 0 || day > 5 || !Number.isInteger(hour) || hour < 8 || hour > 20) {
     return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
@@ -686,13 +687,93 @@ app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
     const plannedLessons = Array.isArray(schedule) ? schedule : schedule.lessons || [];
     const trials = await readTrialLessons();
     const occupied = plannedLessons.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)
-      || trials.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour);
+      || trials.some((lesson) => (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour);
     if (occupied) return res.status(409).json({ error: 'Этот слот преподавателя уже занят. Выберите другое время.' });
-    const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, teacherId, day, hour, createdAt: new Date().toISOString(), status: 'trial' };
+    const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, parentPhone, teacherId, day, hour, createdAt: new Date().toISOString(), status: 'scheduled' };
     await writeTrialLessons([trial, ...trials]);
     await recordAdminAuditSafely(req.adminSession.sub, 'Создан пробный урок', `${firstName} ${lastName}, ${studentClass}; ${teacher.firstName} ${teacher.lastName}; ${day}:${hour}`);
     return res.status(201).json({ ...trial, teacher: publicAccount(teacher) });
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось создать пробный урок.' }); }
+});
+
+app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
+  await refreshAccounts();
+  try {
+    const trials = await readTrialLessons();
+    const index = trials.findIndex((lesson) => lesson.id === req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status));
+    if (index < 0) return res.status(404).json({ error: 'Активный пробный урок не найден.' });
+    const { teacherId, day, hour } = req.body || {};
+    const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
+    if (!teacher || !Number.isInteger(day) || day < 0 || day > 5 || !Number.isInteger(hour) || hour < 8 || hour > 20) return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
+    const scheduleResult = supabase ? await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle() : null;
+    if (scheduleResult?.error) throw scheduleResult.error;
+    const schedule = scheduleResult ? (scheduleResult.data?.value ? JSON.parse(scheduleResult.data.value) : { lessons: [] }) : await readJsonFileOr(schedulePath, { lessons: [] });
+    const planned = Array.isArray(schedule) ? schedule : schedule.lessons || [];
+    const parentPhone = normalizePhone(req.body?.parentPhone);
+    const firstName = typeof req.body?.firstName === 'string' ? req.body.firstName.trim() : '';
+    const lastName = typeof req.body?.lastName === 'string' ? req.body.lastName.trim() : '';
+    const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
+    if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) return res.status(400).json({ error: 'Проверьте имя, фамилию, класс и контакт родителя.' });
+    if (planned.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour) || trials.some((lesson) => lesson.id !== req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)) return res.status(409).json({ error: 'Этот слот уже занят.' });
+    trials[index] = { ...trials[index], firstName, lastName, studentClass, teacherId, day, hour, parentPhone };
+    await writeTrialLessons(trials);
+    await recordAdminAuditSafely(req.adminSession.sub, 'Перенесён пробный урок', `${trials[index].firstName} ${trials[index].lastName}; ${day}:${hour}; ${teacher.firstName} ${teacher.lastName}`);
+    return res.json({ ...trials[index], teacher: publicAccount(teacher) });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось перенести пробный урок.' }); }
+});
+
+app.delete('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
+  try {
+    const trials = await readTrialLessons();
+    const trial = trials.find((lesson) => lesson.id === req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status));
+    if (!trial) return res.status(404).json({ error: 'Пробный урок не найден.' });
+    await writeTrialLessons(trials.filter((lesson) => lesson.id !== req.params.id));
+    await recordAdminAuditSafely(req.adminSession.sub, 'Удалён пробный урок', `${trial.firstName} ${trial.lastName}`);
+    return res.json({ ok: true });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось удалить пробный урок.' }); }
+});
+
+function trialLessonHasEnded(lesson) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Almaty', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  const dayIndex = ({ Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 })[values.weekday];
+  return lesson.day < dayIndex || (lesson.day === dayIndex && lesson.hour + 1 <= Number(values.hour));
+}
+
+app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) => {
+  await refreshAccounts();
+  try {
+    const trials = await readTrialLessons();
+    const index = trials.findIndex((lesson) => lesson.id === req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status));
+    if (index < 0) return res.status(404).json({ error: 'Пробный урок не найден или уже обработан.' });
+    if (!trialLessonHasEnded(trials[index])) return res.status(409).json({ error: 'Этот пробный урок ещё не завершился по времени Астаны.' });
+    const outcome = req.body?.outcome;
+    if (outcome === 'declined') {
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+      if (!reason || reason.length > 500) return res.status(400).json({ error: 'Выберите или укажите причину отказа.' });
+      trials[index] = { ...trials[index], status: 'declined', declinedAt: new Date().toISOString(), declineReason: reason };
+      await writeTrialLessons(trials);
+      await recordAdminAuditSafely(req.adminSession.sub, 'Зафиксирован отказ от занятий', `${trials[index].firstName} ${trials[index].lastName}; ${reason}`);
+      return res.json({ trial: trials[index] });
+    }
+    if (outcome !== 'enrolled') return res.status(400).json({ error: 'Неизвестный результат пробного урока.' });
+    const trial = trials[index];
+    let phone;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      phone = `7${crypto.randomInt(1000000000, 9999999999)}`;
+      if (!accounts.some((account) => account.phone === phone)) break;
+      phone = undefined;
+    }
+    if (!phone) return res.status(500).json({ error: 'Не удалось создать временный логин ученика. Повторите попытку.' });
+    const salt = crypto.randomBytes(16);
+    const passwordHash = await hashPassword('study2026', salt);
+    const student = { id: crypto.randomUUID(), role: 'student', phone, firstName: trial.firstName, lastName: trial.lastName, studentClass: trial.studentClass, teacherId: trial.teacherId, children: [], status: 'active', salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString() };
+    await writeAccounts([...accounts, student]);
+    trials[index] = { ...trial, status: 'enrolled', enrolledAt: new Date().toISOString(), studentId: student.id };
+    await writeTrialLessons(trials);
+    await recordAdminAuditSafely(req.adminSession.sub, 'Пробный ученик записался', `${student.firstName} ${student.lastName}, ${student.studentClass}`);
+    return res.json({ trial: trials[index], student: publicAccount(student), temporaryLogin: phone, temporaryPassword: 'study2026' });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить результат пробного урока.' }); }
 });
 
 app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
@@ -857,7 +938,7 @@ app.get('/api/auth/portal', async (req, res) => {
     }));
     if (current.role === 'teacher') {
       const trialLessons = await readTrialLessons();
-      lessons.push(...trialLessons.filter((lesson) => lesson.teacherId === current.id).map((lesson) => ({
+      lessons.push(...trialLessons.filter((lesson) => lesson.teacherId === current.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status)).map((lesson) => ({
         ...lesson,
         trial: true,
         title: `Пробный урок · ${lesson.firstName} ${lesson.lastName}`,
