@@ -1,9 +1,10 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw, CalendarDays, Clock3, GripVertical, Trash, History } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw, CalendarDays, Clock3, GripVertical, Trash, History, MessageCircle, Mail, Send, BookOpen } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 type LoginPageProps = {
   onLoginSuccess: (name: string, studentClass: string, accountId: string, progress: Partial<LoginProgress> | null, role: 'student' | 'parent' | 'teacher') => void;
+  expectedRole?: 'teacher';
 };
 
 type LoginProgress = {
@@ -39,7 +40,7 @@ function AuthShell({ children, eyebrow }: { children: ReactNode; eyebrow: string
   );
 }
 
-export function StudentLoginPage({ onLoginSuccess }: LoginPageProps) {
+export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProps) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,13 +54,13 @@ export function StudentLoginPage({ onLoginSuccess }: LoginPageProps) {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify({ phone, password, audience: expectedRole || 'student_parent' }),
       });
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось войти. Проверьте номер телефона и пароль.');
       const account = result.account as { id: string; role: 'student' | 'parent' | 'teacher'; firstName: string; lastName: string; studentClass?: string };
       onLoginSuccess(`${account.firstName} ${account.lastName}`, account.studentClass || '', account.id, result.progress || null, account.role);
-      window.location.assign('/');
+      window.location.assign(account.role === 'teacher' ? '/teacher/' : account.role === 'parent' ? '/parent' : '/student');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.');
     } finally {
@@ -68,10 +69,10 @@ export function StudentLoginPage({ onLoginSuccess }: LoginPageProps) {
   };
 
   return (
-    <AuthShell eyebrow="ЛИЧНЫЙ КАБИНЕТ УЧЕНИКА">
+    <AuthShell eyebrow={expectedRole ? 'ЛИЧНЫЙ КАБИНЕТ ПРЕПОДАВАТЕЛЯ' : 'ЛИЧНЫЙ КАБИНЕТ УЧЕНИКА И РОДИТЕЛЯ'}>
       <UserRound className="mx-auto mb-2 mt-4 h-9 w-9 text-blue-100" />
       <h1 className="font-display text-2xl font-extrabold">С возвращением!</h1>
-      <p className="mt-1 text-sm text-blue-100">Вход для ученика, родителя или преподавателя</p>
+      <p className="mt-1 text-sm text-blue-100">{expectedRole ? 'Вход преподавателя по данным, выданным администратором' : 'Вход для ученика или родителя по данным от администратора'}</p>
       <form onSubmit={submit} className="space-y-4 bg-surface p-6 text-left">
         <label className="block space-y-1.5 text-sm font-bold text-foreground" htmlFor="student-phone">
           Номер телефона
@@ -112,6 +113,7 @@ export function StudentLoginPage({ onLoginSuccess }: LoginPageProps) {
         <p className="text-center text-xs text-muted">Нет регистрации на сайте — данные для входа выдаёт центр.</p>
       </form>
       <a href="/admin_login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход для администратора</a>
+      {expectedRole ? <a href="/login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход ученика или родителя</a> : <a href="/teacher_login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход преподавателя</a>}
     </AuthShell>
   );
 }
@@ -224,6 +226,68 @@ function PasswordField({
   );
 }
 
+type PortalPerson = { id: string; role: 'student' | 'parent' | 'teacher'; firstName: string; lastName: string; studentClass?: string; teacher?: { firstName: string; lastName: string } | null; children?: PortalPerson[] };
+type PortalLesson = { id: string; studentId?: string; day: number; hour: number; title: string; student?: PortalPerson | null };
+type PortalMessage = { id: string; at: string; sender: string; body: string; read: boolean };
+type PortalPayload = { account: PortalPerson; progress: { stars?: number; xp?: number; level?: number } | null; relatedAccounts: PortalPerson[]; lessons: PortalLesson[]; messages: PortalMessage[] };
+const PORTAL_DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+
+export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'parent' | 'teacher' }) {
+  const [portal, setPortal] = useState<PortalPayload | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [savingMessageId, setSavingMessageId] = useState('');
+
+  const loadPortal = async () => {
+    try {
+      const response = await fetch('/api/auth/portal', { credentials: 'same-origin' });
+      const result = await readApiResponse(response);
+      if (response.status === 401) { window.location.replace(expectedRole === 'teacher' ? '/teacher_login' : '/login'); return; }
+      if (!response.ok) throw new Error(result.error || 'Не удалось загрузить личный кабинет.');
+      if (result.account?.role !== expectedRole) { window.location.replace(result.account?.role === 'teacher' ? '/teacher/' : result.account?.role === 'parent' ? '/parent' : '/student'); return; }
+      setPortal(result as PortalPayload);
+      setError('');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.'); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { void loadPortal(); }, [expectedRole]);
+
+  const markRead = async (message: PortalMessage) => {
+    setSavingMessageId(message.id);
+    try {
+      const response = await fetch(`/api/auth/messages/${message.id}/read`, { method: 'POST', credentials: 'same-origin' });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось отметить сообщение прочитанным.');
+      setPortal((current) => current ? { ...current, messages: current.messages.map((entry) => entry.id === message.id ? { ...entry, read: true } : entry) } : current);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось обновить сообщение.'); }
+    finally { setSavingMessageId(''); }
+  };
+
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    window.location.assign(expectedRole === 'teacher' ? '/teacher_login' : '/login');
+  };
+
+  const account = portal?.account;
+  const roleLabel = expectedRole === 'student' ? 'Личный кабинет ученика' : expectedRole === 'parent' ? 'Личный кабинет родителя' : 'Кабинет преподавателя';
+  return (
+    <main className="min-h-screen bg-primary-light text-foreground">
+      <header className="flex items-center justify-between border-b border-border bg-white px-5 py-4 shadow-sm sm:px-8"><a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">{roleLabel}</span></span></a><button type="button" onClick={logout} className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-primary-light">Выйти</button></header>
+      <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-8"><div><p className="text-sm font-bold text-primary">Здравствуйте</p><h1 className="mt-1 font-display text-3xl font-extrabold">{account ? `${account.firstName} ${account.lastName}` : roleLabel}</h1>{expectedRole === 'student' && <p className="mt-1 text-muted">{account?.studentClass || ''}</p>}</div>
+        {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+        {loading ? <div className="rounded-2xl bg-white p-12 text-center text-muted shadow-sm">Загружаем личный кабинет…</div> : portal && <>
+          {expectedRole === 'student' && <section className="grid gap-4 sm:grid-cols-3"><article className="rounded-2xl border border-border bg-white p-5 shadow-sm"><p className="text-sm text-muted">Звёзды</p><p className="mt-1 text-3xl font-extrabold">⭐ {portal.progress?.stars ?? 0}</p></article><article className="rounded-2xl border border-border bg-white p-5 shadow-sm"><p className="text-sm text-muted">Уровень</p><p className="mt-1 text-3xl font-extrabold">{portal.progress?.level ?? 1}</p></article><article className="rounded-2xl border border-border bg-white p-5 shadow-sm"><p className="text-sm text-muted">Опыт</p><p className="mt-1 text-3xl font-extrabold">{portal.progress?.xp ?? 0} XP</p></article></section>}
+          {expectedRole === 'student' && <section className="rounded-2xl border border-border bg-white p-5 shadow-sm"><h2 className="font-display text-lg font-extrabold">Преподаватель</h2><p className="mt-2 text-sm text-muted">{account?.teacher ? `${account.teacher.firstName} ${account.teacher.lastName}` : 'Преподаватель пока не назначен.'}</p></section>}
+          {expectedRole !== 'student' && <section className="rounded-2xl border border-border bg-white p-5 shadow-sm"><h2 className="mb-3 font-display text-lg font-extrabold">{expectedRole === 'parent' ? 'Мои дети' : 'Мои ученики'}</h2>{portal.relatedAccounts.length ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{portal.relatedAccounts.map((person) => <article key={person.id} className="rounded-xl border border-border bg-primary-light p-4"><p className="font-bold">{person.firstName} {person.lastName}</p><p className="text-sm text-muted">{person.studentClass || ''}</p></article>)}</div> : <p className="text-sm text-muted">Пока нет прикреплённых учеников.</p>}</section>}
+          <section className="rounded-2xl border border-border bg-white p-5 shadow-sm"><div className="mb-4 flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" /><h2 className="font-display text-lg font-extrabold">Расписание</h2></div>{portal.lessons.length ? <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead className="bg-primary-light text-xs uppercase text-muted"><tr><th className="rounded-l-lg px-3 py-2">День</th><th className="px-3 py-2">Время</th>{expectedRole !== 'student' && <th className="px-3 py-2">Ученик</th>}<th className="rounded-r-lg px-3 py-2">Урок</th></tr></thead><tbody>{[...portal.lessons].sort((a, b) => a.day - b.day || a.hour - b.hour).map((lesson) => <tr key={lesson.id} className="border-b border-border last:border-0"><td className="px-3 py-3">{PORTAL_DAYS[lesson.day]}</td><td className="px-3 py-3">{String(lesson.hour).padStart(2, '0')}:00–{String(lesson.hour + 1).padStart(2, '0')}:00</td>{expectedRole !== 'student' && <td className="px-3 py-3">{lesson.student ? `${lesson.student.firstName} ${lesson.student.lastName}` : '—'}</td>}<td className="px-3 py-3 font-semibold">{lesson.title}</td></tr>)}</tbody></table></div> : <p className="text-sm text-muted">Расписание пока не заполнено.</p>}</section>
+          <section className="rounded-2xl border border-border bg-white p-5 shadow-sm"><div className="mb-4 flex items-center gap-2"><Mail className="h-5 w-5 text-primary" /><h2 className="font-display text-lg font-extrabold">Сообщения</h2><span className="rounded-full bg-primary-light px-2 py-0.5 text-xs font-bold">{portal.messages.filter((message) => !message.read).length} новых</span></div>{portal.messages.length ? <div className="space-y-3">{portal.messages.map((message) => <article key={message.id} className={`rounded-xl border p-4 ${message.read ? 'border-border bg-white' : 'border-blue-200 bg-blue-50/60'}`}><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-muted">От {message.sender} · {new Date(message.at).toLocaleString('ru-KZ', { timeZone: 'Asia/Qyzylorda' })}</p><p className="mt-2 whitespace-pre-wrap text-sm">{message.body}</p></div>{!message.read && <button type="button" disabled={savingMessageId === message.id} onClick={() => void markRead(message)} className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100">Отметить прочитанным</button>}</div></article>)}</div> : <p className="text-sm text-muted">Сообщений пока нет.</p>}</section>
+        </>}
+      </div>
+    </main>
+  );
+}
+
 type AccountRole = 'student' | 'parent' | 'teacher';
 type ManagedAccount = {
   id: string; role: AccountRole; phone: string; firstName: string; lastName: string;
@@ -247,6 +311,8 @@ export function AdminDashboardPage() {
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ManagedAccount | null>(null);
+  const [messageTarget, setMessageTarget] = useState<ManagedAccount | null>(null);
+  const [messageBody, setMessageBody] = useState('');
   const [darkTheme, setDarkTheme] = useState(() => {
     try { return localStorage.getItem('study_admin_theme') === 'dark'; } catch { return false; }
   });
@@ -404,6 +470,24 @@ export function AdminDashboardPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const sendAdminMessage = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!messageTarget) return;
+    setSaving(true); setError(''); setSuccess('');
+    try {
+      const response = await fetch(`/api/admin/accounts/${messageTarget.id}/messages`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ body: messageBody }),
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось отправить сообщение.');
+      setSuccess(`Сообщение отправлено: ${messageTarget.firstName} ${messageTarget.lastName}.`);
+      setMessageTarget(null); setMessageBody('');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось отправить сообщение.');
+    } finally { setSaving(false); }
   };
 
   const restoreStudent = async (student: ManagedAccount) => {
@@ -597,7 +681,7 @@ export function AdminDashboardPage() {
             {success && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
             {error && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
               {loading ? <p className="py-16 text-center text-sm text-muted">Загружаем список…</p> : visibleAccounts.length ? (
-              <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[760px] border-collapse text-left text-sm"><thead className="bg-primary-light text-xs uppercase tracking-wide text-muted"><tr><th className="px-4 py-3">Имя и фамилия</th><th className="px-4 py-3">Телефон</th>{activeRole === 'student' && <><th className="px-4 py-3">Класс</th><th className="px-4 py-3">Преподаватель</th></>}{activeRole === 'parent' && <th className="px-4 py-3">Дети</th>}<th className="px-4 py-3 text-right">Действия</th></tr></thead><tbody>{visibleAccounts.map((account) => <tr key={account.id} className="border-t border-border hover:bg-primary-light/50"><td className="px-4 py-3 font-bold">{account.firstName} {account.lastName}</td><td className="px-4 py-3 text-muted">{account.phone}</td>{activeRole === 'student' && <><td className="px-4 py-3">{account.studentClass || '—'}</td><td className="px-4 py-3">{account.teacher ? `${account.teacher.firstName} ${account.teacher.lastName}` : <span className="text-amber-600">Не назначен</span>}</td></>}{activeRole === 'parent' && <td className="max-w-sm px-4 py-3 text-muted">{account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ') || '—'}</td>}<td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => openEditAccount(account)} title="Редактировать" aria-label={`Редактировать ${account.firstName} ${account.lastName}`} className="rounded-lg border border-border p-2 text-primary hover:bg-primary-light"><Pencil className="h-4 w-4" /></button>{activeView === 'withdrawn' ? <button type="button" onClick={() => restoreStudent(account)} title="Вернуть в список учеников" aria-label={`Вернуть ${account.firstName} ${account.lastName}`} className="rounded-lg border border-emerald-200 p-2 text-emerald-600 hover:bg-emerald-50"><RotateCcw className="h-4 w-4" /></button> : <button type="button" onClick={() => setDeleteTarget(account)} title={account.role === 'student' ? 'Переместить в выбывшие' : 'Удалить'} aria-label={account.role === 'student' ? `Переместить ${account.firstName} ${account.lastName} в выбывшие` : `Удалить ${account.firstName} ${account.lastName}`} className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>}</div></td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[760px] border-collapse text-left text-sm"><thead className="bg-primary-light text-xs uppercase tracking-wide text-muted"><tr><th className="px-4 py-3">Имя и фамилия</th><th className="px-4 py-3">Телефон</th>{activeRole === 'student' && <><th className="px-4 py-3">Класс</th><th className="px-4 py-3">Преподаватель</th></>}{activeRole === 'parent' && <th className="px-4 py-3">Дети</th>}<th className="px-4 py-3 text-right">Действия</th></tr></thead><tbody>{visibleAccounts.map((account) => <tr key={account.id} className="border-t border-border hover:bg-primary-light/50"><td className="px-4 py-3 font-bold">{account.firstName} {account.lastName}</td><td className="px-4 py-3 text-muted">{account.phone}</td>{activeRole === 'student' && <><td className="px-4 py-3">{account.studentClass || '—'}</td><td className="px-4 py-3">{account.teacher ? `${account.teacher.firstName} ${account.teacher.lastName}` : <span className="text-amber-600">Не назначен</span>}</td></>}{activeRole === 'parent' && <td className="max-w-sm px-4 py-3 text-muted">{account.children.map((child) => `${child.firstName} ${child.lastName}`).join(', ') || '—'}</td>}<td className="px-4 py-3"><div className="flex justify-end gap-2">{(account.role === 'student' || account.role === 'parent') && activeView !== 'withdrawn' && <button type="button" onClick={() => { setMessageTarget(account); setMessageBody(''); setError(''); }} title="Написать сообщение" aria-label={`Написать ${account.firstName} ${account.lastName}`} className="rounded-lg border border-border p-2 text-blue-600 hover:bg-blue-50"><MessageCircle className="h-4 w-4" /></button>}<button type="button" onClick={() => openEditAccount(account)} title="Редактировать" aria-label={`Редактировать ${account.firstName} ${account.lastName}`} className="rounded-lg border border-border p-2 text-primary hover:bg-primary-light"><Pencil className="h-4 w-4" /></button>{activeView === 'withdrawn' ? <button type="button" onClick={() => restoreStudent(account)} title="Вернуть в список учеников" aria-label={`Вернуть ${account.firstName} ${account.lastName}`} className="rounded-lg border border-emerald-200 p-2 text-emerald-600 hover:bg-emerald-50"><RotateCcw className="h-4 w-4" /></button> : <button type="button" onClick={() => setDeleteTarget(account)} title={account.role === 'student' ? 'Переместить в выбывшие' : 'Удалить'} aria-label={account.role === 'student' ? `Переместить ${account.firstName} ${account.lastName} в выбывшие` : `Удалить ${account.firstName} ${account.lastName}`} className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>}</div></td></tr>)}</tbody></table></div>
             ) : <div className="rounded-xl border border-dashed border-border px-4 py-16 text-center"><span className="mx-auto mb-3 block w-fit rounded-full bg-primary-light p-3 text-primary">{roleIcon(activeRole)}</span><p className="font-bold">{roleAccounts.length ? 'Ничего не найдено' : 'Аккаунтов пока нет'}</p><p className="mt-1 text-sm text-muted">{roleAccounts.length ? 'Измените поисковый запрос или фильтры.' : 'Нажмите «Добавить», чтобы создать первый аккаунт.'}</p></div>}
           </section>
           )}
@@ -619,6 +703,14 @@ export function AdminDashboardPage() {
                   {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
                   <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setShowAccountModal(false)} className="rounded-xl border border-border px-5 py-3 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="submit" disabled={saving || (activeRole === 'parent' && selectedChildren.length === 0) || (activeRole === 'student' && teachers.length === 0)} className="clay-btn rounded-xl bg-primary px-6 py-3 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? 'Сохраняем…' : editingAccountId ? 'Сохранить изменения' : 'Создать аккаунт'}</button></div>
                 </form>
+              </section>
+            </div>
+          )}
+          {messageTarget && (
+            <div className="admin-modal fixed inset-0 z-[105] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMessageTarget(null); }}>
+              <section role="dialog" aria-modal="true" aria-labelledby="message-modal-title" className="admin-card w-full max-w-lg rounded-2xl border border-border bg-white p-6 shadow-2xl">
+                <div className="mb-4 flex items-start justify-between gap-4"><div className="flex items-center gap-3"><span className="rounded-xl bg-blue-100 p-2.5 text-blue-700"><MessageCircle className="h-5 w-5" /></span><div><h2 id="message-modal-title" className="font-display text-xl font-extrabold">Новое сообщение</h2><p className="text-sm text-muted">Для {messageTarget.role === 'student' ? 'ученика' : 'родителя'}: {messageTarget.firstName} {messageTarget.lastName}</p></div></div><button type="button" onClick={() => setMessageTarget(null)} aria-label="Закрыть" className="rounded-lg p-2 text-muted hover:bg-primary-light"><X className="h-5 w-5" /></button></div>
+                <form onSubmit={sendAdminMessage} className="space-y-4"><label htmlFor="account-message" className="block space-y-1.5 text-sm font-bold">Текст сообщения<textarea id="account-message" autoFocus required maxLength={5000} rows={6} value={messageBody} onChange={(event) => setMessageBody(event.target.value)} className="admin-input w-full resize-y rounded-xl border-2 border-border bg-primary-light p-3 font-normal focus:border-primary focus:outline-none" placeholder="Введите сообщение для личного кабинета" /><span className="block text-right text-xs font-normal text-muted">{messageBody.length}/5000</span></label>{error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" onClick={() => setMessageTarget(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button><button type="submit" disabled={saving || !messageBody.trim()} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60">{saving ? 'Отправляем…' : <><Send className="h-4 w-4" /> Отправить</>}</button></div></form>
               </section>
             </div>
           )}

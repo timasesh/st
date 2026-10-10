@@ -8,7 +8,7 @@ import Pricing from './components/Pricing';
 import FreeTrial from './components/FreeTrial';
 import ContactForm from './components/ContactForm';
 import Footer from './components/Footer';
-import { AdminDashboardPage, AdminLoginPage, StudentLoginPage } from './components/AuthPages';
+import { AdminDashboardPage, AdminLoginPage, StudentLoginPage, UserPortalPage } from './components/AuthPages';
 
 import { Rocket, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -207,6 +207,18 @@ export default function App() {
 
   if (window.location.pathname === '/login') {
     return <StudentLoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+  if (window.location.pathname === '/teacher_login') {
+    return <StudentLoginPage expectedRole="teacher" onLoginSuccess={handleLoginSuccess} />;
+  }
+  if (window.location.pathname === '/student' || window.location.pathname === '/student/') {
+    return <UserPortalPage expectedRole="student" />;
+  }
+  if (window.location.pathname === '/parent' || window.location.pathname === '/parent/') {
+    return <UserPortalPage expectedRole="parent" />;
+  }
+  if (window.location.pathname === '/teacher' || window.location.pathname === '/teacher/') {
+    return <UserPortalPage expectedRole="teacher" />;
   }
   if (window.location.pathname === '/admin_login') {
     return <AdminLoginPage />;

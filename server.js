@@ -19,6 +19,7 @@ const sessionSecretPath = path.join(dataDir, 'session-secret');
 const accountsPath = path.join(dataDir, 'accounts.json');
 const schedulePath = path.join(dataDir, 'schedule.json');
 const auditLogPath = path.join(dataDir, 'admin-audit.json');
+const inboxesPath = path.join(dataDir, 'account-inboxes.json');
 const cookieName = 'study_admin_session';
 const userCookieName = 'study_user_session';
 const sessionDurationSeconds = 12 * 60 * 60;
@@ -275,6 +276,30 @@ async function listAdminAuditHistory() {
   return readJsonFileOr(auditLogPath, []);
 }
 
+async function readAccountInbox(accountId) {
+  if (!supabase) {
+    const inboxes = await readJsonFileOr(inboxesPath, {});
+    return inboxes[accountId] || [];
+  }
+  const result = await supabase.from('app_settings').select('value').eq('key', `account_inbox:${accountId}`).maybeSingle();
+  if (result.error) throw new Error(`Could not load account messages: ${result.error.message}`);
+  return result.data?.value ? JSON.parse(result.data.value) : [];
+}
+
+async function writeAccountInbox(accountId, messages) {
+  if (supabase) {
+    const result = await supabase.from('app_settings').upsert({ key: `account_inbox:${accountId}`, value: JSON.stringify(messages) });
+    if (result.error) throw new Error(`Could not save account messages: ${result.error.message}`);
+    return;
+  }
+  const inboxes = await readJsonFileOr(inboxesPath, {});
+  inboxes[accountId] = messages;
+  await fs.mkdir(dataDir, { recursive: true });
+  const temporaryPath = `${inboxesPath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(inboxes, null, 2), { mode: 0o600 });
+  await fs.rename(temporaryPath, inboxesPath);
+}
+
 async function recordAdminAuditSafely(actor, action, details = '') {
   try { await recordAdminAudit(actor, action, details); }
   catch (error) { console.error('Admin audit write failed:', error); }
@@ -528,6 +553,22 @@ app.get('/api/admin/accounts', requireAdmin, async (_req, res) => {
   res.json(accounts.map(publicAccount));
 });
 
+app.post('/api/admin/accounts/:id/messages', requireAdmin, async (req, res) => {
+  await refreshAccounts();
+  const recipient = accounts.find((account) => account.id === req.params.id && ['student', 'parent'].includes(account.role) && account.status !== 'withdrawn');
+  if (!recipient) return res.status(404).json({ error: 'Ученик или родитель не найден.' });
+  const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+  if (!body || body.length > 5000) return res.status(400).json({ error: 'Сообщение должно содержать от 1 до 5000 символов.' });
+  const message = { id: crypto.randomUUID(), at: new Date().toISOString(), sender: req.adminSession.sub, body, read: false };
+  try {
+    await writeAccountInbox(recipient.id, [message, ...await readAccountInbox(recipient.id)]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Не удалось отправить сообщение.' });
+  }
+  await recordAdminAuditSafely(req.adminSession.sub, 'Отправлено сообщение', `${recipient.role}: ${recipient.firstName} ${recipient.lastName}`);
+  return res.status(201).json({ message });
+});
+
 app.get('/api/admin/schedule', requireAdmin, async (_req, res) => {
   if (!supabase) {
     const saved = await readJsonFileOr(schedulePath, { lessons: [], targets: {} });
@@ -718,17 +759,73 @@ app.get('/api/auth/session', async (req, res) => {
   res.json({ authenticated: Boolean(user), account: user ? publicAccount(user.account) : null, progress });
 });
 
+app.get('/api/auth/portal', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user) return res.status(401).json({ error: 'Войдите в личный кабинет.' });
+  const current = user.account;
+  const account = publicAccount(current);
+  const relatedAccounts = current.role === 'parent'
+    ? accounts.filter((item) => current.children?.includes(item.id) && item.role === 'student')
+    : current.role === 'teacher'
+      ? accounts.filter((item) => item.role === 'student' && item.teacherId === current.id)
+      : [];
+  let scheduleData = { lessons: [], targets: {} };
+  try {
+    if (supabase) {
+      const result = await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle();
+      if (result.error) throw result.error;
+      if (result.data?.value) scheduleData = JSON.parse(result.data.value);
+    } else scheduleData = await readJsonFileOr(schedulePath, scheduleData);
+    if (Array.isArray(scheduleData)) scheduleData = { lessons: scheduleData, targets: {} };
+    const relatedIds = new Set(relatedAccounts.map((item) => item.id));
+    const lessons = (scheduleData.lessons || []).filter((lesson) => current.role === 'student'
+      ? lesson.studentId === current.id
+      : current.role === 'parent'
+        ? relatedIds.has(lesson.studentId)
+        : lesson.teacherId === current.id).map((lesson) => ({
+      ...lesson,
+      student: accounts.find((item) => item.id === lesson.studentId)
+        ? publicAccount(accounts.find((item) => item.id === lesson.studentId))
+        : null,
+    }));
+    const messages = await readAccountInbox(current.id);
+    return res.json({
+      account,
+      progress: current.progress || null,
+      relatedAccounts: relatedAccounts.map(publicAccount),
+      lessons,
+      messages,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Не удалось загрузить личный кабинет.' });
+  }
+});
+
+app.post('/api/auth/messages/:id/read', async (req, res) => {
+  const user = getUserSession(req);
+  if (!user) return res.status(401).json({ error: 'Войдите в личный кабинет.' });
+  const messages = await readAccountInbox(user.account.id);
+  const index = messages.findIndex((message) => message.id === req.params.id);
+  if (index < 0) return res.status(404).json({ error: 'Сообщение не найдено.' });
+  messages[index] = { ...messages[index], read: true };
+  await writeAccountInbox(user.account.id, messages);
+  return res.json({ ok: true });
+});
+
 app.post('/api/auth/login', async (req, res) => {
   await refreshAccounts();
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (isLoginRateLimited(ip)) return res.status(429).json({ error: 'Слишком много попыток. Попробуйте ещё раз через 15 минут.' });
   const phone = normalizePhone(req.body?.phone);
   const password = req.body?.password;
+  const audience = req.body?.audience;
   const account = accounts.find((entry) => entry.phone === phone);
+  const roleAllowed = audience === 'teacher' ? account?.role === 'teacher' : account && ['student', 'parent'].includes(account.role);
   const validPassword = account && account.status !== 'withdrawn' && typeof password === 'string' && password.length <= 128
     ? await passwordsMatch(password, account.salt, account.passwordHash)
     : false;
-  if (!validPassword) {
+  if (!roleAllowed || !validPassword) {
     if (!failedLoginAttempts.has(ip)) failedLoginAttempts.set(ip, []);
     failedLoginAttempts.get(ip).push(Date.now());
     return res.status(401).json({ error: 'Неверный номер телефона или пароль.' });
