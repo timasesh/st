@@ -409,10 +409,12 @@ function publicAccount(account) {
   const { id, role, phone, firstName, lastName, studentClass, children = [], teacherId, status = 'active' } = account;
   const childAccounts = children.map((id) => accounts.find((entry) => entry.id === id)).filter(Boolean);
   const teacherAccount = accounts.find((entry) => entry.id === teacherId && entry.role === 'teacher');
+  const parentAccount = role === 'student' ? accounts.find((entry) => entry.role === 'parent' && (entry.children || []).includes(id)) : null;
   return {
     id, role, phone, firstName, lastName, studentClass, status,
     teacherId: teacherAccount?.id,
     teacher: teacherAccount ? { id: teacherAccount.id, firstName: teacherAccount.firstName, lastName: teacherAccount.lastName } : null,
+    parent: parentAccount ? { id: parentAccount.id, firstName: parentAccount.firstName, lastName: parentAccount.lastName, phone: parentAccount.phone } : null,
     children: childAccounts.map(({ id: childId, firstName: childFirstName, lastName: childLastName, studentClass: childClass }) => ({ id: childId, firstName: childFirstName, lastName: childLastName, studentClass: childClass })),
   };
 }
@@ -744,11 +746,11 @@ app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) 
   await refreshAccounts();
   try {
     const trials = await readTrialLessons();
-    const index = trials.findIndex((lesson) => lesson.id === req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status));
+    const outcome = req.body?.outcome;
+    const index = trials.findIndex((lesson) => lesson.id === req.params.id && ((lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) || (outcome === 'enrolled' && lesson.status === 'declined')));
     if (index < 0) return res.status(404).json({ error: 'Пробный урок не найден или уже обработан.' });
     if (!trialLessonHasEnded(trials[index])) return res.status(409).json({ error: 'Этот пробный урок ещё не завершился по времени Астаны.' });
-    const outcome = req.body?.outcome;
-    if (outcome === 'declined') {
+    if (outcome === 'declined' && trials[index].status !== 'declined') {
       const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
       if (!reason || reason.length > 500) return res.status(400).json({ error: 'Выберите или укажите причину отказа.' });
       trials[index] = { ...trials[index], status: 'declined', declinedAt: new Date().toISOString(), declineReason: reason };
@@ -832,6 +834,8 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
     if (linkedChildren.some((id) => !accounts.some((account) => account.id === id && account.role === 'student'))) return res.status(400).json({ error: 'В списке есть неизвестный ученик.' });
   }
 
+  const parentId = current.role === 'student' ? (typeof req.body?.parentId === 'string' && req.body.parentId ? req.body.parentId : '') : '';
+  if (current.role === 'student' && parentId && !accounts.some((account) => account.id === parentId && account.role === 'parent')) return res.status(400).json({ error: 'Выбранный родитель не найден.' });
   let updated = {
     ...current, phone: normalizedPhone, firstName: firstName.trim(), lastName: lastName.trim(),
     studentClass: current.role === 'student' ? studentClass : '',
@@ -843,8 +847,15 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
     const passwordHash = await hashPassword(password, salt);
     updated = { ...updated, salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64') };
   }
-  const nextAccounts = [...accounts];
-  nextAccounts[index] = updated;
+  const nextAccounts = accounts.map((account, accountIndex) => {
+    if (accountIndex === index) return updated;
+    if (current.role === 'student' && account.role === 'parent') {
+      const oldChildren = account.children || [];
+      const childrenWithoutStudent = oldChildren.filter((id) => id !== current.id);
+      return { ...account, children: account.id === parentId ? [...new Set([...childrenWithoutStudent, current.id])] : childrenWithoutStudent };
+    }
+    return account;
+  });
   await writeAccounts(nextAccounts);
   await recordAdminAuditSafely(req.adminSession.sub, 'Изменён аккаунт', `${current.role}: ${updated.firstName} ${updated.lastName}`);
   return res.json({ account: publicAccount(updated) });
