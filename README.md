@@ -18,3 +18,12 @@ View your app in AI Studio: https://ai.studio/apps/7afd469a-b6d6-472b-9278-24432
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Sign-in pages
+
+- Student sign-in: `/login` (registration is disabled).
+- Administrator sign-in: `/admin_login`.
+- The first administrator login must be followed by a password change before `/admin` opens.
+- The initial administrator credentials are `study-admin` and the temporary password supplied for this setup. The password is stored as a salted scrypt hash in `.data/admin.json`; session signing material is also stored in `.data/`. Both are excluded from Git.
+
+Run `npm run build` and then `npm start` to serve the production build and the administrator authentication API. Keep `DATA_DIR` on persistent storage in production so the changed administrator password and session secret survive restarts. Set `DATA_DIR` to a private, writable directory before deploying.

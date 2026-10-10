@@ -1,23 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X, LogIn, Sparkles, PhoneCall } from 'lucide-react';
-import { AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { whatsappUrl } from '../constants';
 
 interface NavbarProps {
-  stars: number;
-  xp: number;
-  level: number;
-  userName: string;
   onOpenAuthModal: () => void;
-  onOpenQuizTab: () => void;
 }
 
 export default function Navbar({
-  stars,
-  xp,
-  level,
   onOpenAuthModal,
-  onOpenQuizTab,
 }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);

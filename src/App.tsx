@@ -8,7 +8,7 @@ import Pricing from './components/Pricing';
 import FreeTrial from './components/FreeTrial';
 import ContactForm from './components/ContactForm';
 import Footer from './components/Footer';
-import AuthModal from './components/AuthModal';
+import { AdminDashboardPage, AdminLoginPage, StudentLoginPage } from './components/AuthPages';
 
 import { Rocket, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -62,7 +62,6 @@ export default function App() {
   const [userClass, setUserClass] = useState<string>(initialProgress.userClass);
 
   // Modals / Overlays
-  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [showLevelUpModal, setShowLevelUpModal] = useState<boolean>(false);
   const [prevLevel, setPrevLevel] = useState<number>(initialProgress.level);
 
@@ -174,7 +173,6 @@ export default function App() {
     }
   };
 
-  const handleOpenQuizTab = () => scrollToId('interactive');
   const handleBookTrial = () => scrollToId('free-trial');
 
   // Trigger from the Free Trial Section
@@ -183,17 +181,22 @@ export default function App() {
     handleAddRewards(15, 100); // 100 XP triggers high progress
   };
 
+  if (window.location.pathname === '/login') {
+    return <StudentLoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+  if (window.location.pathname === '/admin_login') {
+    return <AdminLoginPage />;
+  }
+  if (window.location.pathname === '/admin') {
+    return <AdminDashboardPage />;
+  }
+
   return (
     <div className="min-h-screen bg-surface text-foreground font-sans antialiased overflow-x-hidden selection:bg-primary-light selection:text-primary">
       
       {/* Sticky Navigation */}
       <Navbar
-        stars={stars}
-        xp={xp}
-        level={level}
-        userName={userName}
-        onOpenAuthModal={() => setAuthModalOpen(true)}
-        onOpenQuizTab={handleOpenQuizTab}
+        onOpenAuthModal={() => window.location.assign('/login')}
       />
 
       {/* Main Sections */}
@@ -238,13 +241,6 @@ export default function App() {
 
       {/* Modern footer details */}
       <Footer />
-
-      {/* Student Authorization Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onLoginSuccess={handleLoginSuccess}
-      />
 
       {/* LEVEL UP POPUP OVERLAY */}
       <AnimatePresence>
