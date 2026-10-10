@@ -43,10 +43,10 @@ export default function ContactForm() {
                 </div>
               ))}
               <div className="flex items-center gap-3 pt-1">
-                <a href="#" aria-label="Instagram (ссылка скоро появится)" className="inline-flex items-center gap-2 rounded-xl border-2 border-border bg-white px-3 py-2 text-sm font-semibold text-foreground hover:border-primary/40">
-                  <Instagram className="w-4 h-4 text-primary" /> Instagram
+                <a href="https://www.instagram.com/studytask.kz/" target="_blank" rel="noreferrer" aria-label="Instagram StudyTask" className="inline-flex items-center gap-2 rounded-xl border-2 border-border bg-white px-3 py-2 text-sm font-semibold text-foreground hover:border-primary/40">
+                  <Instagram className="w-4 h-4 text-primary" /> @studytask.kz
                 </a>
-                <a href="#" aria-label="Telegram (ссылка скоро появится)" className="inline-flex items-center gap-2 rounded-xl border-2 border-border bg-white px-3 py-2 text-sm font-semibold text-foreground hover:border-primary/40">
+                <a href="https://t.me/studytaskkz" target="_blank" rel="noreferrer" aria-label="Telegram StudyTask" className="inline-flex items-center gap-2 rounded-xl border-2 border-border bg-white px-3 py-2 text-sm font-semibold text-foreground hover:border-primary/40">
                   <Send className="w-4 h-4 text-primary" /> Telegram
                 </a>
               </div>

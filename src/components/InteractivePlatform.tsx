@@ -186,11 +186,7 @@ export default function InteractivePlatform({
     if (stars < prize.stars) return;
     onClaimPrize(prize.id, prize.stars);
     onUnlockAchievement('ach-shopper'); // Unlock shooper achievement
-    
     setJustPurchased(prize.name);
-    setTimeout(() => {
-      setJustPurchased(null);
-    }, 4000);
   };
 
   // Save Name
@@ -825,23 +821,6 @@ export default function InteractivePlatform({
                     </div>
                   </div>
 
-                  <AnimatePresence>
-                    {justPurchased && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="bg-emerald-500 text-white p-4 rounded-2xl flex items-center space-x-3 shadow-lg"
-                      >
-                        <Gift className="w-8 h-8" />
-                        <div>
-                          <p className="font-extrabold text-sm">Успешно приобретено: {justPurchased}!</p>
-                          <p className="text-xs opacity-90">Заказ добавлен в твой профиль. Для получения свяжись с куратором центра.</p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {KIT_1.map((prize) => {
                       const isClaimed = claimedPrizes.includes(prize.id);
@@ -915,6 +894,57 @@ export default function InteractivePlatform({
         </div>
 
       </div>
+
+      <AnimatePresence>
+        {justPurchased && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-navy/60 p-4 backdrop-blur-sm"
+            onClick={() => setJustPurchased(null)}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="order-confirmation-title"
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              onClick={(event) => event.stopPropagation()}
+              className="clay-card relative w-full max-w-md space-y-5 bg-surface p-7 text-center"
+            >
+              <button
+                type="button"
+                aria-label="Закрыть окно"
+                onClick={() => setJustPurchased(null)}
+                className="absolute right-3 top-3 rounded-lg p-2 text-muted hover:bg-primary-light hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
+                <Gift className="h-8 w-8" />
+              </div>
+              <div className="space-y-2">
+                <h3 id="order-confirmation-title" className="font-display text-xl font-extrabold text-foreground">
+                  Заказ оформлен!
+                </h3>
+                <p className="font-semibold text-primary">{justPurchased}</p>
+                <p className="text-sm leading-relaxed text-muted">
+                  Мы собираем ваш заказ. Доставка займёт до 24 часов.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setJustPurchased(null)}
+                className="w-full rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark"
+              >
+                Понятно
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showHomeworkModal && (

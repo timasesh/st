@@ -16,14 +16,14 @@ const TARIFFS: Tariff[] = [
   {
     id: 'individual',
     name: 'Индивидуально',
-    price: 56000,
+    price: 60000,
     priceHint: '8 занятий · 2 раза в неделю',
     description:
-      'Максимальный фокус: персональный темп, разбор сложных тем один на один. 7 000 ₸ за час.',
+      'Максимальный фокус: персональный темп, разбор сложных тем один на один. 7 500 ₸ за час.',
     isPopular: true,
     features: [
       '8 занятий по 60 минут',
-      '7 000 ₸ за час без пакета',
+      '7 500 ₸ за час без пакета',
       'Гибкое расписание',
       'Доступ к квизам и звёздам',
       'Система наград (реальные призы)',
@@ -32,13 +32,13 @@ const TARIFFS: Tariff[] = [
   {
     id: 'pair',
     name: 'Мини-группа (пара)',
-    price: 40000,
+    price: 44000,
     priceHint: '8 занятий · цена с ученика',
     description:
-      '5 000 ₸ с ученика за час. Мини-группа открывается сразу с одного человека — второго можно подключить позже.',
+      '5 500 ₸ с ученика за час. Мини-группа открывается сразу с одного человека — второго можно подключить позже.',
     features: [
       '8 занятий по 60 минут',
-      '5 000 ₸ с ученика за час',
+      '5 500 ₸ с ученика за час',
       'Пара открывается с 1 человека',
       'Доступ к квизам и звёздам',
       'Система наград (реальные призы)',
@@ -50,15 +50,15 @@ const SPECIALS = [
   {
     id: 'individual-4m',
     title: 'Индивидуально: 3 месяца + 1 в подарок',
-    price: 168000,
-    oldPrice: 224000,
+    price: 180000,
+    oldPrice: 240000,
     hint: '4 месяца по цене 3 · 32 занятия',
   },
   {
     id: 'pair-4m',
     title: 'Мини-группа: 3 месяца + 1 в подарок',
-    price: 120000,
-    oldPrice: 160000,
+    price: 132000,
+    oldPrice: 176000,
     hint: '4 месяца по цене 3 · 32 занятия, цена с ученика',
   },
 ];
@@ -70,23 +70,23 @@ export default function Pricing() {
   const packagePrice =
     format === 'individual'
       ? pack === 'month'
-        ? 56000
-        : 168000
+        ? 60000
+        : 180000
       : pack === 'month'
-        ? 40000
-        : 120000;
+        ? 44000
+        : 132000;
   const regularPrice =
     format === 'individual'
       ? pack === 'month'
-        ? 56000
-        : 224000
+        ? 60000
+        : 240000
       : pack === 'month'
-        ? 40000
-        : 160000;
+        ? 44000
+        : 176000;
   const totalLessons = pack === 'month' ? 8 : 32;
   const totalSavings = regularPrice - packagePrice;
   const formatLabel = format === 'individual' ? 'Индивидуально' : 'Мини-группа (пара)';
-  const hourly = format === 'individual' ? 7000 : 5000;
+  const hourly = format === 'individual' ? 7500 : 5500;
 
   const handleWhatsAppOrder = (tariffName: string, price: number) => {
     const text = `Здравствуйте! Хочу записаться на ${tariffName} — ${price.toLocaleString('ru-RU')} ₸.`;
@@ -111,12 +111,12 @@ export default function Pricing() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-5xl mx-auto mb-10">
           <div className="clay-card-sm p-5 bg-primary-light">
             <p className="text-xs font-bold text-primary mb-1">Разовая цена</p>
-            <p className="font-display font-extrabold text-foreground text-xl">7 000 ₸ / час</p>
+            <p className="font-display font-extrabold text-foreground text-xl">7 500 ₸ / час</p>
             <p className="text-sm text-muted mt-1">Индивидуальное занятие</p>
           </div>
           <div className="clay-card-sm p-5 bg-primary-light">
             <p className="text-xs font-bold text-primary mb-1">Разовая цена</p>
-            <p className="font-display font-extrabold text-foreground text-xl">5 000 ₸ / час</p>
+            <p className="font-display font-extrabold text-foreground text-xl">5 500 ₸ / час</p>
             <p className="text-sm text-muted mt-1">
               С ученика в мини-группе (паре). Группа открывается сразу с одного человека.
             </p>

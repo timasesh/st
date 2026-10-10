@@ -24,7 +24,8 @@ export default function Footer() {
             </p>
             <div className="space-y-1 text-sm">
               <p className="text-blue-200/70">Основатель: <span className="text-white/90">Тлеужанов Тимур</span></p>
-              <p className="text-blue-200/70">Instagram: <a href="https://www.instagram.com/timurtleuzhanov1/" target="_blank" rel="noreferrer" className="text-white/90 underline underline-offset-4 hover:text-white transition-colors">@timurtleuzhanov1</a></p>
+              <p className="text-blue-200/70">Instagram: <a href="https://www.instagram.com/studytask.kz/" target="_blank" rel="noreferrer" className="text-white/90 underline underline-offset-4 hover:text-white transition-colors">@studytask.kz</a></p>
+              <p className="text-blue-200/70">Telegram: <a href="https://t.me/studytaskkz" target="_blank" rel="noreferrer" className="text-white/90 underline underline-offset-4 hover:text-white transition-colors">@studytaskkz</a></p>
             </div>
           </div>
 
