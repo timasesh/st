@@ -589,6 +589,7 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
   if (!Array.isArray(lessons) || lessons.length > 1000) return res.status(400).json({ error: 'Некорректный список занятий.' });
   const cleaned = [];
   const occupied = new Set();
+  const trialLessons = await readTrialLessons();
   for (const lesson of lessons) {
     if (!lesson || typeof lesson.id !== 'string' || typeof lesson.teacherId !== 'string'
       || !Number.isInteger(lesson.day) || lesson.day < 0 || lesson.day > 5
@@ -603,6 +604,9 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
     if (student && student.teacherId !== teacherId) return res.status(400).json({ error: 'У ученика изменился преподаватель. Обновите страницу и выберите ученика заново.' });
     if (!teacher) return res.status(400).json({ error: 'У ученика не назначен преподаватель.' });
     const normalizedSlotKey = `${teacherId}:${lesson.day}:${lesson.hour}`;
+    if (trialLessons.some((trial) => trial.teacherId === teacherId && trial.day === lesson.day && trial.hour === lesson.hour)) {
+      return res.status(409).json({ error: 'Этот слот занят пробным уроком. Выберите другое время.' });
+    }
     if (occupied.has(normalizedSlotKey)) return res.status(409).json({ error: 'У преподавателя уже есть урок в этом часовом слоте.' });
     occupied.add(normalizedSlotKey);
     cleaned.push({ id: lesson.id, ...(student ? { studentId: student.id } : {}), teacherId, day: lesson.day, hour: lesson.hour, title: lesson.title.trim() });
