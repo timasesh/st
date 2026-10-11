@@ -661,7 +661,7 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
   const trialLessons = await readTrialLessons();
   for (const lesson of lessons) {
     if (!lesson || typeof lesson.id !== 'string' || typeof lesson.teacherId !== 'string'
-      || !Number.isInteger(lesson.day) || lesson.day < 0 || lesson.day > 5
+      || !Number.isInteger(lesson.day) || lesson.day < 0 || lesson.day > 6
       || !Number.isInteger(lesson.hour) || lesson.hour < 8 || lesson.hour > 20
       || typeof lesson.title !== 'string' || !lesson.title.trim() || lesson.title.trim().length > 100) {
       return res.status(400).json({ error: 'Проверьте преподавателя, день, час и название каждого урока.' });
@@ -771,7 +771,7 @@ app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
   if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) {
     return res.status(400).json({ error: 'Укажите имя, фамилию, класс ученика и корректный номер родителя.' });
   }
-  if (!teacher || !Number.isInteger(day) || day < 0 || day > 5 || !Number.isInteger(hour) || hour < 8 || hour > 20) {
+  if (!teacher || !Number.isInteger(day) || day < 0 || day > 6 || !Number.isInteger(hour) || hour < 8 || hour > 20) {
     return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
   }
   try {
@@ -801,7 +801,7 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
     if (index < 0) return res.status(404).json({ error: 'Активный пробный урок не найден.' });
     const { teacherId, day, hour } = req.body || {};
     const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
-    if (!teacher || !Number.isInteger(day) || day < 0 || day > 5 || !Number.isInteger(hour) || hour < 8 || hour > 20) return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
+    if (!teacher || !Number.isInteger(day) || day < 0 || day > 6 || !Number.isInteger(hour) || hour < 8 || hour > 20) return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
     const scheduleResult = supabase ? await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle() : null;
     if (scheduleResult?.error) throw scheduleResult.error;
     const schedule = scheduleResult ? (scheduleResult.data?.value ? JSON.parse(scheduleResult.data.value) : { lessons: [] }) : await readJsonFileOr(schedulePath, { lessons: [] });
