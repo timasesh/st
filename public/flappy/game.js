@@ -1,7 +1,12 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const W = 400, H = 650;
-canvas.width = W; canvas.height = H;
+const pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
+canvas.width = Math.round(W * pixelRatio);
+canvas.height = Math.round(H * pixelRatio);
+ctx.scale(pixelRatio, pixelRatio);
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = 'high';
 
 const bgImage = null; // neutral procedural city background
 
@@ -107,31 +112,6 @@ for (let i = 0; i < 9; i++) {
 
 const SVG_PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
 const SVG_PLAY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-const SVG_FULLSCREEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg>';
-const SVG_EXIT_FULLSCREEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>';
-
-async function toggleFullscreen() {
-  const gameWrapper = document.getElementById('gameWrapper');
-  try {
-    if (document.fullscreenElement === gameWrapper) {
-      await document.exitFullscreen();
-    } else if (gameWrapper.requestFullscreen) {
-      await gameWrapper.requestFullscreen();
-    }
-  } catch (error) {
-    console.warn('Не удалось переключить полноэкранный режим игры.', error);
-  }
-}
-
-function updateFullscreenButton() {
-  const button = document.getElementById('fullscreenBtn');
-  const isFullscreen = document.fullscreenElement === document.getElementById('gameWrapper');
-  button.innerHTML = isFullscreen ? SVG_EXIT_FULLSCREEN : SVG_FULLSCREEN;
-  button.setAttribute('aria-label', isFullscreen ? 'Закрыть полноэкранный режим' : 'Открыть игру на весь экран');
-  button.title = isFullscreen ? 'Выйти из полноэкранного режима' : 'На весь экран';
-}
-
-document.addEventListener('fullscreenchange', updateFullscreenButton);
 
 // ===== PAUSE =====
 function togglePause() {
@@ -1118,12 +1098,7 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     if (!e.repeat) startFlight();
   }
-  if (e.code === 'Escape') {
-    if (document.fullscreenElement === document.getElementById('gameWrapper')) {
-      e.preventDefault();
-      document.exitFullscreen();
-    }
-  } else if (e.code === 'KeyP') {
+  if (e.code === 'Escape' || e.code === 'KeyP') {
     togglePause();
   }
 });
@@ -1133,6 +1108,11 @@ document.addEventListener('keyup', e => {
 });
 
 window.addEventListener('blur', stopFlight);
+
+const gameWrapper = document.getElementById('gameWrapper');
+['contextmenu', 'dragstart', 'selectstart'].forEach(eventName => {
+  gameWrapper.addEventListener(eventName, event => event.preventDefault());
+});
 
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();

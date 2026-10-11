@@ -11,7 +11,7 @@
 <body>
 
 <div id="gameWrapper">
-  <canvas id="gameCanvas" oncontextmenu="return false"></canvas>
+  <canvas id="gameCanvas"></canvas>
 
   <div id="ui">
     <div id="score">0</div>
@@ -55,9 +55,6 @@
     <button class="btn-outline" onclick="goToMainMenu()">← В меню</button>
   </div>
 
-  <button id="fullscreenBtn" class="ctrl-btn fullscreen-toggle" type="button" onclick="toggleFullscreen()" aria-label="Открыть игру на весь экран" title="На весь экран">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
-  </button>
 </div>
 
 <script src="./game.js"></script>

@@ -48,8 +48,7 @@ export default function FlappyBirdGame({ onReward }: FlappyBirdGameProps) {
           src="/flappy/index.html?autostart=1"
           title="Study Task Sky Quest"
           className="w-full max-w-[400px] h-[min(650px,75vh)] rounded-2xl border-2 border-border shadow-lg bg-navy"
-          allow="autoplay; fullscreen"
-          allowFullScreen
+          allow="autoplay"
         />
       </div>
     </div>
