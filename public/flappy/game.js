@@ -107,6 +107,31 @@ for (let i = 0; i < 9; i++) {
 
 const SVG_PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
 const SVG_PLAY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+const SVG_FULLSCREEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg>';
+const SVG_EXIT_FULLSCREEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>';
+
+async function toggleFullscreen() {
+  const gameWrapper = document.getElementById('gameWrapper');
+  try {
+    if (document.fullscreenElement === gameWrapper) {
+      await document.exitFullscreen();
+    } else if (gameWrapper.requestFullscreen) {
+      await gameWrapper.requestFullscreen();
+    }
+  } catch (error) {
+    console.warn('Не удалось переключить полноэкранный режим игры.', error);
+  }
+}
+
+function updateFullscreenButton() {
+  const button = document.getElementById('fullscreenBtn');
+  const isFullscreen = document.fullscreenElement === document.getElementById('gameWrapper');
+  button.innerHTML = isFullscreen ? SVG_EXIT_FULLSCREEN : SVG_FULLSCREEN;
+  button.setAttribute('aria-label', isFullscreen ? 'Закрыть полноэкранный режим' : 'Открыть игру на весь экран');
+  button.title = isFullscreen ? 'Выйти из полноэкранного режима' : 'На весь экран';
+}
+
+document.addEventListener('fullscreenchange', updateFullscreenButton);
 
 // ===== PAUSE =====
 function togglePause() {
@@ -315,7 +340,7 @@ function drawBlackHole(x, y, radius) {
 function drawPipe(pipe) {
   drawBookStack(pipe.x, 0, pipe.w, pipe.topH, true);
   const botY = pipe.topH + PIPE_GAP;
-  drawBookStack(pipe.x, botY, pipe.w, H - botY - 60, false);
+  drawBookStack(pipe.x, botY, pipe.w, H - botY, false);
 
   const gapMid = pipe.topH + PIPE_GAP/2;
   const grd = ctx.createRadialGradient(pipe.x + pipe.w/2, gapMid, 0, pipe.x + pipe.w/2, gapMid, 80);
@@ -542,7 +567,7 @@ function drawPlayer() {
 
 // ===== PARTICLES =====
 function drawParticles() {
-  const ground = H - 62;
+  const ground = H - 2;
   particles = particles.filter(p => p.life > 0);
   particles.forEach(p => {
     if (!p.landed) {
@@ -819,7 +844,7 @@ function updatePipes() {
     }
   });
 
-  if (player.y + player.h >= H - 60 || player.y <= 0) die();
+  if (player.y + player.h >= H || player.y <= 0) die();
 }
 
 // Функция `die` реализует локальную часть бизнес-логики модуля.
@@ -1093,7 +1118,12 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     if (!e.repeat) startFlight();
   }
-  if (e.code === 'Escape' || e.code === 'KeyP') {
+  if (e.code === 'Escape') {
+    if (document.fullscreenElement === document.getElementById('gameWrapper')) {
+      e.preventDefault();
+      document.exitFullscreen();
+    }
+  } else if (e.code === 'KeyP') {
     togglePause();
   }
 });

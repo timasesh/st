@@ -23,6 +23,18 @@ body {
   border: 2px solid rgba(0, 150, 255, 0.3);
 }
 
+#gameWrapper:fullscreen {
+  position: fixed;
+  inset: 0;
+  width: min(100vw, 61.538vh);
+  height: min(100vh, 162.5vw);
+  margin: auto;
+  border: 0;
+  border-radius: 0;
+  background: #050817;
+  box-shadow: none;
+}
+
 canvas {
   display: block;
   width: 100%;
@@ -309,7 +321,7 @@ canvas, .btn, .ctrl-btn, .btn-outline, #homeBtn, button {
 #topControls {
   position: absolute;
   top: 14px;
-  right: 14px;
+  right: 62px;
   display: none;
   flex-direction: row;
   gap: 8px;
@@ -332,6 +344,13 @@ canvas, .btn, .ctrl-btn, .btn-outline, #homeBtn, button {
 }
 .ctrl-btn:hover { border-color: rgba(255,255,255,0.5); color: #fff; }
 .ctrl-btn:active { transform: scale(0.9); }
+
+.fullscreen-toggle {
+  position: absolute;
+  z-index: 1200;
+  top: 14px;
+  right: 14px;
+}
 
 /* === PAUSE SCREEN === */
 #pauseScreen {
