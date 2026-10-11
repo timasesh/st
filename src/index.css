@@ -1,9 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Manrope", "Nunito", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;
 
   /* Blue brand palette */
@@ -82,6 +83,94 @@
   background: rgba(250, 252, 255, 0.92);
   backdrop-filter: blur(12px);
   border-bottom: 2px solid var(--color-border);
+}
+
+/* Landing page: keep the StudyTask blues while using a lighter, more current surface treatment. */
+.landing-site {
+  --landing-card-shadow: 0 16px 42px rgba(30, 64, 175, 0.08);
+  --landing-card-shadow-hover: 0 22px 48px rgba(30, 64, 175, 0.14);
+}
+
+.landing-site .clay-card {
+  background: #fff;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 1.5rem;
+  box-shadow: var(--landing-card-shadow);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.landing-site .clay-card-sm {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 1.125rem;
+  box-shadow: 0 8px 22px rgba(30, 64, 175, 0.07);
+}
+
+.landing-site .clay-btn {
+  border-radius: 0.95rem;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2);
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.landing-site .clay-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.24);
+}
+
+.landing-site .clay-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+}
+
+.landing-site .clay-nav {
+  background: rgba(250, 252, 255, 0.88);
+  border-bottom: 1px solid rgba(191, 219, 254, 0.8);
+  backdrop-filter: blur(18px);
+}
+
+.landing-site #home {
+  background:
+    radial-gradient(ellipse at 78% 18%, rgba(219, 234, 254, 0.95), transparent 34%),
+    radial-gradient(ellipse at 12% 84%, rgba(219, 234, 254, 0.7), transparent 32%),
+    linear-gradient(135deg, #f4f8ff 0%, #eff6ff 52%, #f8fbff 100%);
+}
+
+.landing-site section[id] {
+  scroll-margin-top: 5.5rem;
+}
+
+.landing-site :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.55);
+  outline-offset: 3px;
+}
+
+.landing-site :is(a, button) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .landing-site .clay-card:hover {
+    border-color: rgba(147, 197, 253, 0.95);
+    box-shadow: var(--landing-card-shadow-hover);
+  }
+}
+
+@media (max-width: 640px) {
+  .landing-site #home {
+    min-height: 100svh;
+    padding-top: 6.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-site *,
+  .landing-site *::before,
+  .landing-site *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @keyframes float-soft {

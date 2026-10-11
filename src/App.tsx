@@ -228,7 +228,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-surface text-foreground font-sans antialiased overflow-x-hidden selection:bg-primary-light selection:text-primary">
+    <div className="landing-site min-h-screen bg-surface text-foreground font-sans antialiased overflow-x-hidden selection:bg-primary-light selection:text-primary">
       
       {/* Sticky Navigation */}
       <Navbar
