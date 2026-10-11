@@ -55,8 +55,11 @@ grant all on public.accounts to service_role;
 create table if not exists public.skyquest_progress (
   student_id uuid primary key references public.accounts(id) on delete cascade,
   stars integer not null default 0 check (stars >= 0),
+  best_score integer not null default 0 check (best_score >= 0),
   updated_at timestamptz not null default now()
 );
+
+alter table public.skyquest_progress add column if not exists best_score integer not null default 0 check (best_score >= 0);
 
 alter table public.skyquest_progress enable row level security;
 revoke all on public.skyquest_progress from anon, authenticated;
@@ -77,3 +80,19 @@ $$;
 
 revoke all on function public.change_skyquest_stars(uuid, integer) from public, anon, authenticated;
 grant execute on function public.change_skyquest_stars(uuid, integer) to service_role;
+
+create or replace function public.record_skyquest_score(student_uuid uuid, new_score integer)
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.skyquest_progress (student_id, best_score, updated_at)
+  values (student_uuid, greatest(0, new_score), now())
+  on conflict (student_id) do update
+    set best_score = greatest(skyquest_progress.best_score, new_score), updated_at = now()
+  returning best_score;
+$$;
+
+revoke all on function public.record_skyquest_score(uuid, integer) from public, anon, authenticated;
+grant execute on function public.record_skyquest_score(uuid, integer) to service_role;

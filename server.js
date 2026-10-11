@@ -1312,10 +1312,16 @@ app.get('/api/student/homework/:entryId/attachment', async (req, res) => {
 });
 
 async function readSkyQuestProgress() {
-  if (!supabase) return readJsonFileOr(skyQuestProgressPath, {});
-  const result = await supabase.from('skyquest_progress').select('student_id, stars');
-  if (result.error) throw new Error(`Supabase skyquest_progress: ${result.error.message}. Выполните SQL из supabase/schema.sql.`);
-  return Object.fromEntries((result.data || []).map((row) => [row.student_id, Number(row.stars) || 0]));
+  const rows = supabase
+    ? await supabase.from('skyquest_progress').select('student_id, stars, best_score')
+    : null;
+  if (rows?.error) throw new Error(`Supabase skyquest_progress: ${rows.error.message}. Выполните SQL из supabase/schema.sql.`);
+  const source = supabase
+    ? Object.fromEntries((rows.data || []).map((row) => [row.student_id, { stars: Number(row.stars) || 0, bestScore: Number(row.best_score) || 0 }]))
+    : await readJsonFileOr(skyQuestProgressPath, {});
+  return Object.fromEntries(Object.entries(source).map(([studentId, value]) => [studentId, typeof value === 'number'
+    ? { stars: value, bestScore: 0 }
+    : { stars: Number(value?.stars) || 0, bestScore: Number(value?.bestScore) || 0 }]));
 }
 
 async function changeSkyQuestStars(studentId, delta) {
@@ -1325,12 +1331,27 @@ async function changeSkyQuestStars(studentId, delta) {
     return Number(result.data) || 0;
   }
   const balances = await readSkyQuestProgress();
-  balances[studentId] = Math.max(0, (Number(balances[studentId]) || 0) + delta);
+  balances[studentId] = { ...balances[studentId], stars: Math.max(0, (Number(balances[studentId]?.stars) || 0) + delta) };
   await fs.mkdir(dataDir, { recursive: true });
   const temporaryPath = `${skyQuestProgressPath}.tmp`;
   await fs.writeFile(temporaryPath, JSON.stringify(balances, null, 2), { mode: 0o600 });
   await fs.rename(temporaryPath, skyQuestProgressPath);
   return balances[studentId];
+}
+
+async function recordSkyQuestScore(studentId, score) {
+  if (supabase) {
+    const result = await supabase.rpc('record_skyquest_score', { student_uuid: studentId, new_score: score });
+    if (result.error) throw new Error(`Supabase Sky Quest score: ${result.error.message}. Выполните SQL из supabase/schema.sql.`);
+    return Number(result.data) || 0;
+  }
+  const balances = await readSkyQuestProgress();
+  balances[studentId] = { ...balances[studentId], bestScore: Math.max(Number(balances[studentId]?.bestScore) || 0, score) };
+  await fs.mkdir(dataDir, { recursive: true });
+  const temporaryPath = `${skyQuestProgressPath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(balances, null, 2), { mode: 0o600 });
+  await fs.rename(temporaryPath, skyQuestProgressPath);
+  return balances[studentId].bestScore;
 }
 
 app.get('/api/student/skyquest', async (req, res) => {
@@ -1339,12 +1360,29 @@ app.get('/api/student/skyquest', async (req, res) => {
   if (!user || user.account.role !== 'student') return res.status(403).json({ error: 'Доступ запрещён.' });
   try {
     const balances = await readSkyQuestProgress();
-    const leaderboard = accounts.filter((account) => account.role === 'student' && account.status !== 'withdrawn' && (Number(balances[account.id]) || 0) > 0)
-      .map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim(), stars: Number(balances[account.id]) || 0 }))
+    const activeStudents = accounts.filter((account) => account.role === 'student' && account.status !== 'withdrawn');
+    const leaderboard = activeStudents.filter((account) => balances[account.id]?.stars > 0)
+      .map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim(), stars: balances[account.id].stars }))
       .sort((a, b) => b.stars - a.stars || a.name.localeCompare(b.name, 'ru'))
       .slice(0, 20);
-    return res.json({ stars: Number(balances[user.account.id]) || 0, leaderboard });
+    const scoreLeaderboard = activeStudents.filter((account) => balances[account.id]?.bestScore > 0)
+      .map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim(), score: balances[account.id].bestScore }))
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'ru'))
+      .slice(0, 20);
+    return res.json({ stars: balances[user.account.id]?.stars || 0, bestScore: balances[user.account.id]?.bestScore || 0, leaderboard, scoreLeaderboard });
   } catch (error) { console.error('Could not load Sky Quest data:', error); return res.status(503).json({ error: 'Не удалось загрузить Sky Quest. Проверьте настройку хранилища.' }); }
+});
+
+app.post('/api/student/skyquest/score', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'student') return res.status(403).json({ error: 'Доступ запрещён.' });
+  const score = Number(req.body?.score);
+  if (!Number.isSafeInteger(score) || score < 0 || score > 1000000) return res.status(400).json({ error: 'Некорректный счёт.' });
+  try {
+    const bestScore = await recordSkyQuestScore(user.account.id, score);
+    return res.json({ bestScore });
+  } catch (error) { console.error('Could not save Sky Quest score:', error); return res.status(503).json({ error: 'Не удалось сохранить рекорд Sky Quest.' }); }
 });
 
 app.post('/api/student/skyquest/stars', async (req, res) => {
