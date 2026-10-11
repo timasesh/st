@@ -1150,10 +1150,11 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     imageParts.push({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}` } });
   }
   try {
+    const model = process.env.NVIDIA_MODEL?.trim() || 'moonshotai/kimi-k2.5';
     const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ model: process.env.NVIDIA_MODEL || 'mistralai/mistral-medium-3.5-128b', messages: [{ role: 'user', content: [{ type: 'text', text: `${STUDY_TEST_PROMPT}\n\nКласс ученика: ${subject.studentClass || 'не указан'}.` }, ...imageParts] }], max_tokens: 5000, temperature: 0.2, stream: false }),
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: [{ type: 'text', text: `${STUDY_TEST_PROMPT}\n\nКласс ученика: ${subject.studentClass || 'не указан'}.` }, ...imageParts] }], max_tokens: 5000, temperature: 0.2, stream: false }),
       signal: AbortSignal.timeout(120000),
     });
     let result = await response.json().catch(() => ({}));
@@ -1171,7 +1172,7 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
       if (!completed) return res.status(504).json({ error: 'Генерация занимает слишком долго. Попробуйте ещё раз.' });
     }
     if (!response.ok) {
-      const message = result?.detail || result?.error?.message || result?.message || `NVIDIA API вернул HTTP ${response.status}.`;
+      const message = result?.detail || result?.error?.message || result?.message || `NVIDIA API вернул HTTP ${response.status} для модели ${model}.`;
       return res.status(response.status === 429 ? 429 : 502).json({ error: `Не удалось сгенерировать тест: ${String(message).slice(0, 500)}` });
     }
     const content = result?.choices?.[0]?.message?.content;
