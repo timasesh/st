@@ -1155,21 +1155,23 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ model, messages: [{ role: 'user', content: [{ type: 'text', text: `${STUDY_TEST_PROMPT}\n\nКласс ученика: ${subject.studentClass || 'не указан'}.` }, ...imageParts] }], max_tokens: 3500, temperature: 0.2, reasoning_effort: 'low', stream: false }),
-      signal: AbortSignal.timeout(180000),
     });
     let result = await response.json().catch(() => ({}));
     if (response.status === 202 && typeof result.requestId === 'string') {
-      let completed = false;
-      for (let attempt = 0; attempt < 45; attempt += 1) {
+      while (true) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        const statusResponse = await fetch(`https://integrate.api.nvidia.com/v1/status/${encodeURIComponent(result.requestId)}`, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+        let statusResponse;
+        try {
+          statusResponse = await fetch(`https://integrate.api.nvidia.com/v1/status/${encodeURIComponent(result.requestId)}`, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+        } catch (pollError) {
+          if (pollError instanceof Error && (pollError.name === 'TimeoutError' || pollError.name === 'AbortError')) continue;
+          throw pollError;
+        }
         result = await statusResponse.json().catch(() => ({}));
         if (statusResponse.status === 202) continue;
         if (!statusResponse.ok) return res.status(502).json({ error: `NVIDIA API не завершил генерацию (HTTP ${statusResponse.status}).` });
-        completed = true;
         break;
       }
-      if (!completed) return res.status(504).json({ error: 'Генерация занимает слишком долго. Попробуйте ещё раз.' });
     }
     if (!response.ok) {
       const message = result?.detail || result?.error?.message || result?.message || `NVIDIA API вернул HTTP ${response.status} для модели ${model}.`;
@@ -1183,9 +1185,6 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     const quiz = validateGeneratedQuiz(raw.slice(firstBrace, lastBrace + 1));
     return res.json({ quiz: { ...quiz, studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, trial: Boolean(subject.trial), lessonId, lessonHour: currentHour, durationMinutes: 4 } });
   } catch (error) {
-    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-      return res.status(504).json({ error: 'NVIDIA не успела сгенерировать тест за 3 минуты. Попробуйте загрузить меньше изображений или повторить позже.' });
-    }
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка.';
     return res.status(502).json({ error: `Ошибка соединения с NVIDIA API: ${message.slice(0, 300)}` });
   }
