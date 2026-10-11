@@ -40,12 +40,24 @@ function AuthShell({ children, eyebrow }: { children: ReactNode; eyebrow: string
   );
 }
 
+function getFriendlyError(reason: unknown, fallback: string) {
+  if (reason instanceof Error) {
+    console.error('[StudyTask] Request failed:', reason);
+    const technicalMessage = /failed to fetch|networkerror|load failed|fetch failed|supabase|postgrest|pgrst|sqlstate|stack trace| at [\w.]+ \(/i.test(reason.message);
+    if (reason.message && !technicalMessage) return reason.message;
+  } else if (reason) console.error('[StudyTask] Request failed:', reason);
+  return fallback;
+}
+
 export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProps) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    try { const message = sessionStorage.getItem('study_task_login_notice') || ''; sessionStorage.removeItem('study_task_login_notice'); return message; }
+    catch { return ''; }
+  });
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -62,7 +74,7 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
       onLoginSuccess(`${account.firstName} ${account.lastName}`, account.studentClass || '', account.id, result.progress || null, account.role);
       window.location.assign(account.role === 'teacher' ? '/teacher/' : account.role === 'parent' ? '/parent' : '/student');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.');
+      setError(getFriendlyError(reason, 'Не удалось войти. Проверьте подключение к интернету и попробуйте ещё раз.'));
     } finally {
       setLoading(false);
     }
@@ -123,9 +135,18 @@ type AdminSession = { authenticated: boolean; mustChangePassword?: boolean };
 async function readApiResponse(response: Response) {
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
-    throw new Error('Сервер авторизации не запущен. В Render откройте Settings → Build & Deploy и замените Start Command `npx vite preview ...` на `npm start`, затем выполните Deploy.');
+    const body = await response.text().catch(() => '');
+    console.error('[StudyTask] Expected a JSON API response', { url: response.url, status: response.status, contentType, body: body.slice(0, 800) });
+    throw new Error('Сервис временно недоступен. Попробуйте войти ещё раз чуть позже.');
   }
-  return response.json();
+  let result;
+  try { result = await response.json(); }
+  catch (reason) { console.error('[StudyTask] Could not parse API response', { url: response.url, status: response.status, reason }); throw new Error('Не удалось получить ответ сервиса. Попробуйте ещё раз.'); }
+  if (response.status >= 500) {
+    console.error('[StudyTask] API request failed', { url: response.url, status: response.status, error: result?.error });
+    return { ...result, error: 'Сейчас не удалось выполнить запрос. Попробуйте ещё раз позже.' };
+  }
+  return result;
 }
 
 export function AdminLoginPage() {
@@ -133,7 +154,10 @@ export function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [session, setSession] = useState<AdminSession | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    try { const message = sessionStorage.getItem('study_task_admin_login_notice') || ''; sessionStorage.removeItem('study_task_admin_login_notice'); return message; }
+    catch { return ''; }
+  });
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
@@ -142,7 +166,7 @@ export function AdminLoginPage() {
       .then((result: AdminSession) => setSession(result))
       .catch((reason) => {
         setSession({ authenticated: false });
-        setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу авторизации.');
+        setError(getFriendlyError(reason, 'Не удалось подключиться к серверу авторизации.'));
       });
   }, []);
 
@@ -161,7 +185,7 @@ export function AdminLoginPage() {
       if (!response.ok) throw new Error(result.error || 'Не удалось войти. Проверьте логин и пароль.');
       window.location.assign('/admin');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Ошибка соединения с сервером.');
+      setError(getFriendlyError(reason, 'Ошибка соединения с сервером.'));
     } finally {
       setLoading(false);
     }
@@ -316,12 +340,19 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
     try {
       const response = await fetch('/api/auth/portal', { credentials: 'same-origin' });
       const result = await readApiResponse(response);
-      if (response.status === 401) { window.location.replace(expectedRole === 'teacher' ? '/teacher_login' : '/login'); return; }
+      if (response.status === 401) {
+        try { sessionStorage.setItem('study_task_login_notice', 'Сеанс завершился. Войдите в аккаунт, чтобы продолжить.'); } catch (reason) { console.error('[StudyTask] Could not save login notice:', reason); }
+        window.location.replace(expectedRole === 'teacher' ? '/teacher_login' : '/login'); return;
+      }
       if (!response.ok) throw new Error(result.error || 'Не удалось загрузить личный кабинет.');
       if (result.account?.role !== expectedRole) { window.location.replace(result.account?.role === 'teacher' ? '/teacher/' : result.account?.role === 'parent' ? '/parent' : '/student'); return; }
       setPortal(result as PortalPayload);
       setError('');
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.'); }
+    } catch (reason) {
+      getFriendlyError(reason, 'Не удалось загрузить личный кабинет.');
+      try { sessionStorage.setItem('study_task_login_notice', 'Не удалось открыть личный кабинет. Войдите в аккаунт ещё раз. Если ошибка повторится, обратитесь к администратору.'); } catch (storageError) { console.error('[StudyTask] Could not save login notice:', storageError); }
+      window.location.replace(expectedRole === 'teacher' ? '/teacher_login' : '/login');
+    }
     finally { setLoading(false); }
   };
 
@@ -347,7 +378,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось открыть карточку ученика.');
       setStudentHistory(Array.isArray(result.history) ? result.history : []);
-    } catch (reason) { setStudentDetailError(reason instanceof Error ? reason.message : 'Не удалось загрузить карточку ученика.'); }
+    } catch (reason) { setStudentDetailError(getFriendlyError(reason, 'Не удалось загрузить карточку ученика.')); }
     finally { setStudentHistoryLoading(false); }
   };
 
@@ -364,7 +395,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
       setSelectedDailyLesson(null); setLessonAttendance(null);
       setHomeworkGrade(''); setLessonTopic(''); setNextHomework(''); setTestGrade(''); setLessonAttendanceReason('');
       await loadPortal();
-    } catch (reason) { setStudentDetailError(reason instanceof Error ? reason.message : 'Не удалось сохранить занятие.'); }
+    } catch (reason) { setStudentDetailError(getFriendlyError(reason, 'Не удалось сохранить занятие.')); }
     finally { setStudentHistorySaving(false); }
   };
 
@@ -373,7 +404,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
     try {
       setSelectedDailyLesson(lesson); setLessonAttendance(attended); setLessonAttendanceReason(''); setLessonDate(todayInAstana()); setLessonTime(`${String(lesson.hour).padStart(2, '0')}:00`);
       setHomeworkGrade(''); setLessonTopic(''); setNextHomework(''); setTestGrade('');
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось отметить присутствие.'); }
+    } catch (reason) { setError(getFriendlyError(reason, 'Не удалось отметить присутствие.')); }
     finally { setSubmittingAttendanceId(''); }
   };
 
@@ -392,7 +423,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось сгенерировать тест.');
       setGenerationProgress(100); setGeneratedTest(result.quiz as GeneratedQuiz);
-    } catch (reason) { setStudentDetailError(reason instanceof Error ? reason.message : 'Не удалось сгенерировать тест.'); }
+    } catch (reason) { setStudentDetailError(getFriendlyError(reason, 'Не удалось сгенерировать тест.')); }
     finally { setTestGenerating(false); }
   };
 
@@ -430,7 +461,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось отправить тест ученику.');
       setTestLesson(null); setGeneratedTest(null); setTestFiles([]); setPreviewImage(null); await loadPortal();
-    } catch (reason) { setStudentDetailError(reason instanceof Error ? reason.message : 'Не удалось назначить тест.'); }
+    } catch (reason) { setStudentDetailError(getFriendlyError(reason, 'Не удалось назначить тест.')); }
     finally { setTestAssigning(false); }
   };
 
@@ -443,7 +474,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось отправить ответы.');
       setStudentTestNotice(`Тест завершён: ${result.score} из ${result.total}.`); setStudentTest(null); setStudentTestAnswers([]); await loadPortal();
-    } catch (reason) { setStudentTestNotice(reason instanceof Error ? reason.message : 'Не удалось отправить ответы.'); }
+    } catch (reason) { setStudentTestNotice(getFriendlyError(reason, 'Не удалось отправить ответы.')); }
     finally { setStudentTestSaving(false); }
   };
 
@@ -454,7 +485,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось отметить сообщение прочитанным.');
       setPortal((current) => current ? { ...current, messages: current.messages.map((entry) => entry.id === message.id ? { ...entry, read: true } : entry) } : current);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось обновить сообщение.'); }
+    } catch (reason) { setError(getFriendlyError(reason, 'Не удалось обновить сообщение.')); }
     finally { setSavingMessageId(''); }
   };
 
@@ -469,7 +500,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
       if (!response.ok) throw new Error(result.error || 'Не удалось прикрепить файл.');
       await loadPortal(); setHomeworkNotice(`Файл «${homeworkFile.name}» прикреплён.`); setHomeworkFile(null);
       setSelectedHomework((current) => current ? { ...current, attachment: { filename: homeworkFile.name, mimeType: homeworkFile.type, updatedAt: new Date().toISOString() } } : current);
-    } catch (reason) { setHomeworkNotice(reason instanceof Error ? reason.message : 'Не удалось прикрепить файл.'); }
+    } catch (reason) { setHomeworkNotice(getFriendlyError(reason, 'Не удалось прикрепить файл.')); }
     finally { setHomeworkSaving(false); }
   };
 
@@ -644,7 +675,7 @@ export function AdminDashboardPage() {
       if (!response.ok) throw new Error(result.error || 'Не удалось загрузить историю.');
       setHistoryEntries(result as AdminHistoryEntry[]);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось загрузить историю действий.');
+      setError(getFriendlyError(reason, 'Не удалось загрузить историю действий.'));
     } finally { setHistoryLoading(false); }
   };
 
@@ -662,8 +693,9 @@ export function AdminDashboardPage() {
         await loadTrialLessons();
       })
       .catch((reason) => {
-        if (reason instanceof Error && reason.message.includes('Сервер авторизации')) setError(reason.message);
-        else window.location.replace('/admin_login');
+        const message = getFriendlyError(reason, 'Не удалось открыть панель. Войдите в аккаунт администратора ещё раз.');
+        try { sessionStorage.setItem('study_task_admin_login_notice', message); } catch (storageError) { console.error('[StudyTask] Could not save login notice:', storageError); }
+        window.location.replace('/admin_login');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -726,7 +758,7 @@ export function AdminDashboardPage() {
       await loadTrialLessons();
       setShowTrialModal(false); setTrialFirstName(''); setTrialLastName(''); setTrialSlot(''); setTrialParentPhone(''); setTrialLessonLink(''); setTrialLessonDescription(''); setEditingTrialId(null);
       setSuccess(editingTrialId ? 'Пробный урок перенесён.' : `Пробный урок для ${trialFirstName} ${trialLastName} создан.`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось создать пробный урок.'); }
+    } catch (reason) { setError(getFriendlyError(reason, 'Не удалось создать пробный урок.')); }
     finally { setSaving(false); }
   };
 
@@ -741,7 +773,7 @@ export function AdminDashboardPage() {
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось удалить пробный урок.');
       await loadTrialLessons(); setSuccess('Пробный урок удалён.'); setError('');
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось удалить пробный урок.'); }
+    } catch (reason) { setError(getFriendlyError(reason, 'Не удалось удалить пробный урок.')); }
   };
 
   const moveTrialToPast = async (lesson: TrialLesson) => {
@@ -752,7 +784,7 @@ export function AdminDashboardPage() {
       if (!response.ok) throw new Error(result.error || 'Не удалось перенести пробный урок.');
       await loadTrialLessons();
       setSuccess(`${lesson.firstName} ${lesson.lastName} перенесён в прошедшие пробные.`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось перенести пробный урок.'); }
+    } catch (reason) { setError(getFriendlyError(reason, 'Не удалось перенести пробный урок.')); }
   };
 
   const finishTrial = async (outcome: 'declined' | 'enrolled') => {
@@ -769,7 +801,7 @@ export function AdminDashboardPage() {
       if (outcome === 'declined') { setSuccess('Отказ сохранён.'); return; }
       await loadAccounts();
       setActiveRole('parent'); setActiveView('accounts'); setSearch(''); setEditingAccountId(null); setFirstName(''); setLastName(''); setPhone(selectedTrial.parentPhone); setPassword('study2026'); setStudentClass(selectedTrial.studentClass); setTeacherId(''); setSelectedChildren([result.student.id]); setChildSearch(''); setError(''); setSuccess(''); setTrialConversionInfo(`Ученик создан. Его временный логин: ${result.temporaryLogin}, пароль: study2026. Временный пароль родителя: study2026.`); setShowAccountModal(true);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось сохранить результат.'); }
+    } catch (reason) { setError(getFriendlyError(reason, 'Не удалось сохранить результат.')); }
     finally { setSaving(false); }
   };
 
@@ -819,7 +851,7 @@ export function AdminDashboardPage() {
       setSuccess(editingAccountId ? 'Изменения сохранены.' : `Аккаунт ${firstName} ${lastName} создан. Логин для входа: ${phone}.`);
       setShowAccountModal(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.');
+      setError(getFriendlyError(reason, 'Не удалось подключиться к серверу.'));
     } finally {
       setSaving(false);
     }
@@ -838,7 +870,7 @@ export function AdminDashboardPage() {
       setSuccess(isStudentArchive ? `${deleteTarget.firstName} ${deleteTarget.lastName} перемещён во вкладку «Выбывшие».` : `Аккаунт ${deleteTarget.firstName} ${deleteTarget.lastName} удалён.`);
       setDeleteTarget(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось удалить аккаунт.');
+      setError(getFriendlyError(reason, 'Не удалось удалить аккаунт.'));
       setDeleteTarget(null);
     } finally {
       setSaving(false);
@@ -859,7 +891,7 @@ export function AdminDashboardPage() {
       setSuccess(`Сообщение отправлено: ${messageTarget.firstName} ${messageTarget.lastName}.`);
       setMessageTarget(null); setMessageBody('');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось отправить сообщение.');
+      setError(getFriendlyError(reason, 'Не удалось отправить сообщение.'));
     } finally { setSaving(false); }
   };
 
@@ -873,7 +905,7 @@ export function AdminDashboardPage() {
       await loadAccounts();
       setSuccess(`${student.firstName} ${student.lastName} возвращён в список учеников.`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось вернуть ученика.');
+      setError(getFriendlyError(reason, 'Не удалось вернуть ученика.'));
     }
   };
 
@@ -889,7 +921,7 @@ export function AdminDashboardPage() {
       setSchedule({ lessons: result.lessons, targets: result.targets || {} });
       setSuccess('Расписание сохранено.');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить расписание.');
+      setError(getFriendlyError(reason, 'Не удалось сохранить расписание.'));
     } finally { setSaving(false); }
   };
 
@@ -956,7 +988,7 @@ export function AdminDashboardPage() {
       setCurrentAdminPassword(''); setNewAdminPassword(''); setConfirmAdminPassword('');
       setSuccess('Пароль администратора успешно изменён.');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось подключиться к серверу.');
+      setError(getFriendlyError(reason, 'Не удалось подключиться к серверу.'));
     } finally {
       setSaving(false);
     }
