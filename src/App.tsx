@@ -25,7 +25,7 @@ type StoredProgress = {
 
 const DEFAULT_PROGRESS: StoredProgress = {
   stars: 5,
-  xp: 45,
+  xp: 0,
   level: 1,
   claimedPrizes: [],
   unlockedAchievements: [],
@@ -150,7 +150,7 @@ export default function App() {
 
   // Custom User details sync
   const handleLoginSuccess = (name: string, studentClass: string, accountId: string, savedProgress: Partial<StoredProgress> | null, role: 'student' | 'parent' | 'teacher') => {
-    const accountProgress = role === 'student' ? (savedProgress || loadStoredProgress()) : null;
+    const accountProgress = role === 'student' ? (savedProgress || DEFAULT_PROGRESS) : null;
     const nextProgress = { ...DEFAULT_PROGRESS, ...(accountProgress || {}), userName: name, userClass: studentClass };
     setUserName(name);
     setUserClass(studentClass);
