@@ -15,9 +15,9 @@ export default function FlappyBirdGame({ onReward }: FlappyBirdGameProps) {
       if (score <= rewardedRef.current) return;
       rewardedRef.current = score;
 
-      const stars = Math.max(1, Math.floor(score / 3));
       const xp = score * 8;
-      onReward(stars, xp);
+      // Sky Quest stars belong to the game's own balance; only XP is a study reward.
+      onReward(0, xp);
     };
 
     window.addEventListener('message', handler);
@@ -34,7 +34,7 @@ export default function FlappyBirdGame({ onReward }: FlappyBirdGameProps) {
         <div className="flex items-center gap-3 text-xs font-bold">
           <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full border-2 border-amber-200">
             <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-            +1 звезда за ~3 очка
+            Игровые звёзды
           </span>
           <span className="inline-flex items-center gap-1 bg-accent-light text-primary px-3 py-1.5 rounded-full border-2 border-border">
             <Zap className="w-3.5 h-3.5" />

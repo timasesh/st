@@ -302,7 +302,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
   const [submittingAttendanceId, setSubmittingAttendanceId] = useState('');
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [teacherTab, setTeacherTab] = useState<'lessons' | 'students' | 'schedule'>('lessons');
-  const [studentTab, setStudentTab] = useState<'lessons' | 'schedule' | 'tests' | 'homework'>('lessons');
+  const [studentTab, setStudentTab] = useState<'lessons' | 'schedule' | 'tests' | 'homework' | 'skyquest'>('lessons');
   const [selectedHomework, setSelectedHomework] = useState<StudentLessonHistoryEntry | null>(null);
   const [homeworkFile, setHomeworkFile] = useState<File | null>(null);
   const [homeworkSaving, setHomeworkSaving] = useState(false);

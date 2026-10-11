@@ -23,6 +23,7 @@ const inboxesPath = path.join(dataDir, 'account-inboxes.json');
 const studentLessonHistoryPath = path.join(dataDir, 'student-lesson-history.json');
 const studentTestsPath = path.join(dataDir, 'student-tests.json');
 const homeworkAttachmentsPath = path.join(dataDir, 'homework-attachments.json');
+const skyQuestProgressPath = path.join(dataDir, 'skyquest-progress.json');
 const cookieName = 'study_admin_session';
 const userCookieName = 'study_user_session';
 const sessionDurationSeconds = 12 * 60 * 60;
@@ -1308,6 +1309,54 @@ app.get('/api/student/homework/:entryId/attachment', async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   return res.send(Buffer.from(file.data, 'base64'));
+});
+
+async function readSkyQuestProgress() {
+  if (!supabase) return readJsonFileOr(skyQuestProgressPath, {});
+  const result = await supabase.from('skyquest_progress').select('student_id, stars');
+  if (result.error) throw new Error(`Supabase skyquest_progress: ${result.error.message}. Выполните SQL из supabase/schema.sql.`);
+  return Object.fromEntries((result.data || []).map((row) => [row.student_id, Number(row.stars) || 0]));
+}
+
+async function changeSkyQuestStars(studentId, delta) {
+  if (supabase) {
+    const result = await supabase.rpc('change_skyquest_stars', { student_uuid: studentId, star_delta: delta });
+    if (result.error) throw new Error(`Supabase Sky Quest: ${result.error.message}. Выполните SQL из supabase/schema.sql.`);
+    return Number(result.data) || 0;
+  }
+  const balances = await readSkyQuestProgress();
+  balances[studentId] = Math.max(0, (Number(balances[studentId]) || 0) + delta);
+  await fs.mkdir(dataDir, { recursive: true });
+  const temporaryPath = `${skyQuestProgressPath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(balances, null, 2), { mode: 0o600 });
+  await fs.rename(temporaryPath, skyQuestProgressPath);
+  return balances[studentId];
+}
+
+app.get('/api/student/skyquest', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'student') return res.status(403).json({ error: 'Доступ запрещён.' });
+  try {
+    const balances = await readSkyQuestProgress();
+    const leaderboard = accounts.filter((account) => account.role === 'student' && account.status !== 'withdrawn' && (Number(balances[account.id]) || 0) > 0)
+      .map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim(), stars: Number(balances[account.id]) || 0 }))
+      .sort((a, b) => b.stars - a.stars || a.name.localeCompare(b.name, 'ru'))
+      .slice(0, 20);
+    return res.json({ stars: Number(balances[user.account.id]) || 0, leaderboard });
+  } catch (error) { console.error('Could not load Sky Quest data:', error); return res.status(503).json({ error: 'Не удалось загрузить Sky Quest. Проверьте настройку хранилища.' }); }
+});
+
+app.post('/api/student/skyquest/stars', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'student') return res.status(403).json({ error: 'Доступ запрещён.' });
+  const delta = Number(req.body?.delta);
+  if (![1, -5].includes(delta)) return res.status(400).json({ error: 'Недопустимое изменение баланса.' });
+  try {
+    const stars = await changeSkyQuestStars(user.account.id, delta);
+    return res.json({ stars });
+  } catch (error) { console.error('Could not update Sky Quest stars:', error); return res.status(503).json({ error: 'Не удалось сохранить игровые звёзды.' }); }
 });
 
 app.get('/api/auth/portal', async (req, res) => {

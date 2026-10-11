@@ -44,6 +44,26 @@ let isDying = false;
 
 // Coins
 let totalCoins = parseInt(localStorage.getItem('studyTaskFlappyCoins') || '0');
+let skyQuestAccountSync = false;
+let skyQuestSyncQueue = Promise.resolve();
+function updateSkyQuestBalance(delta) {
+  localStorage.setItem('studyTaskFlappyCoins', totalCoins);
+  const startCount = document.getElementById('startCoinCount');
+  const coinCount = document.getElementById('coinCount');
+  const totalCount = document.getElementById('goTotalCoins');
+  if (startCount) startCount.textContent = totalCoins;
+  if (coinCount) coinCount.textContent = totalCoins;
+  if (totalCount) totalCount.textContent = `Всего звёзд: ${totalCoins}`;
+  if (!skyQuestAccountSync || !delta) return;
+  skyQuestSyncQueue = skyQuestSyncQueue.then(() => fetch('/api/student/skyquest/stars', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delta }) }))
+    .then(response => response.ok ? response.json() : null)
+    .then(result => {
+      if (!result || !Number.isFinite(Number(result.stars))) return;
+      totalCoins = Number(result.stars);
+      updateSkyQuestBalance(0);
+      window.parent.postMessage({ type: 'SKYQUEST_BALANCE_CHANGED' }, window.location.origin);
+    }).catch(() => {});
+}
 let sessionCoins = 0;
 let coinOnScreen = null;
 let nextCoinPipe = 4 + Math.floor(Math.random() * 3);
@@ -437,7 +457,7 @@ function drawCoin() {
       coinOnScreen = null;
       totalCoins++;
       sessionCoins++;
-      localStorage.setItem('studyTaskFlappyCoins', totalCoins);
+      updateSkyQuestBalance(1);
       floatingTexts.push({
         x: player.x + 20, y: player.y - 15,
         text: '+1 ⭐', color: '#ffcc00', size: 15,
@@ -955,7 +975,7 @@ function continueByCoin() {
   if (totalCoins < 5) return;
   totalCoins -= 5;
   lifeUsedThisRound = true;
-  localStorage.setItem('studyTaskFlappyCoins', totalCoins);
+  updateSkyQuestBalance(-5);
 
   document.getElementById('gameOverScreen').style.display = 'none';
   document.getElementById('score').style.display = 'block';
@@ -1126,6 +1146,14 @@ canvas.addEventListener('pointercancel', stopFlight);
 canvas.addEventListener('lostpointercapture', stopFlight);
 
 document.getElementById('startCoinCount').textContent = totalCoins;
+fetch('/api/student/skyquest', { credentials: 'same-origin' })
+  .then(response => response.ok ? response.json() : null)
+  .then(result => {
+    if (!result || !Number.isFinite(Number(result.stars))) return;
+    skyQuestAccountSync = true;
+    totalCoins = Number(result.stars);
+    updateSkyQuestBalance(0);
+  }).catch(() => {});
 
 // Start game loop (procedural background, no AlmaU image)
 gameLoop();
