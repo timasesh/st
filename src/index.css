@@ -239,6 +239,42 @@ body {
   background-color: #111c2d !important;
 }
 
+.skyquest-nav-tab {
+  position: relative;
+  overflow: hidden;
+  color: #fff !important;
+  background: linear-gradient(110deg, #2563eb 10%, #38bdf8 42%, #4f46e5 62%, #2563eb 90%);
+  background-size: 220% 100%;
+  animation: skyquest-blue-shimmer 3.2s ease-in-out infinite;
+  box-shadow: 0 0 12px rgb(37 99 235 / 38%), 0 0 25px rgb(56 189 248 / 20%);
+}
+
+.skyquest-nav-tab::after {
+  position: absolute;
+  inset: -35% auto -35% -60%;
+  width: 42%;
+  content: '';
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 46%), transparent);
+  transform: skewX(-22deg);
+  animation: skyquest-blue-sweep 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.skyquest-nav-tab > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes skyquest-blue-shimmer {
+  0%, 100% { background-position: 0% 50%; box-shadow: 0 0 10px rgb(37 99 235 / 34%), 0 0 20px rgb(56 189 248 / 18%); }
+  50% { background-position: 100% 50%; box-shadow: 0 0 16px rgb(37 99 235 / 52%), 0 0 30px rgb(56 189 248 / 32%); }
+}
+
+@keyframes skyquest-blue-sweep {
+  0%, 30% { left: -60%; }
+  75%, 100% { left: 125%; }
+}
+
 .admin-dashboard.theme-dark .bg-primary-light {
   background-color: #17253a !important;
 }
@@ -299,7 +335,9 @@ body {
   .animate-bounce,
   .animate-pulse,
   .animate-ping,
-  .animate-spin-slow {
+  .animate-spin-slow,
+  .skyquest-nav-tab,
+  .skyquest-nav-tab::after {
     animation: none !important;
   }
 }

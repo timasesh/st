@@ -51,6 +51,7 @@ function getFriendlyError(reason: unknown, fallback: string) {
 }
 
 export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProps) {
+  const [accountType, setAccountType] = useState<'student' | 'parent'>('student');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -67,7 +68,7 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-        body: JSON.stringify({ phone, password, audience: expectedRole || 'student_parent' }),
+        body: JSON.stringify({ phone, password, audience: expectedRole || accountType }),
       });
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось войти. Проверьте номер телефона и пароль.');
@@ -82,13 +83,14 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
   };
 
   return (
-    <AuthShell eyebrow={expectedRole ? 'ЛИЧНЫЙ КАБИНЕТ ПРЕПОДАВАТЕЛЯ' : 'ЛИЧНЫЙ КАБИНЕТ УЧЕНИКА И РОДИТЕЛЯ'}>
-      <UserRound className="mx-auto mb-2 mt-4 h-9 w-9 text-blue-100" />
-      <h1 className="font-display text-2xl font-extrabold">С возвращением!</h1>
-      <p className="mt-1 text-sm text-blue-100">{expectedRole ? 'Вход преподавателя по данным, выданным администратором' : 'Вход для ученика или родителя по данным от администратора'}</p>
-      <form onSubmit={submit} className="space-y-4 bg-surface p-6 text-left">
-        <label className="block space-y-1.5 text-sm font-bold text-foreground" htmlFor="student-phone">
-          Номер телефона
+    <AuthShell eyebrow={expectedRole ? 'ЛИЧНЫЙ КАБИНЕТ ПРЕПОДАВАТЕЛЯ' : 'STUDYTASK · ЛИЧНЫЙ КАБИНЕТ'}>
+      <span className="mx-auto mb-3 mt-5 grid h-14 w-14 place-items-center rounded-2xl bg-white/15 shadow-inner ring-1 ring-white/25"><UserRound className="h-7 w-7 text-white" /></span>
+      <h1 className="font-display text-3xl font-extrabold tracking-tight">С возвращением!</h1>
+      <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-blue-100">{expectedRole ? 'Войдите по данным, выданным администратором' : 'Войдите в свой учебный профиль'}</p>
+      <form onSubmit={submit} className="space-y-4 bg-white p-6 text-left sm:p-7">
+        {!expectedRole && <fieldset className="space-y-2"><legend className="text-sm font-bold text-slate-700">Кто входит в аккаунт?</legend><div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5"><button type="button" aria-pressed={accountType === 'student'} onClick={() => { setAccountType('student'); setError(''); }} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${accountType === 'student' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><GraduationCap className="h-4 w-4"/>Ученик</button><button type="button" aria-pressed={accountType === 'parent'} onClick={() => { setAccountType('parent'); setError(''); }} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${accountType === 'parent' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><Users className="h-4 w-4"/>Родитель</button></div><p className="text-xs leading-5 text-slate-500">{accountType === 'parent' ? 'Используйте телефон и пароль родительского аккаунта, созданного администратором.' : 'Используйте телефон и пароль аккаунта ученика, созданного администратором.'}</p></fieldset>}
+        <label className="block space-y-1.5 text-sm font-bold text-slate-700" htmlFor="student-phone">
+          Номер телефона аккаунта
           <input
             id="student-phone"
             type="tel"
@@ -97,10 +99,10 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
             placeholder="+7 700 000 00 00"
-            className="w-full rounded-xl border-2 border-border bg-primary-light px-4 py-3 font-normal focus:border-primary focus:bg-white focus:outline-none"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
           />
         </label>
-        <label className="block space-y-1.5 text-sm font-bold text-foreground" htmlFor="student-password">
+        <label className="block space-y-1.5 text-sm font-bold text-slate-700" htmlFor="student-password">
           Пароль
           <span className="relative block">
             <LockKeyhole className="absolute left-3.5 top-3.5 h-4 w-4 text-muted" />
@@ -112,7 +114,7 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Введи пароль"
-              className="w-full rounded-xl border-2 border-border bg-primary-light py-3 pl-10 pr-12 font-normal focus:border-primary focus:bg-white focus:outline-none"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-10 pr-12 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
             />
             <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'} className="absolute right-3 top-3 rounded p-1 text-muted hover:text-primary">
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -120,10 +122,10 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
           </span>
         </label>
         {error && <p role="alert" className="text-sm font-semibold text-rose-600">{error}</p>}
-        <button type="submit" disabled={loading} className="clay-btn flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 font-display text-sm font-bold text-white disabled:opacity-70">
-          {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><LogIn className="h-4 w-4" /> Войти в профиль</>}
+        <button type="submit" disabled={loading} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 px-5 py-3 font-display text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-600/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:translate-y-0 disabled:opacity-70">
+          {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><LogIn className="h-4 w-4" /> Войти {accountType === 'parent' && !expectedRole ? 'как родитель' : 'в профиль'}</>}
         </button>
-        <p className="text-center text-xs text-muted">Нет регистрации на сайте — данные для входа выдаёт центр.</p>
+        <p className="text-center text-xs leading-5 text-slate-500">Вход доступен по данным аккаунта, который создал администратор.</p>
       </form>
       <a href="/admin_login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход для администратора</a>
       {expectedRole ? <a href="/login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход ученика или родителя</a> : <a href="/teacher_login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход преподавателя</a>}

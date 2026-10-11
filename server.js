@@ -1502,7 +1502,12 @@ app.post('/api/auth/login', async (req, res) => {
   const password = req.body?.password;
   const audience = req.body?.audience;
   const account = accounts.find((entry) => entry.phone === phone);
-  const roleAllowed = account && account.status !== 'withdrawn' && (audience === 'teacher' ? account.role === 'teacher' : ['student', 'parent'].includes(account.role));
+  const roleAllowed = account && account.status !== 'withdrawn' && (
+    audience === 'teacher' ? account.role === 'teacher'
+      : audience === 'student' ? account.role === 'student'
+        : audience === 'parent' ? account.role === 'parent'
+          : ['student', 'parent'].includes(account.role)
+  );
   const validPassword = account && account.status !== 'withdrawn' && typeof password === 'string' && password.length <= 128
     ? await passwordsMatch(password, account.salt, account.passwordHash)
     : false;
