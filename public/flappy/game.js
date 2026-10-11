@@ -81,6 +81,10 @@ const player = {
 let pipes = [], particles = [], floatingTexts = [];
 let bgStars = [];
 let bgClouds = [];
+let visualSpaceStage = -1;
+let landmarkX = W;
+let stageTransitionFrame = 60;
+const STAGE_TRANSITION_DURATION = 72;
 
 for (let i = 0; i < 60; i++) {
   bgStars.push({
@@ -117,6 +121,12 @@ function togglePause() {
 function drawBackground() {
   const moving = (gameState === 'playing' || gameState === 'dead') && !isPaused;
   const spaceStage = getSpaceStage(score);
+  if (spaceStage !== visualSpaceStage) {
+    visualSpaceStage = spaceStage;
+    landmarkX = W + getLandmarkRadius(spaceStage);
+    stageTransitionFrame = spaceStage === 0 && frame < 2 ? STAGE_TRANSITION_DURATION : 0;
+  }
+  if (moving && stageTransitionFrame < STAGE_TRANSITION_DURATION) stageTransitionFrame++;
 
   if (spaceStage === 0) {
     const sky = ctx.createLinearGradient(0, 0, 0, H);
@@ -126,6 +136,7 @@ function drawBackground() {
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W, H);
     drawCloudscape(moving);
+    drawStageTransition();
     return;
   }
 
@@ -138,6 +149,15 @@ function drawBackground() {
 
   drawStarfield(moving);
   if (spaceStage < 7) drawSpaceLandmark(spaceStage, moving);
+  drawStageTransition();
+}
+
+function drawStageTransition() {
+  if (stageTransitionFrame >= STAGE_TRANSITION_DURATION) return;
+  const progress = stageTransitionFrame / STAGE_TRANSITION_DURATION;
+  const darkness = Math.sin(progress * Math.PI) * 0.76;
+  ctx.fillStyle = `rgba(1,3,12,${darkness})`;
+  ctx.fillRect(0, 0, W, H);
 }
 
 function getSpaceStage(currentScore) {
@@ -157,7 +177,7 @@ function drawCloudscape(moving) {
     if (cloud.x < -100 * cloud.scale) cloud.x = W + 100 * cloud.scale;
 
     const x = cloud.x;
-    const y = cloud.y + Math.sin(frame * 0.012 + x) * 3;
+    const y = cloud.y;
     const s = cloud.scale;
     ctx.fillStyle = 'rgba(255,255,255,0.78)';
     ctx.beginPath();
@@ -182,13 +202,10 @@ function drawStarfield(moving) {
 }
 
 function drawSpaceLandmark(stage, moving) {
-  const stageStart = stage === 1 ? 20 : stage * 20;
-  const progress = Math.max(0, Math.min(1, (score - stageStart) / 20));
-  const radius = stage === 5 ? 112 : stage === 6 ? 94 : stage === 4 ? 78 : 62;
-  const x = W + radius - progress * (W + radius * 2);
-  const y = H * 0.38 + Math.sin(frame * 0.008) * 15;
-  const drift = moving ? Math.sin(frame * 0.015) * 0.3 : 0;
-  const cx = x + drift;
+  const radius = getLandmarkRadius(stage);
+  if (moving && landmarkX > -radius) landmarkX -= 0.7;
+  const y = H * 0.38;
+  const cx = landmarkX;
 
   if (stage === 1) drawMoon(cx, y, radius);
   else if (stage === 2) drawPlanet(cx, y, radius, '#d89b58', '#fff0bd', 'rgba(248,220,151,0.38)');
@@ -196,6 +213,13 @@ function drawSpaceLandmark(stage, moving) {
   else if (stage === 4) drawJupiter(cx, y, radius);
   else if (stage === 5) drawSun(cx, y, radius);
   else drawBlackHole(cx, y, radius);
+}
+
+function getLandmarkRadius(stage) {
+  if (stage === 5) return 112;
+  if (stage === 6) return 94;
+  if (stage === 4) return 78;
+  return 62;
 }
 
 function drawPlanet(x, y, radius, darkColor, lightColor, detailColor) {
