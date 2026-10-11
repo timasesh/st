@@ -22,6 +22,8 @@ create table if not exists public.accounts (
   first_name text not null,
   last_name text not null,
   student_class text,
+  lesson_link text,
+  lesson_description text,
   teacher_id uuid references public.accounts(id) on delete set null,
   children uuid[] not null default '{}',
   status text not null default 'active' check (status in ('active', 'withdrawn')),
@@ -31,6 +33,9 @@ create table if not exists public.accounts (
   withdrawn_at timestamptz,
   progress jsonb
 );
+
+alter table public.accounts add column if not exists lesson_link text;
+alter table public.accounts add column if not exists lesson_description text;
 
 create index if not exists accounts_role_status_idx on public.accounts (role, status);
 create index if not exists accounts_teacher_id_idx on public.accounts (teacher_id);

@@ -22,6 +22,7 @@ const auditLogPath = path.join(dataDir, 'admin-audit.json');
 const inboxesPath = path.join(dataDir, 'account-inboxes.json');
 const studentLessonHistoryPath = path.join(dataDir, 'student-lesson-history.json');
 const studentTestsPath = path.join(dataDir, 'student-tests.json');
+const homeworkAttachmentsPath = path.join(dataDir, 'homework-attachments.json');
 const cookieName = 'study_admin_session';
 const userCookieName = 'study_user_session';
 const sessionDurationSeconds = 12 * 60 * 60;
@@ -72,6 +73,8 @@ function accountFromDatabase(row) {
     firstName: row.first_name,
     lastName: row.last_name,
     studentClass: row.student_class || '',
+    lessonLink: row.lesson_link || '',
+    lessonDescription: row.lesson_description || '',
     teacherId: row.teacher_id || undefined,
     children: row.children || [],
     status: row.status || 'active',
@@ -91,6 +94,8 @@ function accountToDatabase(account) {
     first_name: account.firstName,
     last_name: account.lastName,
     student_class: account.studentClass || null,
+    lesson_link: account.lessonLink || null,
+    lesson_description: account.lessonDescription || null,
     teacher_id: account.teacherId || null,
     children: account.children || [],
     status: account.status || 'active',
@@ -478,7 +483,7 @@ function publicAccount(account) {
   const teacherAccount = accounts.find((entry) => entry.id === teacherId && entry.role === 'teacher');
   const parentAccount = role === 'student' ? accounts.find((entry) => entry.role === 'parent' && (entry.children || []).includes(id)) : null;
   return {
-    id, role, phone, firstName, lastName, studentClass, status, createdAt, withdrawnAt,
+    id, role, phone, firstName, lastName, studentClass, lessonLink: account.lessonLink || '', lessonDescription: account.lessonDescription || '', status, createdAt, withdrawnAt,
     teacherId: teacherAccount?.id,
     teacher: teacherAccount ? { id: teacherAccount.id, firstName: teacherAccount.firstName, lastName: teacherAccount.lastName } : null,
     parent: parentAccount ? { id: parentAccount.id, firstName: parentAccount.firstName, lastName: parentAccount.lastName, phone: parentAccount.phone } : null,
@@ -610,6 +615,10 @@ app.post('/api/admin/logout', (req, res) => {
 });
 
 const accountRoles = new Set(['student', 'parent', 'teacher']);
+function isValidLessonLink(value) {
+  try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) && url.hostname.includes('.'); }
+  catch { return false; }
+}
 const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
 
 app.get('/api/admin/students', requireAdmin, async (_req, res) => {
@@ -767,6 +776,10 @@ app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
   const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
   const parentPhone = normalizePhone(req.body?.parentPhone);
   const { teacherId, day, hour } = req.body || {};
+  const lessonLink = typeof req.body?.lessonLink === 'string' ? req.body.lessonLink.trim() : '';
+  const lessonDescription = typeof req.body?.lessonDescription === 'string' ? req.body.lessonDescription.trim() : '';
+  if (!isValidLessonLink(lessonLink)) return res.status(400).json({ error: 'Укажите корректную ссылку на занятие (https://…).'});
+  if (lessonDescription.length > 1000) return res.status(400).json({ error: 'Описание занятия должно быть не длиннее 1000 символов.' });
   const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
   if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) {
     return res.status(400).json({ error: 'Укажите имя, фамилию, класс ученика и корректный номер родителя.' });
@@ -786,7 +799,7 @@ app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
       || trials.some((lesson) => (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour);
     if (occupied) return res.status(409).json({ error: 'Этот слот преподавателя уже занят. Выберите другое время.' });
     const createdAt = new Date().toISOString();
-    const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, parentPhone, teacherId, day, hour, createdAt, scheduledAt: nextTrialSlotStart(day, hour, new Date(createdAt)), status: 'scheduled' };
+    const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, parentPhone, teacherId, day, hour, lessonLink, lessonDescription, createdAt, scheduledAt: nextTrialSlotStart(day, hour, new Date(createdAt)), status: 'scheduled' };
     await writeTrialLessons([trial, ...trials]);
     await recordAdminAuditSafely(req.adminSession.sub, 'Создан пробный урок', `${firstName} ${lastName}, ${studentClass}; ${teacher.firstName} ${teacher.lastName}; ${day}:${hour}`);
     return res.status(201).json({ ...trial, teacher: publicAccount(teacher) });
@@ -800,6 +813,10 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
     const index = trials.findIndex((lesson) => lesson.id === req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status || lesson.status === 'no_show'));
     if (index < 0) return res.status(404).json({ error: 'Активный пробный урок не найден.' });
     const { teacherId, day, hour } = req.body || {};
+    const lessonLink = typeof req.body?.lessonLink === 'string' ? req.body.lessonLink.trim() : '';
+    const lessonDescription = typeof req.body?.lessonDescription === 'string' ? req.body.lessonDescription.trim() : '';
+    if (!isValidLessonLink(lessonLink)) return res.status(400).json({ error: 'Укажите корректную ссылку на занятие (https://…).'});
+    if (lessonDescription.length > 1000) return res.status(400).json({ error: 'Описание занятия должно быть не длиннее 1000 символов.' });
     const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
     if (!teacher || !Number.isInteger(day) || day < 0 || day > 6 || !Number.isInteger(hour) || hour < 8 || hour > 20) return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
     const scheduleResult = supabase ? await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle() : null;
@@ -812,7 +829,7 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
     const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
     if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) return res.status(400).json({ error: 'Проверьте имя, фамилию, класс и контакт родителя.' });
     if (planned.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour) || trials.some((lesson) => lesson.id !== req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)) return res.status(409).json({ error: 'Этот слот уже занят.' });
-    trials[index] = { ...trials[index], firstName, lastName, studentClass, teacherId, day, hour, parentPhone, scheduledAt: nextTrialSlotStart(day, hour), status: 'scheduled', attendance: undefined, attendanceAt: undefined, attendanceMarkedBy: undefined };
+    trials[index] = { ...trials[index], firstName, lastName, studentClass, teacherId, day, hour, parentPhone, lessonLink, lessonDescription, scheduledAt: nextTrialSlotStart(day, hour), status: 'scheduled', attendance: undefined, attendanceAt: undefined, attendanceMarkedBy: undefined };
     await writeTrialLessons(trials);
     await recordAdminAuditSafely(req.adminSession.sub, 'Перенесён пробный урок', `${trials[index].firstName} ${trials[index].lastName}; ${day}:${hour}; ${teacher.firstName} ${teacher.lastName}`);
     return res.json({ ...trials[index], teacher: publicAccount(teacher) });
@@ -901,7 +918,7 @@ app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) 
     if (!phone) return res.status(500).json({ error: 'Не удалось создать временный логин ученика. Повторите попытку.' });
     const salt = crypto.randomBytes(16);
     const passwordHash = await hashPassword('study2026', salt);
-    const student = { id: crypto.randomUUID(), role: 'student', phone, firstName: trial.firstName, lastName: trial.lastName, studentClass: trial.studentClass, teacherId: trial.teacherId, children: [], status: 'active', salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString() };
+    const student = { id: crypto.randomUUID(), role: 'student', phone, firstName: trial.firstName, lastName: trial.lastName, studentClass: trial.studentClass, teacherId: trial.teacherId, lessonLink: trial.lessonLink, lessonDescription: trial.lessonDescription || '', children: [], status: 'active', salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString() };
     await writeAccounts([...accounts, student]);
     const trialTests = await readStudentTests(trial.id);
     if (trialTests.length) await writeStudentTests(student.id, trialTests.map((test) => ({ ...test, studentId: student.id, studentName: `${student.firstName} ${student.lastName}`, studentClass: student.studentClass })));
@@ -917,6 +934,8 @@ app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) 
 app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   await refreshAccounts();
   const { role, phone, password, firstName, lastName, studentClass, children, teacherId } = req.body || {};
+  const lessonLink = typeof req.body?.lessonLink === 'string' ? req.body.lessonLink.trim() : '';
+  const lessonDescription = typeof req.body?.lessonDescription === 'string' ? req.body.lessonDescription.trim() : '';
   const normalizedPhone = normalizePhone(phone);
   if (!accountRoles.has(role)) return res.status(400).json({ error: 'Выберите тип аккаунта.' });
   if (normalizedPhone.length < 10 || normalizedPhone.length > 16) return res.status(400).json({ error: 'Введите корректный номер телефона.' });
@@ -927,6 +946,8 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   }
   if (role === 'student' && !/^([5-9]) класс$/.test(studentClass || '')) return res.status(400).json({ error: 'Выберите класс ученика с 5 по 9.' });
   if (role === 'student' && !accounts.some((account) => account.id === teacherId && account.role === 'teacher')) return res.status(400).json({ error: 'Выберите преподавателя для ученика.' });
+  if (role === 'student' && !isValidLessonLink(lessonLink)) return res.status(400).json({ error: 'Укажите корректную ссылку на занятие (https://…).'});
+  if (lessonDescription.length > 1000) return res.status(400).json({ error: 'Описание занятия должно быть не длиннее 1000 символов.' });
   let linkedChildren = [];
   if (role === 'parent') {
     linkedChildren = [...new Set(Array.isArray(children) ? children : [])];
@@ -938,7 +959,7 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   const passwordHash = await hashPassword(password, salt);
   const account = {
     id: crypto.randomUUID(), role, phone: normalizedPhone, firstName: firstName.trim(), lastName: lastName.trim(), status: 'active',
-    studentClass: role === 'student' ? studentClass : '', teacherId: role === 'student' ? teacherId : undefined, children: linkedChildren,
+    studentClass: role === 'student' ? studentClass : '', teacherId: role === 'student' ? teacherId : undefined, lessonLink: role === 'student' ? lessonLink : '', lessonDescription: role === 'student' ? lessonDescription : '', children: linkedChildren,
     salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString(),
   };
   await writeAccounts([...accounts, account]);
@@ -952,6 +973,8 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
   if (index < 0) return res.status(404).json({ error: 'Аккаунт не найден.' });
   const current = accounts[index];
   const { phone, password, firstName, lastName, studentClass, children, teacherId } = req.body || {};
+  const lessonLink = typeof req.body?.lessonLink === 'string' ? req.body.lessonLink.trim() : '';
+  const lessonDescription = typeof req.body?.lessonDescription === 'string' ? req.body.lessonDescription.trim() : '';
   const normalizedPhone = normalizePhone(phone);
   if (normalizedPhone.length < 10 || normalizedPhone.length > 16) return res.status(400).json({ error: 'Введите корректный номер телефона.' });
   if (accounts.some((account) => account.id !== current.id && account.phone === normalizedPhone)) return res.status(409).json({ error: 'Аккаунт с таким номером телефона уже существует.' });
@@ -963,7 +986,9 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
   if (current.role === 'student') {
     if (!/^([5-9]) класс$/.test(studentClass || '')) return res.status(400).json({ error: 'Выберите класс ученика с 5 по 9.' });
     if (!accounts.some((account) => account.id === teacherId && account.role === 'teacher')) return res.status(400).json({ error: 'Выберите преподавателя для ученика.' });
+    if (!isValidLessonLink(lessonLink)) return res.status(400).json({ error: 'Укажите корректную ссылку на занятие (https://…).'});
   }
+  if (lessonDescription.length > 1000) return res.status(400).json({ error: 'Описание занятия должно быть не длиннее 1000 символов.' });
   if (current.role === 'parent') {
     linkedChildren = [...new Set(Array.isArray(children) ? children : [])];
     if (!linkedChildren.length) return res.status(400).json({ error: 'Для аккаунта родителя выберите хотя бы одного ученика.' });
@@ -976,6 +1001,7 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
     ...current, phone: normalizedPhone, firstName: firstName.trim(), lastName: lastName.trim(),
     studentClass: current.role === 'student' ? studentClass : '',
     teacherId: current.role === 'student' ? teacherId : undefined,
+    lessonLink: current.role === 'student' ? lessonLink : '', lessonDescription: current.role === 'student' ? lessonDescription : '',
     children: current.role === 'parent' ? linkedChildren : [],
   };
   if (typeof password === 'string' && password.length) {
@@ -1077,15 +1103,35 @@ app.get('/api/teacher/students/:studentId/lesson-history', async (req, res) => {
   await refreshAccounts();
   const subject = await getAssignedTeacherLessonSubject(req, res);
   if (!subject) return;
-  try { return res.json({ student: subject.summary, history: await readStudentLessonHistory(subject.id) }); }
+  try {
+    const history = await readStudentLessonHistory(subject.id);
+    const attachments = await readJsonFileOr(homeworkAttachmentsPath, {});
+    return res.json({ student: subject.summary, history: history.map((entry) => { const file = attachments[`${subject.id}:${entry.id}`]; return { ...entry, attachment: file ? { filename: file.filename, mimeType: file.mimeType, updatedAt: file.updatedAt } : null }; }) });
+  }
   catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить историю занятий.' }); }
+});
+
+app.get('/api/teacher/students/:studentId/homework/:entryId/attachment', async (req, res) => {
+  await refreshAccounts();
+  const subject = await getAssignedTeacherLessonSubject(req, res);
+  if (!subject) return;
+  if (subject.trial) return res.status(404).json({ error: 'Домашнее задание ученика не найдено.' });
+  const history = await readStudentLessonHistory(subject.id);
+  if (!history.some((entry) => entry.id === req.params.entryId && entry.nextHomework)) return res.status(404).json({ error: 'Домашнее задание не найдено.' });
+  const attachments = await readJsonFileOr(homeworkAttachmentsPath, {});
+  const file = attachments[`${subject.id}:${req.params.entryId}`];
+  if (!file) return res.status(404).json({ error: 'Файл не прикреплён.' });
+  res.setHeader('Content-Type', file.mimeType);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  return res.send(Buffer.from(file.data, 'base64'));
 });
 
 app.post('/api/teacher/students/:studentId/lesson-history', async (req, res) => {
   await refreshAccounts();
   const subject = await getAssignedTeacherLessonSubject(req, res);
   if (!subject) return;
-  const { date, time, homeworkGrade, topic, nextHomework, testGrade, attendance, attendanceReason } = req.body || {};
+  const { date, time, homeworkGrade, topic, nextHomework, testGrade, attendance, attendanceReason, lessonId } = req.body || {};
   const parsedDate = typeof date === 'string' ? new Date(`${date}T00:00:00Z`) : null;
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !parsedDate || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) return res.status(400).json({ error: 'Укажите корректную дату занятия.' });
   if (typeof time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return res.status(400).json({ error: 'Укажите корректное время занятия.' });
@@ -1096,7 +1142,7 @@ app.post('/api/teacher/students/:studentId/lesson-history', async (req, res) => 
   if (typeof (homeworkGrade ?? '') !== 'string' || homeworkGrade.length > 30 || typeof (nextHomework ?? '') !== 'string' || nextHomework.length > 2000 || typeof (testGrade ?? '') !== 'string' || testGrade.length > 30) return res.status(400).json({ error: 'Проверьте оценки и домашнее задание.' });
   try {
     const history = await readStudentLessonHistory(subject.id);
-    const entry = { id: crypto.randomUUID(), date, time, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, homeworkGrade: homeworkGrade.trim(), topic: topic.trim(), nextHomework: nextHomework.trim(), testGrade: testGrade.trim(), attendance, attendanceReason: attendance ? '' : attendanceReason, createdAt: new Date().toISOString() };
+    const entry = { id: crypto.randomUUID(), lessonId: typeof lessonId === 'string' ? lessonId : '', date, time, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, homeworkGrade: homeworkGrade.trim(), topic: topic.trim(), nextHomework: nextHomework.trim(), testGrade: testGrade.trim(), attendance, attendanceReason: attendance ? '' : attendanceReason, createdAt: new Date().toISOString() };
     const nextHistory = [entry, ...history].sort((left, right) => `${right.date}T${right.time}`.localeCompare(`${left.date}T${left.time}`));
     await writeStudentLessonHistory(subject.id, nextHistory);
     if (subject.trial) {
@@ -1200,7 +1246,7 @@ app.post('/api/teacher/students/:studentId/tests', async (req, res) => {
     const tests = await readStudentTests(subject.id);
     if (req.body?.quiz?.studentId !== subject.id || typeof req.body?.quiz?.lessonId !== 'string') return res.status(400).json({ error: 'Тест создан для другого ученика или урока.' });
     const durationMinutes = Math.max(3, Math.ceil(quiz.questions.length * 0.4));
-    const saved = { id: crypto.randomUUID(), studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, lessonId: req.body.quiz.lessonId, title: quiz.title, durationMinutes, questions: quiz.questions, status: 'assigned', createdAt: new Date().toISOString() };
+    const saved = { id: crypto.randomUUID(), studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, lessonId: req.body.quiz.lessonId, lessonHour: Number.isInteger(Number(req.body.quiz.lessonHour)) ? Number(req.body.quiz.lessonHour) : null, title: quiz.title, durationMinutes, questions: quiz.questions, status: 'assigned', createdAt: new Date().toISOString() };
     await writeStudentTests(subject.id, [saved, ...tests]);
     const history = await readStudentLessonHistory(subject.id);
     const lessonHour = Number(req.body.quiz.lessonHour);
@@ -1237,6 +1283,33 @@ app.post('/api/student/tests/:testId/submit', async (req, res) => {
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить результат теста.' }); }
 });
 
+app.post('/api/student/homework/:entryId/attachment', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'student') return res.status(403).json({ error: 'Прикрепить файл может только ученик.' });
+  const { filename, mimeType, data } = req.body || {};
+  if (typeof filename !== 'string' || !filename.trim() || filename.length > 180 || !['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mimeType) || typeof data !== 'string' || data.length > 7_000_000) return res.status(400).json({ error: 'Прикрепите PDF или изображение размером до 5 МБ.' });
+  const history = await readStudentLessonHistory(user.account.id);
+  if (!history.some((entry) => entry.id === req.params.entryId && entry.nextHomework)) return res.status(404).json({ error: 'Домашнее задание не найдено.' });
+  const attachments = await readJsonFileOr(homeworkAttachmentsPath, {});
+  attachments[`${user.account.id}:${req.params.entryId}`] = { studentId: user.account.id, entryId: req.params.entryId, filename: filename.trim(), mimeType, data, updatedAt: new Date().toISOString() };
+  await fs.writeFile(homeworkAttachmentsPath, JSON.stringify(attachments), { mode: 0o600 });
+  return res.json({ ok: true, filename: filename.trim() });
+});
+
+app.get('/api/student/homework/:entryId/attachment', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'student') return res.status(403).json({ error: 'Доступ запрещён.' });
+  const attachments = await readJsonFileOr(homeworkAttachmentsPath, {});
+  const file = attachments[`${user.account.id}:${req.params.entryId}`];
+  if (!file) return res.status(404).json({ error: 'Файл не прикреплён.' });
+  res.setHeader('Content-Type', file.mimeType);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  return res.send(Buffer.from(file.data, 'base64'));
+});
+
 app.get('/api/auth/portal', async (req, res) => {
   await refreshAccounts();
   const user = getUserSession(req);
@@ -1263,6 +1336,8 @@ app.get('/api/auth/portal', async (req, res) => {
         ? relatedIds.has(lesson.studentId)
         : lesson.teacherId === current.id).map((lesson) => ({
       ...lesson,
+      lessonLink: lesson.lessonLink || accounts.find((item) => item.id === lesson.studentId)?.lessonLink || '',
+      lessonDescription: lesson.lessonDescription || accounts.find((item) => item.id === lesson.studentId)?.lessonDescription || '',
       student: accounts.find((item) => item.id === lesson.studentId)
         ? current.role === 'teacher'
           ? teacherStudentSummary(accounts.find((item) => item.id === lesson.studentId))
@@ -1297,6 +1372,15 @@ app.get('/api/auth/portal', async (req, res) => {
     const studentTests = current.role === 'student'
       ? (await readStudentTests(current.id)).map((test) => ({ ...test, questions: test.questions.map(({ correctIndex, ...question }) => question) }))
       : [];
+    const studentHistory = current.role === 'student' ? await readStudentLessonHistory(current.id) : [];
+    const latestAttendance = new Map();
+    for (const entry of studentHistory) if (entry.lessonId && entry.attendance !== undefined && (!latestAttendance.has(entry.lessonId) || `${entry.date}T${entry.time}` > `${latestAttendance.get(entry.lessonId).date}T${latestAttendance.get(entry.lessonId).time}`)) latestAttendance.set(entry.lessonId, entry);
+    for (const lesson of lessons) if (lesson.studentId === current.id) lesson.attendance = latestAttendance.get(lesson.id)?.attendance;
+    const homeworkAttachments = current.role === 'student' ? await readJsonFileOr(homeworkAttachmentsPath, {}) : {};
+    const studentHomework = studentHistory.filter((entry) => entry.nextHomework).map((entry) => {
+      const file = homeworkAttachments[`${current.id}:${entry.id}`];
+      return { ...entry, attachment: file ? { filename: file.filename, mimeType: file.mimeType, updatedAt: file.updatedAt } : null };
+    });
     return res.json({
       account,
       progress: current.progress || null,
@@ -1304,6 +1388,7 @@ app.get('/api/auth/portal', async (req, res) => {
       lessons,
       recordedLessonIds,
       studentTests,
+      studentHomework,
       messages,
     });
   } catch (error) {
