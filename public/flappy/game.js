@@ -25,9 +25,6 @@ let lastPipe = 0, animFrame;
 let flightHeld = false;
 let isPaused = false;
 
-// Parallax
-let buildingScroll = 0, groundScroll = 0;
-
 // Shield
 let shield = null;
 let playerHasShield = false;
@@ -83,14 +80,24 @@ const player = {
 
 let pipes = [], particles = [], floatingTexts = [];
 let bgStars = [];
+let bgClouds = [];
 
 for (let i = 0; i < 60; i++) {
   bgStars.push({
     x: Math.random() * W,
-    y: Math.random() * H * 0.6,
+    y: Math.random() * (H - 80),
     r: Math.random() * 1.5 + 0.3,
-    speed: Math.random() * 0.3 + 0.1,
+    speed: Math.random() * 0.75 + 0.25,
     alpha: Math.random() * 0.6 + 0.2
+  });
+}
+
+for (let i = 0; i < 9; i++) {
+  bgClouds.push({
+    x: Math.random() * W,
+    y: 70 + Math.random() * (H - 210),
+    scale: 0.55 + Math.random() * 0.9,
+    speed: 0.25 + Math.random() * 0.35
   });
 }
 
@@ -109,67 +116,175 @@ function togglePause() {
 // ===== BACKGROUND =====
 function drawBackground() {
   const moving = (gameState === 'playing' || gameState === 'dead') && !isPaused;
+  const spaceStage = getSpaceStage(score);
 
-  const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, '#07091f');
-  sky.addColorStop(0.5, '#0d1535');
-  sky.addColorStop(1, '#111d3a');
-  ctx.fillStyle = sky;
+  if (spaceStage === 0) {
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#51b8f5');
+    sky.addColorStop(0.65, '#9addff');
+    sky.addColorStop(1, '#d7f3ff');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    drawCloudscape(moving);
+    return;
+  }
+
+  const space = ctx.createLinearGradient(0, 0, 0, H);
+  space.addColorStop(0, '#050817');
+  space.addColorStop(0.55, '#111936');
+  space.addColorStop(1, '#080d20');
+  ctx.fillStyle = space;
   ctx.fillRect(0, 0, W, H);
 
-  // Stars — parallax layer 1 (slowest)
-  bgStars.forEach(s => {
-    if (moving) s.x -= s.speed;
-    if (s.x < 0) s.x = W;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
-    ctx.fillStyle = `rgba(255,255,255,${s.alpha})`;
-    ctx.fill();
-  });
-
-  // Building — parallax layer 2 (~4-5x slower than pipes)
-  if (moving) buildingScroll += 0.7;
-  drawBuildingImage();
-
-  // Ground — parallax layer 3 (fast)
-  if (moving) groundScroll += PIPE_SPEED + score * 0.04;
-
-  ctx.fillStyle = '#0a0a0f';
-  ctx.fillRect(0, H-60, W, 60);
-
-  ctx.fillStyle = '#2a2a3f';
-  ctx.fillRect(0, H-62, W, 2);
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  ctx.lineWidth = 1;
-  const gx = -(groundScroll % 40);
-  for (let i = 0; i < W + 40; i += 40) {
-    ctx.beginPath();
-    ctx.moveTo(gx + i, H-58);
-    ctx.lineTo(gx + i, H);
-    ctx.stroke();
-  }
-
+  drawStarfield(moving);
+  if (spaceStage < 7) drawSpaceLandmark(spaceStage, moving);
 }
 
-// Функция `drawBuildingImage` реализует локальную часть бизнес-логики модуля.
-function drawBuildingImage() {
-  const ox = -(buildingScroll % W);
-  for (let layer = 0; layer < 2; layer++) {
-    const baseX = ox + layer * W;
-    for (let i = 0; i < 8; i++) {
-      const bw = 36 + (i % 3) * 14;
-      const bh = 80 + (i % 5) * 28;
-      const bx = baseX + i * 52 + (i % 2) * 8;
-      const by = H - 60 - bh;
-      ctx.fillStyle = `rgba(${30 + i * 8}, ${60 + i * 12}, ${140 + i * 6}, 0.55)`;
-      ctx.fillRect(bx, by, bw, bh);
-      for (let w = 0; w < 3; w++) {
-        ctx.fillStyle = 'rgba(255,220,100,0.35)';
-        ctx.fillRect(bx + 6 + w * 10, by + 12, 5, 7);
-      }
-    }
+function getSpaceStage(currentScore) {
+  if (currentScore < 20) return 0;
+  if (currentScore < 40) return 1; // Moon
+  if (currentScore < 60) return 2; // Venus
+  if (currentScore < 80) return 3; // Mars
+  if (currentScore < 100) return 4; // Jupiter
+  if (currentScore < 120) return 5; // Sun
+  if (currentScore < 140) return 6; // Black hole
+  return 7; // Deep space
+}
+
+function drawCloudscape(moving) {
+  bgClouds.forEach((cloud) => {
+    if (moving) cloud.x -= cloud.speed;
+    if (cloud.x < -100 * cloud.scale) cloud.x = W + 100 * cloud.scale;
+
+    const x = cloud.x;
+    const y = cloud.y + Math.sin(frame * 0.012 + x) * 3;
+    const s = cloud.scale;
+    ctx.fillStyle = 'rgba(255,255,255,0.78)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, 35 * s, 15 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(x - 19 * s, y + 1 * s, 20 * s, 12 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 15 * s, y - 6 * s, 23 * s, 18 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 37 * s, y + 2 * s, 18 * s, 11 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawStarfield(moving) {
+  bgStars.forEach((star) => {
+    if (moving) star.x -= star.speed;
+    if (star.x < -star.r) star.x = W + star.r;
+    const twinkle = 0.75 + Math.sin(frame * 0.04 + star.x) * 0.25;
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${star.alpha * twinkle})`;
+    ctx.fill();
+  });
+}
+
+function drawSpaceLandmark(stage, moving) {
+  const stageStart = stage === 1 ? 20 : stage * 20;
+  const progress = Math.max(0, Math.min(1, (score - stageStart) / 20));
+  const radius = stage === 5 ? 112 : stage === 6 ? 94 : stage === 4 ? 78 : 62;
+  const x = W + radius - progress * (W + radius * 2);
+  const y = H * 0.38 + Math.sin(frame * 0.008) * 15;
+  const drift = moving ? Math.sin(frame * 0.015) * 0.3 : 0;
+  const cx = x + drift;
+
+  if (stage === 1) drawMoon(cx, y, radius);
+  else if (stage === 2) drawPlanet(cx, y, radius, '#d89b58', '#fff0bd', 'rgba(248,220,151,0.38)');
+  else if (stage === 3) drawPlanet(cx, y, radius, '#b74732', '#f28c63', 'rgba(255,196,145,0.42)');
+  else if (stage === 4) drawJupiter(cx, y, radius);
+  else if (stage === 5) drawSun(cx, y, radius);
+  else drawBlackHole(cx, y, radius);
+}
+
+function drawPlanet(x, y, radius, darkColor, lightColor, detailColor) {
+  const glow = ctx.createRadialGradient(x, y, radius * 0.65, x, y, radius * 1.8);
+  glow.addColorStop(0, detailColor);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(x, y, radius * 1.8, 0, Math.PI * 2); ctx.fill();
+
+  const planet = ctx.createRadialGradient(x - radius * 0.38, y - radius * 0.42, radius * 0.08, x, y, radius);
+  planet.addColorStop(0, lightColor);
+  planet.addColorStop(1, darkColor);
+  ctx.fillStyle = planet;
+  ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, radius - 1, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = detailColor;
+  for (let band = -2; band <= 2; band++) {
+    ctx.beginPath();
+    ctx.ellipse(x + band * radius * 0.18, y + band * radius * 0.27, radius * 0.9, radius * 0.1, -0.2, 0, Math.PI * 2);
+    ctx.fill();
   }
+  ctx.restore();
+}
+
+function drawMoon(x, y, radius) {
+  drawPlanet(x, y, radius, '#737d91', '#e2e8f0', 'rgba(100,116,139,0.32)');
+  const craters = [[-0.35, -0.2, 0.12], [0.3, -0.35, 0.16], [0.18, 0.2, 0.1], [-0.25, 0.42, 0.18], [0.48, 0.34, 0.08]];
+  craters.forEach(([dx, dy, size]) => {
+    ctx.beginPath();
+    ctx.arc(x + dx * radius, y + dy * radius, size * radius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(51,65,85,0.22)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+}
+
+function drawJupiter(x, y, radius) {
+  drawPlanet(x, y, radius, '#a95832', '#f4cf9a', 'rgba(214,160,108,0.5)');
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, radius - 1, 0, Math.PI * 2); ctx.clip();
+  ctx.beginPath();
+  ctx.ellipse(x + radius * 0.34, y + radius * 0.22, radius * 0.2, radius * 0.12, -0.2, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(160,65,42,0.78)';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSun(x, y, radius) {
+  const glow = ctx.createRadialGradient(x, y, radius * 0.6, x, y, radius * 2.4);
+  glow.addColorStop(0, 'rgba(255,185,46,0.48)');
+  glow.addColorStop(1, 'rgba(255,116,24,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(x, y, radius * 2.4, 0, Math.PI * 2); ctx.fill();
+  const sun = ctx.createRadialGradient(x - radius * 0.3, y - radius * 0.3, radius * 0.1, x, y, radius);
+  sun.addColorStop(0, '#fff7ae'); sun.addColorStop(0.6, '#ffbd38'); sun.addColorStop(1, '#f4511e');
+  ctx.fillStyle = sun;
+  ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, radius - 1, 0, Math.PI * 2); ctx.clip();
+  for (let i = 0; i < 7; i++) {
+    ctx.beginPath();
+    ctx.arc(x + Math.sin(i * 2.4) * radius * 0.5, y + Math.cos(i * 1.8) * radius * 0.48, radius * (0.08 + (i % 3) * 0.025), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(226,72,25,0.35)'; ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBlackHole(x, y, radius) {
+  const glow = ctx.createRadialGradient(x, y, radius * 0.6, x, y, radius * 2.1);
+  glow.addColorStop(0, 'rgba(125,80,255,0.3)');
+  glow.addColorStop(0.55, 'rgba(245,95,184,0.16)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(x, y, radius * 2.1, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.25);
+  ctx.beginPath(); ctx.ellipse(0, 0, radius * 1.55, radius * 0.46, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,120,210,0.82)'; ctx.lineWidth = radius * 0.2; ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, 0, radius * 1.42, radius * 0.38, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,205,112,0.9)'; ctx.lineWidth = radius * 0.07; ctx.stroke();
+  const core = ctx.createRadialGradient(0, 0, radius * 0.08, 0, 0, radius * 0.82);
+  core.addColorStop(0, '#000'); core.addColorStop(0.75, '#05030b'); core.addColorStop(1, '#40205f');
+  ctx.fillStyle = core;
+  ctx.beginPath(); ctx.arc(0, 0, radius * 0.82, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 // ===== PIPES =====
