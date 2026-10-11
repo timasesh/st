@@ -8,15 +8,12 @@ const bgImage = null; // neutral procedural city background
 const shieldImage = new Image();
 shieldImage.src = './shield.png';
 
-const coinImage = new Image();
-coinImage.src = './coin.png';
-
 const rocketImage = new Image();
 rocketImage.src = './ракета.png';
 
 const GRAVITY = 0.45;
-const LIFT = 0.9;
-const MAX_ASCENT_SPEED = -7.5;
+const LIFT = 1.55;
+const MAX_ASCENT_SPEED = -9;
 const PIPE_SPEED = 3;
 const PIPE_GAP = 155;
 const PIPE_INTERVAL = 1800;
@@ -26,7 +23,7 @@ let gameState = 'start';
 let score = 0, bestScore = 0, frame = 0;
 let lastPipe = 0, animFrame;
 let flightHeld = false;
-let isPaused = false, isMuted = false;
+let isPaused = false;
 
 // Parallax
 let buildingScroll = 0, groundScroll = 0;
@@ -59,33 +56,6 @@ let newRecordConfetti = false;
 let previewPlayer = { x: -50, y: H / 2 - 60, vx: 1.2 };
 let previewPipes = [];
 let previewLastPipe = 0;
-
-// Audio
-let audioCtx = null;
-
-// Background music
-const bgMusic = new Audio('./music.ogg');
-bgMusic.loop = true;
-bgMusic.volume = 0.25;
-bgMusic.preload = 'auto';
-bgMusic.setAttribute('playsinline', 'true');
-let _bgMusicUnlocked = false;
-// Функция `playBackgroundMusic` реализует локальную часть бизнес-логики модуля.
-function playBackgroundMusic() {
-  if (isMuted) return;
-  bgMusic.play().catch(() => {});
-}
-// Функция `_unlockBgMusic` реализует локальную часть бизнес-логики модуля.
-function _unlockBgMusic() {
-  _bgMusicUnlocked = true;
-  playBackgroundMusic();
-}
-document.addEventListener('click', _unlockBgMusic, { once: true });
-document.addEventListener('touchstart', _unlockBgMusic, { once: true, passive: true });
-document.addEventListener('keydown', _unlockBgMusic, { once: true });
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && _bgMusicUnlocked) playBackgroundMusic();
-});
 
 // --- Messages ---
 const deathMessages = [
@@ -124,76 +94,8 @@ for (let i = 0; i < 60; i++) {
   });
 }
 
-// ===== AUDIO =====
-function getAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  return audioCtx;
-}
-
-// Функция `playSweep` реализует локальную часть бизнес-логики модуля.
-function playSweep(f1, f2, dur, type, gain) {
-  if (isMuted) return;
-  try {
-    const ac = getAudio();
-    const osc = ac.createOscillator();
-    const g = ac.createGain();
-    osc.type = type || 'sine';
-    osc.connect(g); g.connect(ac.destination);
-    osc.frequency.setValueAtTime(f1, ac.currentTime);
-    osc.frequency.linearRampToValueAtTime(f2, ac.currentTime + dur);
-    g.gain.setValueAtTime(gain, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
-    osc.start(); osc.stop(ac.currentTime + dur + 0.05);
-  } catch(e) {}
-}
-
-// Функция `playTone` реализует локальную часть бизнес-логики модуля.
-function playTone(freq, dur, gain) {
-  if (isMuted) return;
-  try {
-    const ac = getAudio();
-    const osc = ac.createOscillator();
-    const g = ac.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
-    osc.connect(g); g.connect(ac.destination);
-    g.gain.setValueAtTime(gain, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
-    osc.start(); osc.stop(ac.currentTime + dur + 0.05);
-  } catch(e) {}
-}
-
-// Функция `playSound` реализует локальную часть бизнес-логики модуля.
-function playSound(type) {
-  switch(type) {
-    case 'jump':        playSweep(200, 400, 0.1, 'sine', 0.2); break;
-    case 'score':       playTone(880, 0.15, 0.2); break;
-    case 'shieldPick':
-      [0, 80, 160].forEach((delay, i) => {
-        setTimeout(() => playTone([523, 659, 784][i], 0.25, 0.15), delay);
-      }); break;
-    case 'shieldBreak': playSweep(300, 100, 0.3, 'sawtooth', 0.2); break;
-    case 'death':       playSweep(400, 150, 0.5, 'sine', 0.25); break;
-    case 'coin':        playTone(1047, 0.12, 0.18); break;
-  }
-}
-
-const SVG_SOUND_ON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
-const SVG_SOUND_OFF = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
 const SVG_PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
 const SVG_PLAY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-
-// Функция `toggleMute` реализует локальную часть бизнес-логики модуля.
-function toggleMute() {
-  isMuted = !isMuted;
-  bgMusic.muted = isMuted;
-  if (!isMuted) playBackgroundMusic();
-  localStorage.setItem('studyTaskFlappyMuted', isMuted);
-  const icon = isMuted ? SVG_SOUND_OFF : SVG_SOUND_ON;
-  document.getElementById('muteBtn').innerHTML = icon;
-  document.getElementById('startMuteBtn').innerHTML = icon;
-}
 
 // ===== PAUSE =====
 function togglePause() {
@@ -272,9 +174,9 @@ function drawBuildingImage() {
 
 // ===== PIPES =====
 function drawPipe(pipe) {
-  drawDocumentStack(pipe.x, 0, pipe.w, pipe.topH, true);
+  drawBookStack(pipe.x, 0, pipe.w, pipe.topH, true);
   const botY = pipe.topH + PIPE_GAP;
-  drawDocumentStack(pipe.x, botY, pipe.w, H - botY - 60, false);
+  drawBookStack(pipe.x, botY, pipe.w, H - botY - 60, false);
 
   const gapMid = pipe.topH + PIPE_GAP/2;
   const grd = ctx.createRadialGradient(pipe.x + pipe.w/2, gapMid, 0, pipe.x + pipe.w/2, gapMid, 80);
@@ -286,39 +188,40 @@ function drawPipe(pipe) {
 
 }
 
-// Функция `drawDocumentStack` реализует локальную часть бизнес-логики модуля.
-function drawDocumentStack(x, y, w, h, isTop) {
+function drawBookStack(x, y, w, h, isTop) {
   if (h <= 0) return;
-  const layers = Math.max(1, Math.floor(h / 18));
-  const layerH = h / layers;
+  const bookColors = ['#ef4444', '#2563eb', '#f59e0b', '#16a34a', '#9333ea', '#0891b2'];
+  const layers = Math.max(1, Math.ceil(h / 23));
+  const bookH = h / layers;
 
   for (let i = 0; i < layers; i++) {
-    const ly = y + i * layerH;
-    const offset = (i % 2 === 0) ? 0 : 2;
-    const shade = 220 + (i % 3) * 12;
-    ctx.fillStyle = `rgb(${shade},${shade-10},${shade-20})`;
-    ctx.fillRect(x + offset, ly + 1, w - offset*2, layerH - 2);
+    const row = isTop ? i : layers - i - 1;
+    const width = w + 8 + (i % 3) * 3;
+    const offset = ((i % 4) - 1.5) * 2;
+    const bx = x + (w - width) / 2 + offset;
+    const by = y + row * bookH;
+    const inset = Math.max(1, bookH * 0.08);
+    const visibleH = Math.max(2, bookH - inset * 2);
+    const color = bookColors[(i + Math.floor(h / 37)) % bookColors.length];
 
-    ctx.fillStyle = 'rgba(100,100,150,0.3)';
-    for (let l = 0; l < 3; l++) {
-      ctx.fillRect(x + offset + 6, ly + 5 + l*4, w - offset*2 - 12, 1);
+    // Colored cover, offset spine, and page edge make each obstacle read as a book.
+    ctx.fillStyle = 'rgba(0,0,0,0.24)';
+    ctx.fillRect(bx + 2, by + inset + 2, width, visibleH);
+    ctx.fillStyle = color;
+    ctx.fillRect(bx, by + inset, width, visibleH);
+    ctx.fillStyle = 'rgba(255,255,255,0.76)';
+    ctx.fillRect(bx + width - 6, by + inset + 2, 4, Math.max(1, visibleH - 4));
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(bx + 5, by + inset + 2, 3, Math.max(1, visibleH - 4));
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillRect(bx + 13, by + inset + visibleH * 0.35, width * 0.42, 1.5);
+    if (visibleH > 15) {
+      ctx.fillRect(bx + 13, by + inset + visibleH * 0.58, width * 0.3, 1.2);
     }
-
-    if (i % 5 === 0) {
-      ctx.fillStyle = 'rgba(0,80,200,0.4)';
-      ctx.font = 'bold 6px Nunito';
-      ctx.textAlign = 'center';
-      ctx.fillText('ST', x + w/2, ly + 10);
-    }
+    ctx.strokeStyle = 'rgba(15,23,42,0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + inset + 0.5, width - 1, visibleH - 1);
   }
-
-  const eg1 = ctx.createLinearGradient(x, 0, x+8, 0);
-  eg1.addColorStop(0, 'rgba(0,0,0,0.4)'); eg1.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = eg1; ctx.fillRect(x, y, 10, h);
-
-  const eg2 = ctx.createLinearGradient(x+w-8, 0, x+w, 0);
-  eg2.addColorStop(0, 'rgba(0,0,0,0)'); eg2.addColorStop(1, 'rgba(0,0,0,0.4)');
-  ctx.fillStyle = eg2; ctx.fillRect(x+w-10, y, 10, h);
 }
 
 // ===== SHIELD =====
@@ -350,7 +253,6 @@ function drawShield() {
     if (Math.sqrt(dx*dx + dy*dy) < 22) {
       playerHasShield = true;
       shield = null;
-      playSound('shieldPick');
       floatingTexts.push({
         x: player.x + 20, y: player.y - 15,
         text: '🛡️ ЩИТ!', color: '#00ccff', size: 14,
@@ -374,16 +276,14 @@ function drawCoin() {
   const x = coinOnScreen.x;
   const y = coinOnScreen.baseY + Math.sin(coinOnScreen.phase) * 6;
   const r = 15;
-  const drawR = 20;
-
   // Outer glow
   const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
-  glow.addColorStop(0, 'rgba(255,200,0,0.25)');
+  glow.addColorStop(0, 'rgba(255,220,70,0.42)');
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glow;
   ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, Math.PI*2); ctx.fill();
 
-  ctx.drawImage(coinImage, x - drawR - 7.5, y - drawR - 7.5, drawR * 2 + 15, drawR * 2 + 15);
+  drawStar(x, y, r);
 
   // Collision
   if (gameState === 'playing' && !isPaused) {
@@ -394,14 +294,37 @@ function drawCoin() {
       totalCoins++;
       sessionCoins++;
       localStorage.setItem('studyTaskFlappyCoins', totalCoins);
-      playSound('coin');
       floatingTexts.push({
         x: player.x + 20, y: player.y - 15,
-        text: '+1 ⭐', coinIcon: true, color: '#ffcc00', size: 13,
+        text: '+1 ⭐', color: '#ffcc00', size: 15,
         life: 45, maxLife: 45
       });
     }
   }
+}
+
+function drawStar(x, y, radius) {
+  const innerRadius = radius * 0.46;
+  const gradient = ctx.createLinearGradient(x, y - radius, x, y + radius);
+  gradient.addColorStop(0, '#fff7ad');
+  gradient.addColorStop(0.45, '#facc15');
+  gradient.addColorStop(1, '#f97316');
+
+  ctx.beginPath();
+  for (let point = 0; point < 10; point++) {
+    const angle = -Math.PI / 2 + point * Math.PI / 5;
+    const distance = point % 2 === 0 ? radius : innerRadius;
+    const px = x + Math.cos(angle) * distance;
+    const py = y + Math.sin(angle) * distance;
+    if (point === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  ctx.strokeStyle = '#fff1a6';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 }
 
 // ===== PLAYER =====
@@ -544,10 +467,6 @@ function drawFloatingTexts() {
     ctx.font = `bold ${t.size || 14}px Nunito`;
     ctx.textAlign = 'center';
     ctx.fillText(t.text, t.x, t.y);
-    if (t.coinIcon) {
-      const textW = ctx.measureText(t.text).width;
-      ctx.drawImage(coinImage, t.x + textW / 2 + 4, t.y - 12, 35, 35);
-    }
     ctx.globalAlpha = 1;
   });
 }
@@ -664,7 +583,7 @@ function spawnPipe() {
   const topH = Math.floor(Math.random() * (maxTop - minTop) + minTop);
   const isMoving = (pipesSpawned % 9 === 8);
   pipes.push({
-    x: W + 10, topH, baseTopH: topH, w: 52, passed: false,
+    x: W + 10, topH, baseTopH: topH, w: 62, passed: false,
     moving: isMoving, movePhase: Math.random() * Math.PI * 2
   });
 
@@ -723,7 +642,6 @@ function updatePipes() {
           });
         }
       }
-      playSound('score');
       addScorePopup(player.x + 30, player.y);
 
       if (score % 10 === 0) {
@@ -745,7 +663,6 @@ function updatePipes() {
           playerHasShield = false;
           shieldGlow = 40;
           p.x = -999; // удаляем столб с которым столкнулись
-          playSound('shieldBreak');
           particles.push({
             x: player.x + player.w/2, y: player.y + player.h/2,
             vx: 0, vy: 0, text: '💥', size: 36, color: '#fff',
@@ -776,7 +693,6 @@ function die() {
   player.alive = false;
   gameState = 'dead';
   if (navigator.vibrate) navigator.vibrate(200);
-  playSound('death');
   deathTimer = 0;
   isDying = true;
 }
@@ -866,7 +782,6 @@ function startGame() {
   player.vy = 0; player.angle = 0; player.alive = true;
 
   gameState = 'ready';
-  if (_bgMusicUnlocked) playBackgroundMusic();
 }
 
 // Функция `goToMainMenu` реализует локальную часть бизнес-логики модуля.
@@ -935,7 +850,6 @@ function startFlight() {
     document.getElementById('topControls').style.display = 'flex';
   }
 
-  if (!flightHeld) playSound('jump');
   flightHeld = true;
 }
 
@@ -1053,7 +967,6 @@ window.addEventListener('blur', stopFlight);
 
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
-  _unlockBgMusic();
   if (gameState !== 'playing' && gameState !== 'ready') return;
   if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
   startFlight();
@@ -1063,24 +976,7 @@ canvas.addEventListener('pointerup', stopFlight);
 canvas.addEventListener('pointercancel', stopFlight);
 canvas.addEventListener('lostpointercapture', stopFlight);
 
-document.getElementById('startMuteBtn').addEventListener('touchstart', e => {
-  e.preventDefault();
-  e.stopPropagation();
-  toggleMute();
-}, { passive: false });
-
 document.getElementById('startCoinCount').textContent = totalCoins;
-
-// Apply saved mute state
-(function() {
-  const saved = localStorage.getItem('studyTaskFlappyMuted') === 'true';
-  if (saved) {
-    isMuted = true;
-    bgMusic.muted = true;
-    document.getElementById('muteBtn').innerHTML = SVG_SOUND_OFF;
-    document.getElementById('startMuteBtn').innerHTML = SVG_SOUND_OFF;
-  }
-})();
 
 // Start game loop (procedural background, no AlmaU image)
 gameLoop();
