@@ -1154,8 +1154,8 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ model, messages: [{ role: 'user', content: [{ type: 'text', text: `${STUDY_TEST_PROMPT}\n\nКласс ученика: ${subject.studentClass || 'не указан'}.` }, ...imageParts] }], max_tokens: 5000, temperature: 0.2, stream: false }),
-      signal: AbortSignal.timeout(120000),
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: [{ type: 'text', text: `${STUDY_TEST_PROMPT}\n\nКласс ученика: ${subject.studentClass || 'не указан'}.` }, ...imageParts] }], max_tokens: 3500, temperature: 0.2, reasoning_effort: 'low', stream: false }),
+      signal: AbortSignal.timeout(180000),
     });
     let result = await response.json().catch(() => ({}));
     if (response.status === 202 && typeof result.requestId === 'string') {
@@ -1183,6 +1183,9 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     const quiz = validateGeneratedQuiz(raw.slice(firstBrace, lastBrace + 1));
     return res.json({ quiz: { ...quiz, studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, trial: Boolean(subject.trial), lessonId, lessonHour: currentHour, durationMinutes: 4 } });
   } catch (error) {
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      return res.status(504).json({ error: 'NVIDIA не успела сгенерировать тест за 3 минуты. Попробуйте загрузить меньше изображений или повторить позже.' });
+    }
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка.';
     return res.status(502).json({ error: `Ошибка соединения с NVIDIA API: ${message.slice(0, 300)}` });
   }
