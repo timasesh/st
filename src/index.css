@@ -148,6 +148,15 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+.student-dashboard :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.student-dashboard :is(a, button) {
+  -webkit-tap-highlight-color: transparent;
+}
+
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .landing-site .clay-card:hover {
     border-color: rgba(147, 197, 253, 0.95);
@@ -166,6 +175,15 @@
   .landing-site *,
   .landing-site *::before,
   .landing-site *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .student-dashboard *,
+  .student-dashboard *::before,
+  .student-dashboard *::after {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;

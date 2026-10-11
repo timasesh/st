@@ -13,7 +13,7 @@ export default defineConfig(() => {
     },
     preview: {
       host: '0.0.0.0',
-      allowedHosts: true,
+      allowedHosts: true as const,
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
