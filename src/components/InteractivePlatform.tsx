@@ -444,34 +444,6 @@ export default function InteractivePlatform({
                   </div>
 
                   <div className="space-y-4">
-                    {/* Subject Map Card from Artistic Flair */}
-                  <div className="clay-card-sm p-6 relative overflow-hidden bg-surface">
-                      <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none text-blue-900">
-                        <Compass className="w-32 h-32" />
-                      </div>
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <h3 className="font-black text-xl text-foreground">Карта Знаний</h3>
-                          <p className="text-sm text-muted/80">Математика · 5–9 классы · {selectedSubject.name}</p>
-                        </div>
-                        <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-lg text-xs font-black">
-                          {level >= 3 ? '4/5 КВЕСТОВ ПРОЙДЕНО' : '2/5 КВЕСТОВ ПРОЙДЕНО'}
-                        </span>
-                      </div>
-                      <div className="relative h-28 flex items-center justify-between px-6 sm:px-10">
-                        {/* Connection Lines */}
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-full h-1 border-t-2 border-dashed border-border"></div>
-                        </div>
-                        {/* Nodes */}
-                        <div className="z-10 bg-primary w-12 h-12 rounded-2xl border-4 border-white shadow-lg flex items-center justify-center text-white font-bold cursor-pointer transition-transform hover:scale-110">1</div>
-                        <div className="z-10 bg-primary w-12 h-12 rounded-2xl border-4 border-white shadow-lg flex items-center justify-center text-white font-bold cursor-pointer transition-transform hover:scale-110">2</div>
-                        <div className={`z-10 ${level >= 2 ? 'bg-primary' : 'bg-blue-400'} w-12 h-12 rounded-2xl border-4 border-white shadow-lg flex items-center justify-center text-white font-bold cursor-pointer transition-transform hover:scale-110`}>3</div>
-                        <div className={`z-10 ${level >= 3 ? 'bg-primary text-white' : 'bg-slate-200 text-muted/80'} w-12 h-12 rounded-2xl border-4 border-white shadow-lg flex items-center justify-center font-bold cursor-pointer transition-transform hover:scale-110`}>4</div>
-                        <div className={`z-10 ${level >= 4 ? 'bg-accent text-white animate-pulse' : 'bg-primary-light text-muted/60'} w-12 h-12 rounded-2xl border-4 border-white flex items-center justify-center font-bold`}>5</div>
-                      </div>
-                    </div>
-
                     <div className="flex justify-between items-center pt-2">
                       <h3 className="text-xl font-bold text-foreground font-display">Квест по математике:</h3>
                       <span className="text-xs font-semibold text-primary bg-primary-light px-2.5 py-1 rounded-full border-2 border-border flex items-center gap-1">
@@ -529,47 +501,6 @@ export default function InteractivePlatform({
                     </div>
                   </div>
 
-                  {/* Interactive grid: Guidelines & Daily Quest card from Artistic Flair */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                    {/* Rules/Tip Card */}
-                    <div className="bg-primary-light p-5 rounded-3xl border border-border flex items-start space-x-3">
-                      <AlertCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                      <div className="text-xs text-muted space-y-2">
-                        <p className="font-black text-foreground text-sm">Правила игры StudyTask</p>
-                        <p className="leading-relaxed">
-                          Ответь на <strong className="text-primary">все вопросы без ошибок</strong> (10 из 10) и получи <strong className="text-amber-600">1 звезду</strong>.
-                          Ещё одна звезда — за прикреплённую домашку. Звёзды можно обменять на призы набора 1 в магазине.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Daily Quest Card from Artistic Flair */}
-                    <div className="bg-blue-900 rounded-3xl p-5 shadow-xl text-white relative overflow-hidden flex flex-col justify-between">
-                      <div className="relative z-10 space-y-3">
-                        <div>
-                          <h3 className="font-black text-lg mb-0.5 tracking-tight">Ежедневный Квест</h3>
-                          <p className="text-blue-300 text-[10px] uppercase font-bold tracking-wider">Заверши до полуночи</p>
-                        </div>
-                        <div className="bg-white/10 p-3 rounded-xl border border-white/5">
-                          <p className="text-xs font-semibold italic text-slate-100">
-                            "Пройти квиз по предмету {selectedSubject.name} без ошибок!"
-                          </p>
-                        </div>
-                        <div className="flex justify-between items-center pt-1">
-                          <span className="text-xs font-extrabold text-blue-200 font-mono">+100 XP & +1 ЗВЕЗДА</span>
-                          <button 
-                            onClick={() => handleStartQuiz(selectedSubject)}
-                            className="bg-accent hover:bg-accent-dark px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-blue-950/50"
-                          >
-                            В бой!
-                          </button>
-                        </div>
-                      </div>
-                      {/* Decorative circles */}
-                      <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-blue-800 rounded-full opacity-50 -z-0"></div>
-                      <div className="absolute top-0 right-10 w-12 h-12 bg-blue-700 rounded-full opacity-30 -z-0"></div>
-                    </div>
-                  </div>
                   </div>
 
                   {/* Домашнее задание (справа) */}
