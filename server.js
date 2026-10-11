@@ -1150,7 +1150,7 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     imageParts.push({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}` } });
   }
   try {
-    const model = process.env.NVIDIA_MODEL?.trim() || 'moonshotai/kimi-k2.5';
+    const model = process.env.NVIDIA_MODEL?.trim() || 'moonshotai/kimi-k3';
     const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },

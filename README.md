@@ -30,4 +30,4 @@ Run `npm run build` and then `npm start` to serve the production build and the a
 
 ## AI test generation
 
-Teacher-created image tests use the NVIDIA API from the server. Add `NVIDIA_API_KEY` to the Render Web Service's **Environment** settings and redeploy. The key is never sent to the browser. `NVIDIA_MODEL` is optional; the default is `moonshotai/kimi-k2.5`. Generated tests contain 10 multiple-choice questions and are stored in Supabase with the student's account.
+Teacher-created image tests use the NVIDIA API from the server. Add `NVIDIA_API_KEY` to the Render Web Service's **Environment** settings and redeploy. The key is never sent to the browser. `NVIDIA_MODEL` is optional; the default is `moonshotai/kimi-k3`. Generated tests contain 10 multiple-choice questions and are stored in Supabase with the student's account.
