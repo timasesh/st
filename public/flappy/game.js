@@ -15,7 +15,8 @@ const rocketImage = new Image();
 rocketImage.src = './ракета.png';
 
 const GRAVITY = 0.45;
-const JUMP = -9.5;
+const LIFT = 0.9;
+const MAX_ASCENT_SPEED = -7.5;
 const PIPE_SPEED = 3;
 const PIPE_GAP = 155;
 const PIPE_INTERVAL = 1800;
@@ -24,7 +25,7 @@ const PIPE_INTERVAL = 1800;
 let gameState = 'start';
 let score = 0, bestScore = 0, frame = 0;
 let lastPipe = 0, animFrame;
-let doubleJumpUsed = false, lastTap = 0;
+let flightHeld = false;
 let isPaused = false, isMuted = false;
 
 // Parallax
@@ -198,6 +199,7 @@ function toggleMute() {
 function togglePause() {
   if (gameState !== 'playing') return;
   isPaused = !isPaused;
+  if (isPaused) flightHeld = false;
   document.getElementById('pauseScreen').style.display = isPaused ? 'flex' : 'none';
   document.getElementById('pauseBtn').innerHTML = isPaused ? SVG_PLAY : SVG_PAUSE;
 }
@@ -652,7 +654,7 @@ function drawReadyHint() {
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 11px "Press Start 2P", monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('ТАП ДЛЯ СТАРТА', W/2, H/2 + 80);
+  ctx.fillText('ЗАЖМИ, ЧТОБЫ ЛЕТЕТЬ', W/2, H/2 + 80);
   ctx.globalAlpha = 1;
 }
 
@@ -769,6 +771,7 @@ function die() {
   if (!player.alive) return;
   if (invincible > 0) return;
 
+  flightHeld = false;
   addParticles(player.x + player.w/2, player.y + player.h/2);
   player.alive = false;
   gameState = 'dead';
@@ -850,7 +853,7 @@ function startGame() {
   shield = null; playerHasShield = false; shieldGlow = 0; deathFlash = 0; deathTimer = 0; isDying = false;
   coinOnScreen = null; sessionCoins = 0; invincible = 0;
   score = 0; frame = 0;
-  doubleJumpUsed = false; isPaused = false;
+  flightHeld = false; isPaused = false;
   pipesSpawned = 0;
   nextShieldPipe = 10 + Math.floor(Math.random() * 3);
   nextCoinPipe = 4 + Math.floor(Math.random() * 3);
@@ -910,6 +913,7 @@ function continueByCoin() {
   player.vy = 0;
   player.angle = 0;
   player.alive = true;
+  flightHeld = false;
   invincible = 120;
 
   gameState = 'playing';
@@ -921,29 +925,22 @@ function continueByCoin() {
   });
 }
 
-// ===== JUMP =====
-function jump() {
-  if (gameState === 'dead' || gameState === 'start' || isPaused) return;
-  if (!player.alive) return;
+// ===== HOLD TO FLY =====
+function startFlight() {
+  if (gameState === 'dead' || gameState === 'start' || isPaused || !player.alive) return;
 
   if (gameState === 'ready') {
     gameState = 'playing';
     lastPipe = Date.now() + 1000;
-    player.vy = JUMP;
-    doubleJumpUsed = false;
     document.getElementById('topControls').style.display = 'flex';
-    playSound('jump');
-    return;
   }
 
-  playSound('jump');
-  if (player.vy < 3 || !doubleJumpUsed === false) {
-    player.vy = JUMP;
-    doubleJumpUsed = false;
-  } else if (!doubleJumpUsed) {
-    player.vy = JUMP * 0.85;
-    doubleJumpUsed = true;
-  }
+  if (!flightHeld) playSound('jump');
+  flightHeld = true;
+}
+
+function stopFlight() {
+  flightHeld = false;
 }
 
 // ===== START SCREEN PREVIEW =====
@@ -990,9 +987,10 @@ function gameLoop() {
     drawCoin();
 
     if (gameState === 'playing' && !isPaused) {
-      player.vy += GRAVITY;
+      player.vy = flightHeld
+        ? Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT)
+        : Math.min(9, player.vy + GRAVITY);
       player.y += player.vy;
-      if (player.vy > 0) doubleJumpUsed = false;
       updatePipes();
     }
 
@@ -1037,36 +1035,33 @@ function gameLoop() {
 }
 
 // ===== EVENTS =====
-let _isTouchDevice = false;
-
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
     e.preventDefault();
-    jump();
+    if (!e.repeat) startFlight();
   }
   if (e.code === 'Escape' || e.code === 'KeyP') {
     togglePause();
   }
 });
 
-canvas.addEventListener('click', () => {
-  if (_isTouchDevice) return;
-  if (gameState !== 'playing' && gameState !== 'ready') return;
-  if (!isPaused) jump();
+document.addEventListener('keyup', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') stopFlight();
 });
 
-document.addEventListener('touchstart', e => {
+window.addEventListener('blur', stopFlight);
+
+canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
-  _isTouchDevice = true;
   _unlockBgMusic();
-  if (e.target.closest('button, .btn, .ctrl-btn, #homeBtn, .btn-outline')) return;
   if (gameState !== 'playing' && gameState !== 'ready') return;
-  if (!isPaused) jump();
-}, { passive: false });
-
-document.querySelectorAll('.btn, .ctrl-btn, #homeBtn, .btn-outline').forEach(btn => {
-  btn.addEventListener('touchstart', e => e.stopPropagation(), { passive: false });
+  if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+  startFlight();
 });
+
+canvas.addEventListener('pointerup', stopFlight);
+canvas.addEventListener('pointercancel', stopFlight);
+canvas.addEventListener('lostpointercapture', stopFlight);
 
 document.getElementById('startMuteBtn').addEventListener('touchstart', e => {
   e.preventDefault();
