@@ -184,7 +184,7 @@ export default function StudentDashboard({ portal, now, loading, error, activeTa
       </header>
 
       <div className="mx-auto grid max-w-[1440px] lg:grid-cols-[232px_minmax(0,1fr)]">
-        <aside className="hidden min-h-[calc(100vh-72px)] border-r border-slate-200/80 bg-white/60 px-4 py-6 lg:flex lg:flex-col">
+        <aside className="sticky top-[72px] hidden h-[calc(100vh-72px)] self-start overflow-y-auto border-r border-slate-200/80 bg-white/60 px-4 py-6 lg:flex lg:flex-col">
           <p className="px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Моё обучение</p>
           <nav aria-label="Разделы кабинета ученика" className="mt-3 space-y-1">{TABS.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => goTo(id)} aria-current={activeTab === id ? 'page' : undefined} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${id === 'skyquest' ? 'skyquest-nav-tab' : activeTab === id ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}><Icon className="h-[18px] w-[18px]" /><span className="flex-1">{label}</span>{id === 'tests' && assignedTests.length > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] ${activeTab === id ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'}`}>{assignedTests.length}</span>}</button>)}</nav>
           <div className="mt-auto space-y-3 pt-8">
