@@ -12,8 +12,8 @@ const rocketImage = new Image();
 rocketImage.src = './ракета.png';
 
 const GRAVITY = 0.45;
-const LIFT = 1.55;
-const MAX_ASCENT_SPEED = -9;
+const LIFT = 0.9;
+const MAX_ASCENT_SPEED = -7.5;
 const PIPE_SPEED = 3;
 const PIPE_GAP = 155;
 const PIPE_INTERVAL = 1800;
