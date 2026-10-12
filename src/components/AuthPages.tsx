@@ -13,17 +13,17 @@ type LoginProgress = {
   userName: string; userClass: string;
 };
 
-function AuthShell({ children, eyebrow }: { children: ReactNode; eyebrow: string }) {
+function AuthShell({ children, eyebrow, compact = false }: { children: ReactNode; eyebrow: string; compact?: boolean }) {
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-primary-light px-4 py-10">
+    <main className={`relative flex min-h-dvh items-center justify-center overflow-hidden bg-primary-light px-4 ${compact ? 'py-2 sm:py-3' : 'py-10'}`}>
       <div aria-hidden className="absolute -left-16 top-16 h-48 w-48 rounded-[3rem] border-2 border-blue-200 bg-blue-200/50" />
       <div aria-hidden className="absolute right-8 top-32 h-32 w-32 rounded-full border-2 border-blue-200 bg-blue-200/40" />
       <div aria-hidden className="absolute bottom-8 left-1/4 h-24 w-24 rotate-12 rounded-2xl border-2 border-amber-200 bg-amber-200/50" />
 
       <div className="relative z-10 w-full max-w-md">
-        <a href="/" className="mb-7 flex items-center justify-center gap-3 rounded-xl text-foreground">
-          <img src="/static/ST.webp" alt="Study Task" className="h-12 w-12 rounded-xl object-contain" />
-          <span className="font-display text-2xl font-extrabold">StudyTask</span>
+        <a href="/" className={`flex items-center justify-center gap-3 rounded-xl text-foreground ${compact ? 'mb-3' : 'mb-7'}`}>
+          <img src="/static/ST.webp" alt="Study Task" className={`${compact ? 'h-10 w-10' : 'h-12 w-12'} rounded-xl object-contain`} />
+          <span className={`font-display font-extrabold ${compact ? 'text-xl' : 'text-2xl'}`}>StudyTask</span>
         </a>
         <section className="clay-card overflow-hidden bg-surface">
           <div className="bg-gradient-to-r from-primary to-accent-dark px-7 py-6 text-center text-white">
@@ -33,7 +33,7 @@ function AuthShell({ children, eyebrow }: { children: ReactNode; eyebrow: string
             {children}
           </div>
         </section>
-        <a href="/" className="mt-6 flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark">
+        <a href="/" className={`flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark ${compact ? 'mt-3' : 'mt-6'}`}>
           <ArrowLeft className="h-4 w-4" /> На главную
         </a>
       </div>
@@ -83,12 +83,12 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
   };
 
   return (
-    <AuthShell eyebrow={expectedRole ? 'ЛИЧНЫЙ КАБИНЕТ ПРЕПОДАВАТЕЛЯ' : 'STUDYTASK · ЛИЧНЫЙ КАБИНЕТ'}>
-      <span className="mx-auto mb-3 mt-5 grid h-14 w-14 place-items-center rounded-2xl bg-white/15 shadow-inner ring-1 ring-white/25"><UserRound className="h-7 w-7 text-white" /></span>
-      <h1 className="font-display text-3xl font-extrabold tracking-tight">С возвращением!</h1>
-      <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-blue-100">{expectedRole ? 'Войдите по данным, выданным администратором' : 'Войдите в свой учебный профиль'}</p>
-      <form onSubmit={submit} className="space-y-4 bg-white p-6 text-left sm:p-7">
-        {!expectedRole && <fieldset className="space-y-2"><legend className="text-sm font-bold text-slate-700">Кто входит в аккаунт?</legend><div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5"><button type="button" aria-pressed={accountType === 'student'} onClick={() => { setAccountType('student'); setError(''); }} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${accountType === 'student' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><GraduationCap className="h-4 w-4"/>Ученик</button><button type="button" aria-pressed={accountType === 'parent'} onClick={() => { setAccountType('parent'); setError(''); }} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${accountType === 'parent' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><Users className="h-4 w-4"/>Родитель</button></div><p className="text-xs leading-5 text-slate-500">{accountType === 'parent' ? 'Используйте телефон и пароль родительского аккаунта, созданного администратором.' : 'Используйте телефон и пароль аккаунта ученика, созданного администратором.'}</p></fieldset>}
+    <AuthShell compact={!expectedRole} eyebrow={expectedRole ? 'ЛИЧНЫЙ КАБИНЕТ ПРЕПОДАВАТЕЛЯ' : 'STUDYTASK · ЛИЧНЫЙ КАБИНЕТ'}>
+      <span className="mx-auto mb-2 mt-2 grid h-11 w-11 place-items-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/25"><UserRound className="h-5 w-5 text-white" /></span>
+      <h1 className="font-display text-2xl font-extrabold tracking-tight">С возвращением!</h1>
+      <p className="mx-auto mt-1 max-w-xs text-sm leading-5 text-blue-100">{expectedRole ? 'Войдите по данным, выданным администратором' : 'Войдите в свой учебный профиль'}</p>
+      <form onSubmit={submit} className={`bg-white text-left ${expectedRole ? 'space-y-4 p-6 sm:p-7' : 'space-y-3 p-4 sm:p-5'}`}>
+        {!expectedRole && <fieldset className="space-y-1.5"><legend className="text-sm font-bold text-slate-700">Кто входит в аккаунт?</legend><div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1"><button type="button" aria-pressed={accountType === 'student'} onClick={() => { setAccountType('student'); setError(''); }} className={`flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-bold transition ${accountType === 'student' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><GraduationCap className="h-4 w-4"/>Ученик</button><button type="button" aria-pressed={accountType === 'parent'} onClick={() => { setAccountType('parent'); setError(''); }} className={`flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-bold transition ${accountType === 'parent' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><Users className="h-4 w-4"/>Родитель</button></div><p className="text-[11px] leading-4 text-slate-500">{accountType === 'parent' ? 'Данные родительского аккаунта от администратора.' : 'Данные аккаунта ученика от администратора.'}</p></fieldset>}
         <label className="block space-y-1.5 text-sm font-bold text-slate-700" htmlFor="student-phone">
           Номер телефона аккаунта
           <input
@@ -99,7 +99,7 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
             placeholder="+7 700 000 00 00"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+            className={`w-full rounded-xl border border-slate-200 bg-slate-50 px-4 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 ${expectedRole ? 'py-3.5' : 'py-2.5'}`}
           />
         </label>
         <label className="block space-y-1.5 text-sm font-bold text-slate-700" htmlFor="student-password">
@@ -114,7 +114,7 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Введи пароль"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-10 pr-12 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+              className={`w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-12 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 ${expectedRole ? 'py-3.5' : 'py-2.5'}`}
             />
             <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'} className="absolute right-3 top-3 rounded p-1 text-muted hover:text-primary">
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -122,7 +122,7 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
           </span>
         </label>
         {error && <p role="alert" className="text-sm font-semibold text-rose-600">{error}</p>}
-        <button type="submit" disabled={loading} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 px-5 py-3 font-display text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-600/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:translate-y-0 disabled:opacity-70">
+        <button type="submit" disabled={loading} className={`flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 px-5 font-display text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-600/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:translate-y-0 disabled:opacity-70 ${expectedRole ? 'min-h-12 py-3' : 'min-h-10 py-2'}`}>
           {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><LogIn className="h-4 w-4" /> Войти {accountType === 'parent' && !expectedRole ? 'как родитель' : 'в профиль'}</>}
         </button>
         <p className="text-center text-xs leading-5 text-slate-500">Вход доступен по данным аккаунта, который создал администратор.</p>
