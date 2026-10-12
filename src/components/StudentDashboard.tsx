@@ -1,5 +1,6 @@
 import { ArrowRight, BookOpen, BookOpenCheck, CalendarDays, CheckCircle2, ChevronRight, Clock3, FileQuestion, GraduationCap, LogOut, MessageCircle, Paperclip, Play, Rocket, Sparkles, Star, Trophy, X } from 'lucide-react';
 import SkyQuestTab from './SkyQuestTab';
+import PortalSettings from './PortalSettings';
 
 type StudentTab = 'lessons' | 'schedule' | 'tests' | 'homework' | 'skyquest';
 
@@ -53,6 +54,8 @@ type Props = {
   activeTab: StudentTab;
   onChangeTab: (tab: StudentTab) => void;
   messagesOpen: boolean;
+  darkTheme: boolean;
+  onThemeChange: (dark: boolean) => void;
   onToggleMessages: () => void;
   onCloseMessages: () => void;
   onLogout: () => void;
@@ -108,7 +111,7 @@ function EmptyState({ icon: Icon, title, text, action }: { icon: typeof BookOpen
   );
 }
 
-export default function StudentDashboard({ portal, now, loading, error, activeTab, onChangeTab, messagesOpen, onToggleMessages, onCloseMessages, onLogout, savingMessageId, onMarkRead, testNotice, onStartTest, onOpenHomework }: Props) {
+export default function StudentDashboard({ portal, now, loading, error, activeTab, onChangeTab, messagesOpen, darkTheme, onThemeChange, onToggleMessages, onCloseMessages, onLogout, savingMessageId, onMarkRead, testNotice, onStartTest, onOpenHomework }: Props) {
   if (!portal) return <div className="min-h-screen bg-[#f4f7fc] px-4 py-6 sm:px-6"><header className="mx-auto flex max-w-6xl items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 object-contain" /><div><strong className="block font-display font-extrabold">StudyTask</strong><span className="text-xs text-slate-500">Кабинет ученика</span></div></header><main className="mx-auto mt-10 max-w-6xl">{error && <p role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{error}</p>}{loading ? <div aria-label="Загружаем кабинет" className="space-y-5"><div className="h-56 animate-pulse rounded-3xl bg-white" /><div className="grid gap-4 md:grid-cols-3"><div className="h-32 animate-pulse rounded-2xl bg-white" /><div className="h-32 animate-pulse rounded-2xl bg-white" /><div className="h-32 animate-pulse rounded-2xl bg-white" /></div></div> : <p className="text-sm text-slate-600">Не удалось загрузить данные кабинета.</p>}</main></div>;
   const account = portal.account;
   const level = portal.progress?.level ?? 1;
@@ -148,7 +151,7 @@ export default function StudentDashboard({ portal, now, loading, error, activeTa
   const goTo = (tab: StudentTab) => onChangeTab(tab);
 
   return (
-    <div className="student-dashboard min-h-screen bg-[#f4f7fc] text-slate-900">
+    <div className={`student-dashboard min-h-screen bg-[#f4f7fc] text-slate-900 ${darkTheme ? 'portal-theme-dark' : ''}`}>
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex min-h-[72px] max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <a href="/student" className="flex min-w-0 items-center gap-3 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600">
@@ -175,6 +178,7 @@ export default function StudentDashboard({ portal, now, loading, error, activeTa
                 <div className="max-h-[min(65vh,480px)] space-y-2 overflow-y-auto p-3">{portal.messages.length ? portal.messages.map((message) => <article key={message.id} className={`rounded-xl border p-3 ${message.read ? 'border-slate-100 bg-white' : 'border-blue-100 bg-blue-50/60'}`}><p className="text-[11px] text-slate-500">{message.sender} · {new Date(message.at).toLocaleString('ru-KZ', { timeZone: 'Asia/Almaty', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p><p className="mt-1.5 whitespace-pre-wrap text-sm leading-5 text-slate-800">{message.body}</p>{!message.read && <button type="button" disabled={savingMessageId === message.id} onClick={() => onMarkRead(message)} className="mt-2 min-h-9 rounded-lg px-2 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50">Отметить прочитанным</button>}</article>) : <p className="py-8 text-center text-sm text-slate-500">Сообщений пока нет.</p>}</div>
               </div>}
             </div>
+            <PortalSettings dark={darkTheme} onThemeChange={onThemeChange} />
             <button type="button" onClick={onLogout} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 sm:px-4"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Выйти</span></button>
           </div>
         </div>

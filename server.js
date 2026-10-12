@@ -1526,6 +1526,29 @@ app.post('/api/auth/login', async (req, res) => {
   return res.json({ account: publicAccount(account), progress });
 });
 
+app.post('/api/auth/change-password', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user) return res.status(401).json({ error: 'Сеанс завершён. Войдите в аккаунт снова.' });
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || currentPassword.length > 128 || !(await passwordsMatch(currentPassword, user.account.salt, user.account.passwordHash))) {
+    return res.status(401).json({ error: 'Текущий пароль указан неверно.' });
+  }
+  if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
+    return res.status(400).json({ error: 'Новый пароль должен содержать от 8 до 128 символов.' });
+  }
+  if (await passwordsMatch(newPassword, user.account.salt, user.account.passwordHash)) {
+    return res.status(400).json({ error: 'Новый пароль должен отличаться от текущего.' });
+  }
+  const salt = crypto.randomBytes(16);
+  const passwordHash = await hashPassword(newPassword, salt);
+  const nextAccounts = accounts.map((account) => account.id === user.account.id
+    ? { ...account, salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64') }
+    : account);
+  await writeAccounts(nextAccounts);
+  return res.json({ ok: true });
+});
+
 app.put('/api/auth/progress', async (req, res) => {
   await refreshAccounts();
   const user = getUserSession(req);

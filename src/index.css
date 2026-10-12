@@ -329,6 +329,36 @@ body {
   border-color: #355982;
 }
 
+/* Learner, parent and teacher portal theme. */
+.portal-theme-dark {
+  color: #e2e8f0 !important;
+  background: #0f172a !important;
+}
+.portal-theme-dark :is(header, aside, .bg-white, .bg-white\/90, .bg-white\/60, .portal-settings-card) {
+  background-color: #172033 !important;
+  color: #e2e8f0 !important;
+}
+.portal-theme-dark :is(article, section, [role="dialog"], .border-slate-100, .border-slate-200, .border-border) {
+  border-color: #334155 !important;
+}
+.portal-theme-dark :is(.bg-slate-50, .bg-slate-100, .bg-primary-light, .bg-blue-50\/60, .bg-blue-50\/70) {
+  background-color: #1e293b !important;
+}
+.portal-theme-dark :is(.text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600, .text-slate-500, .text-muted, .text-foreground) {
+  color: #cbd5e1 !important;
+}
+.portal-theme-dark :is(h1, h2, h3, strong, label, .font-display) {
+  color: #f1f5f9;
+}
+.portal-theme-dark :is(input, textarea, select, .portal-settings-input) {
+  background-color: #0f172a !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+.portal-theme-dark .portal-settings-overlay {
+  background-color: rgb(2 6 23 / 78%) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-float-soft,
   .animate-float-soft-reverse,
