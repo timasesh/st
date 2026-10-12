@@ -1112,6 +1112,61 @@ app.get('/api/teacher/students/:studentId/lesson-history', async (req, res) => {
   catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить историю занятий.' }); }
 });
 
+app.get('/api/parent/students/:studentId/lesson-history', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'parent') return res.status(403).json({ error: 'История уроков доступна только родителю.' });
+  const student = accounts.find((account) => account.id === req.params.studentId && account.role === 'student' && account.status !== 'withdrawn' && (user.account.children || []).includes(account.id));
+  if (!student) return res.status(404).json({ error: 'Ученик не найден в вашем аккаунте.' });
+  try {
+    const history = await readStudentLessonHistory(student.id);
+    const attachments = await readJsonFileOr(homeworkAttachmentsPath, {});
+    return res.json({ history: history.map((entry) => { const file = attachments[`${student.id}:${entry.id}`]; return { ...entry, attachment: file ? { filename: file.filename, mimeType: file.mimeType, updatedAt: file.updatedAt } : null }; }) });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить историю уроков.' }); }
+});
+
+app.get('/api/parent/students/:studentId/lesson-history/:entryId/attachment', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'parent') return res.status(403).json({ error: 'Доступ запрещён.' });
+  const student = accounts.find((account) => account.id === req.params.studentId && account.role === 'student' && account.status !== 'withdrawn' && (user.account.children || []).includes(account.id));
+  if (!student) return res.status(404).json({ error: 'Ученик не найден в вашем аккаунте.' });
+  const history = await readStudentLessonHistory(student.id);
+  if (!history.some((entry) => entry.id === req.params.entryId && entry.nextHomework)) return res.status(404).json({ error: 'Домашнее задание не найдено.' });
+  const attachments = await readJsonFileOr(homeworkAttachmentsPath, {});
+  const file = attachments[`${student.id}:${req.params.entryId}`];
+  if (!file) return res.status(404).json({ error: 'Файл не прикреплён.' });
+  res.setHeader('Content-Type', file.mimeType);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  return res.send(Buffer.from(file.data, 'base64'));
+});
+
+app.post('/api/parent/students/:studentId/prize-kit', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'parent') return res.status(403).json({ error: 'Покупать призы может только родитель.' });
+  const student = accounts.find((account) => account.id === req.params.studentId && account.role === 'student' && account.status !== 'withdrawn' && (user.account.children || []).includes(account.id));
+  if (!student) return res.status(404).json({ error: 'Ученик не найден в вашем аккаунте.' });
+  const kit = [
+    { id: 'stickers', name: 'Стикерпак', stars: 5 },
+    { id: 'notebook', name: 'Блокнот', stars: 7 },
+    { id: 'tshirt', name: 'Фирменная футболка', stars: 10 },
+    { id: 'backpack', name: 'Фирменный рюкзак', stars: 12 },
+  ];
+  const requested = req.body?.itemIds;
+  if (!Array.isArray(requested) || requested.length !== kit.length || kit.some((item) => !requested.includes(item.id))) {
+    return res.status(400).json({ error: 'Получить призы можно только полным набором.' });
+  }
+  const cost = kit.reduce((sum, item) => sum + item.stars, 0);
+  const balance = Number(student.progress?.stars) || 0;
+  if (balance < cost) return res.status(400).json({ error: `Для полного набора нужно ${cost} звезды. Сейчас у ученика ${balance}.` });
+  const order = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), items: kit, cost, status: 'requested' };
+  const progress = { ...(student.progress || {}), stars: balance - cost, prizeOrders: [...(Array.isArray(student.progress?.prizeOrders) ? student.progress.prizeOrders : []), order] };
+  await writeAccounts(accounts.map((account) => account.id === student.id ? { ...account, progress } : account));
+  return res.status(201).json({ ok: true, order, stars: progress.stars });
+});
+
 app.get('/api/teacher/students/:studentId/homework/:entryId/attachment', async (req, res) => {
   await refreshAccounts();
   const subject = await getAssignedTeacherLessonSubject(req, res);
@@ -1471,7 +1526,7 @@ app.get('/api/auth/portal', async (req, res) => {
     return res.json({
       account,
       progress: current.progress || null,
-      relatedAccounts: relatedAccounts.map((item) => current.role === 'teacher' ? teacherStudentSummary(item) : publicAccount(item)),
+      relatedAccounts: relatedAccounts.map((item) => current.role === 'teacher' ? teacherStudentSummary(item) : current.role === 'parent' ? { ...publicAccount(item), progress: { stars: Number(item.progress?.stars) || 0 } } : publicAccount(item)),
       lessons,
       recordedLessonIds,
       studentTests,
@@ -1565,6 +1620,7 @@ app.put('/api/auth/progress', async (req, res) => {
     return res.status(400).json({ error: 'Некорректный список достижений.' });
   }
   const progress = {
+    ...(user.account.progress || {}),
     stars, xp, level, claimedPrizes: [...new Set(claimedPrizes)], unlockedAchievements: [...new Set(unlockedAchievements)],
     userName: `${user.account.firstName} ${user.account.lastName}`, userClass: user.account.studentClass || '',
   };
