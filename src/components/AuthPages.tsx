@@ -799,8 +799,9 @@ export function AdminDashboardPage() {
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось создать пробный урок.');
       await loadTrialLessons();
+      await loadAccounts();
       setShowTrialModal(false); setTrialFirstName(''); setTrialLastName(''); setTrialSlot(''); setTrialParentPhone(''); setTrialLessonLink(''); setTrialLessonDescription(''); setEditingTrialId(null);
-      setSuccess(editingTrialId ? 'Пробный урок перенесён.' : `Пробный урок для ${trialFirstName} ${trialLastName} создан.`);
+      setSuccess(editingTrialId ? `Пробный урок перенесён. Аккаунт активен: логин ${result.temporaryLogin || trialParentPhone}, пароль test2026.` : `Пробный урок назначен, аккаунт ученика уже активен. Логин: ${result.temporaryLogin || trialParentPhone}, пароль: test2026.`);
     } catch (reason) { setError(getFriendlyError(reason, 'Не удалось создать пробный урок.')); }
     finally { setSaving(false); }
   };
@@ -843,7 +844,7 @@ export function AdminDashboardPage() {
       setSelectedTrial(null); setTrialDeclineReason(''); setTrialOtherReason(''); setShowTrialDeclineForm(false);
       if (outcome === 'declined') { setSuccess('Отказ сохранён.'); return; }
       await loadAccounts();
-      setActiveRole('student'); setActiveView('accounts'); setSearch(''); setError(''); setSuccess(`Пробный аккаунт ученика ${result.student.firstName} ${result.student.lastName} создан. Логин: ${result.temporaryLogin}, пароль: ${result.temporaryPassword}.`);
+      setActiveRole('student'); setActiveView('accounts'); setSearch(''); setError(''); setSuccess(`Ученик ${result.student.firstName} ${result.student.lastName} записан на занятия. Его аккаунт уже активен: логин ${result.temporaryLogin}, пароль ${result.temporaryPassword}.`);
     } catch (reason) { setError(getFriendlyError(reason, 'Не удалось сохранить результат.')); }
     finally { setSaving(false); }
   };
@@ -1158,7 +1159,7 @@ export function AdminDashboardPage() {
           {showTrialModal && (
             <div className="admin-modal fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowTrialModal(false); }}>
               <section role="dialog" aria-modal="true" aria-labelledby="trial-modal-title" className="admin-card my-auto max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-white p-5 shadow-2xl sm:p-7">
-                <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-blue-100 p-2.5 text-blue-700"><UserPlus className="h-5 w-5" /></span><div><h2 id="trial-modal-title" className="font-display text-xl font-extrabold">{editingTrialId ? 'Перенести пробный урок' : 'Создать пробный урок'}</h2><p className="text-sm text-muted">После отметки «Записался» ученик получит пробный аккаунт. Логин — контакт родителя, пароль — test2026.</p></div></div>
+                <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-blue-100 p-2.5 text-blue-700"><UserPlus className="h-5 w-5" /></span><div><h2 id="trial-modal-title" className="font-display text-xl font-extrabold">{editingTrialId ? 'Перенести пробный урок' : 'Создать пробный урок'}</h2><p className="text-sm text-muted">Аккаунт ученика активируется сразу после назначения. Логин — контакт родителя, пароль — test2026.</p></div></div>
                 <form onSubmit={createTrialLesson} className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2"><label className="block space-y-1.5 text-sm font-bold">Имя<input autoFocus required maxLength={80} value={trialFirstName} onChange={(event) => setTrialFirstName(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label><label className="block space-y-1.5 text-sm font-bold">Фамилия<input required maxLength={80} value={trialLastName} onChange={(event) => setTrialLastName(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label></div>
                   <label className="block space-y-1.5 text-sm font-bold">Класс<select required value={trialClass} onChange={(event) => setTrialClass(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none">{[5, 6, 7, 8, 9].map((grade) => <option key={grade} value={`${grade} класс`}>{grade} класс</option>)}</select></label>
