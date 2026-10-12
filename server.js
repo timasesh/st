@@ -345,6 +345,19 @@ async function readStudentTests(studentId) {
   return data[studentId] || [];
 }
 
+function getStudentTestWindow(test) {
+  const existingDeadline = Date.parse(test?.deadlineAt || '');
+  const existingAvailable = Date.parse(test?.availableAt || '');
+  if (Number.isFinite(existingDeadline) && Number.isFinite(existingAvailable)) return { availableAt: new Date(existingAvailable).toISOString(), deadlineAt: new Date(existingDeadline).toISOString() };
+  const createdAt = new Date(test?.createdAt || '');
+  const hour = Number(test?.lessonHour);
+  if (!Number.isFinite(createdAt.getTime()) || !Number.isInteger(hour) || hour < 0 || hour > 23) return { availableAt: test?.availableAt || null, deadlineAt: test?.deadlineAt || null };
+  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(createdAt);
+  const part = (type) => parts.find((item) => item.type === type)?.value || '';
+  const lessonStart = new Date(`${part('year')}-${part('month')}-${part('day')}T${String(hour).padStart(2, '0')}:00:00+05:00`);
+  return { availableAt: new Date(lessonStart.getTime() + 50 * 60000).toISOString(), deadlineAt: new Date(lessonStart.getTime() + 65 * 60000).toISOString() };
+}
+
 async function writeStudentTests(studentId, tests) {
   const key = `student_tests:${studentId}`;
   if (supabase) {
@@ -1514,7 +1527,8 @@ app.post('/api/student/tests/:testId/submit', async (req, res) => {
     }
     if (index < 0) return res.status(404).json({ error: 'Тест не найден.' });
     if (tests[index].status === 'completed') return res.status(409).json({ error: 'Этот тест уже пройден.' });
-    if (tests[index].deadlineAt && Date.now() > Date.parse(tests[index].deadlineAt)) { tests[index] = { ...tests[index], status: 'expired' }; await writeStudentTests(testStoreId, tests); return res.status(410).json({ error: 'Срок выполнения теста истёк.' }); }
+    const testWindow = getStudentTestWindow(tests[index]);
+    if (testWindow.deadlineAt && Date.now() >= Date.parse(testWindow.deadlineAt)) { tests[index] = { ...tests[index], ...testWindow, status: 'expired' }; await writeStudentTests(testStoreId, tests); return res.status(410).json({ error: 'Срок выполнения теста истёк.' }); }
     const total = tests[index].questions.length;
     if (answers.length !== total || answers.some((answer, questionIndex) => !Number.isInteger(answer) || answer < 0 || answer >= (tests[index].questions[questionIndex]?.choices?.length || 0))) return res.status(400).json({ error: `Ответьте на все ${total} вопросов.` });
     const correct = answers.reduce((sum, answer, questionIndex) => sum + Number(answer === tests[index].questions[questionIndex]?.correctIndex), 0);
@@ -1713,7 +1727,7 @@ app.get('/api/auth/portal', async (req, res) => {
     }
     const messages = await readAccountInbox(current.id);
     const studentTests = current.role === 'student'
-      ? (await readStudentTests(convertedTrial?.id || current.id)).filter((test) => Array.isArray(test.questions) && (!test.availableAt || Date.now() >= Date.parse(test.availableAt))).map((test) => ({ ...test, status: test.status === 'assigned' && test.deadlineAt && Date.now() > Date.parse(test.deadlineAt) ? 'expired' : test.status, questions: test.questions.map(({ correctIndex, ...question }) => question) }))
+      ? (await readStudentTests(convertedTrial?.id || current.id)).filter((test) => Array.isArray(test.questions) && (!getStudentTestWindow(test).availableAt || Date.now() >= Date.parse(getStudentTestWindow(test).availableAt))).map((test) => { const window = getStudentTestWindow(test); return { ...test, ...window, status: test.status === 'assigned' && window.deadlineAt && Date.now() >= Date.parse(window.deadlineAt) ? 'expired' : test.status, questions: test.questions.map(({ correctIndex, ...question }) => question) }; })
       : [];
     const studentHistory = current.role === 'student' ? await readStudentLessonHistory(current.id) : [];
     const latestAttendance = new Map();
