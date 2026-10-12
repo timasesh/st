@@ -26,16 +26,16 @@ function AuthShell({ children, eyebrow, compact = false }: { children: ReactNode
           <span className={`font-display font-extrabold ${compact ? 'text-xl' : 'text-2xl'}`}>StudyTask</span>
         </a>
         <section className="clay-card overflow-hidden bg-surface">
-          <div className="bg-gradient-to-r from-primary to-accent-dark px-7 py-6 text-center text-white">
+          <div className={`bg-gradient-to-r from-primary to-accent-dark text-center text-white ${compact ? 'px-6 py-3' : 'px-7 py-6'}`}>
             <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-bold">
               {eyebrow}
             </span>
             {children}
           </div>
         </section>
-        <a href="/" className={`flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark ${compact ? 'mt-3' : 'mt-6'}`}>
+        {!compact && <a href="/" className="mt-6 flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark">
           <ArrowLeft className="h-4 w-4" /> На главную
-        </a>
+        </a>}
       </div>
     </main>
   );
@@ -84,10 +84,10 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
 
   return (
     <AuthShell compact={!expectedRole} eyebrow={expectedRole ? 'ЛИЧНЫЙ КАБИНЕТ ПРЕПОДАВАТЕЛЯ' : 'STUDYTASK · ЛИЧНЫЙ КАБИНЕТ'}>
-      <span className="mx-auto mb-2 mt-2 grid h-11 w-11 place-items-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/25"><UserRound className="h-5 w-5 text-white" /></span>
-      <h1 className="font-display text-2xl font-extrabold tracking-tight">С возвращением!</h1>
+      <span className={`mx-auto grid place-items-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/25 ${expectedRole ? 'mb-2 mt-2 h-11 w-11' : 'mb-1 mt-1 h-9 w-9'}`}><UserRound className={`${expectedRole ? 'h-5 w-5' : 'h-4 w-4'} text-white`} /></span>
+      <h1 className={`font-display font-extrabold tracking-tight ${expectedRole ? 'text-2xl' : 'text-xl'}`}>С возвращением!</h1>
       <p className="mx-auto mt-1 max-w-xs text-sm leading-5 text-blue-100">{expectedRole ? 'Войдите по данным, выданным администратором' : 'Войдите в свой учебный профиль'}</p>
-      <form onSubmit={submit} className={`bg-white text-left ${expectedRole ? 'space-y-4 p-6 sm:p-7' : 'space-y-3 p-4 sm:p-5'}`}>
+      <form onSubmit={submit} className={`bg-white text-left ${expectedRole ? 'space-y-4 p-6 sm:p-7' : 'space-y-2.5 p-3 sm:p-4'}`}>
         {!expectedRole && <fieldset className="space-y-1.5"><legend className="text-sm font-bold text-slate-700">Кто входит в аккаунт?</legend><div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1"><button type="button" aria-pressed={accountType === 'student'} onClick={() => { setAccountType('student'); setError(''); }} className={`flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-bold transition ${accountType === 'student' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><GraduationCap className="h-4 w-4"/>Ученик</button><button type="button" aria-pressed={accountType === 'parent'} onClick={() => { setAccountType('parent'); setError(''); }} className={`flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-bold transition ${accountType === 'parent' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><Users className="h-4 w-4"/>Родитель</button></div><p className="text-[11px] leading-4 text-slate-500">{accountType === 'parent' ? 'Данные родительского аккаунта от администратора.' : 'Данные аккаунта ученика от администратора.'}</p></fieldset>}
         <label className="block space-y-1.5 text-sm font-bold text-slate-700" htmlFor="student-phone">
           Номер телефона аккаунта
@@ -122,13 +122,12 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
           </span>
         </label>
         {error && <p role="alert" className="text-sm font-semibold text-rose-600">{error}</p>}
-        <button type="submit" disabled={loading} className={`flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 px-5 font-display text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-600/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:translate-y-0 disabled:opacity-70 ${expectedRole ? 'min-h-12 py-3' : 'min-h-10 py-2'}`}>
+        <button type="submit" disabled={loading} className={`flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 px-5 font-display text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-600/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:translate-y-0 disabled:opacity-70 ${expectedRole ? 'min-h-12 py-3' : 'min-h-9 py-1.5'}`}>
           {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><LogIn className="h-4 w-4" /> Войти {accountType === 'parent' && !expectedRole ? 'как родитель' : 'в профиль'}</>}
         </button>
         <p className="text-center text-xs leading-5 text-slate-500">Вход доступен по данным аккаунта, который создал администратор.</p>
       </form>
-      <a href="/admin_login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход для администратора</a>
-      {expectedRole ? <a href="/login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход ученика или родителя</a> : <a href="/teacher_login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход преподавателя</a>}
+      {expectedRole && <><a href="/admin_login" className="block border-t border-border px-5 py-3 text-center text-xs font-semibold text-muted hover:text-primary">Вход для администратора</a><a href="/login" className="block border-t border-border px-5 py-3 text-center text-xs font-semibold text-muted hover:text-primary">Вход ученика или родителя</a></>}
     </AuthShell>
   );
 }
