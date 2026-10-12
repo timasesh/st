@@ -358,6 +358,9 @@ body {
 .portal-theme-dark .portal-settings-overlay {
   background-color: rgb(2 6 23 / 78%) !important;
 }
+.portal-theme-dark .parent-timetable-lesson :is(strong, span) {
+  color: #111827 !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .animate-float-soft,
