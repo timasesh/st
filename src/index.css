@@ -375,3 +375,17 @@ body {
     animation: none !important;
   }
 }
+
+
+/* Keep text in the admin teacher schedule readable over pastel lesson slots. */
+.teacher-schedule-slot,
+.teacher-schedule-slot strong,
+.teacher-schedule-slot span {
+  color: #000;
+}
+
+.admin-dashboard.theme-dark .teacher-schedule-slot,
+.admin-dashboard.theme-dark .teacher-schedule-slot strong,
+.admin-dashboard.theme-dark .teacher-schedule-slot span {
+  color: #000 !important;
+}
