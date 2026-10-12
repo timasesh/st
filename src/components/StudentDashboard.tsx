@@ -237,7 +237,7 @@ export default function StudentDashboard({ portal, now, loading, error, activeTa
           {testNotice && activeTab === 'tests' && <div role="status" className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{testNotice}</div>}
 
           {loading ? <div aria-label="Загружаем кабинет" className="space-y-5"><div className="h-56 animate-pulse rounded-3xl bg-white" /><div className="grid gap-4 md:grid-cols-3"><div className="h-32 animate-pulse rounded-2xl bg-white" /><div className="h-32 animate-pulse rounded-2xl bg-white" /><div className="h-32 animate-pulse rounded-2xl bg-white" /></div></div> : activeTab === 'lessons' ? <>
-            <section aria-labelledby="next-action-title" className="relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-blue-700 via-blue-650 to-blue-900 p-5 text-white shadow-lg shadow-blue-900/10 sm:p-7 lg:p-8">
+            <section aria-labelledby="next-action-title" className={`relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-blue-700 via-blue-650 to-blue-900 p-5 text-white shadow-lg shadow-blue-900/10 sm:p-7 lg:p-8 ${mainAction.kind === 'lesson' && lessonIsLive ? 'animate-pulse' : ''}`}>
               <div aria-hidden className="absolute -right-12 -top-20 -z-10 h-64 w-64 rounded-full border border-white/10 bg-white/[0.06]" />
               <div aria-hidden className="absolute bottom-[-90px] right-[24%] -z-10 h-52 w-52 rounded-full border border-white/10" />
               <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_190px] lg:items-end">
