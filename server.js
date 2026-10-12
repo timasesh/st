@@ -484,7 +484,7 @@ function publicAccount(account) {
   const teacherAccount = accounts.find((entry) => entry.id === teacherId && entry.role === 'teacher');
   const parentAccount = role === 'student' ? accounts.find((entry) => entry.role === 'parent' && (entry.children || []).includes(id)) : null;
   return {
-    id, role, phone, firstName, lastName, studentClass, lessonLink: account.lessonLink || '', lessonDescription: account.lessonDescription || '', status, createdAt, withdrawnAt,
+    id, role, phone, firstName, lastName, studentClass, lessonLink: account.lessonLink || '', lessonDescription: account.lessonDescription || '', trialAccount: Boolean(account.progress?.trialAccount), status, createdAt, withdrawnAt,
     teacherId: teacherAccount?.id,
     teacher: teacherAccount ? { id: teacherAccount.id, firstName: teacherAccount.firstName, lastName: teacherAccount.lastName } : null,
     parent: parentAccount ? { id: parentAccount.id, firstName: parentAccount.firstName, lastName: parentAccount.lastName, phone: parentAccount.phone } : null,
@@ -910,16 +910,11 @@ app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) 
     }
     if (outcome !== 'enrolled') return res.status(400).json({ error: 'Неизвестный результат пробного урока.' });
     const trial = trials[index];
-    let phone;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      phone = `7${crypto.randomInt(1000000000, 9999999999)}`;
-      if (!accounts.some((account) => account.phone === phone)) break;
-      phone = undefined;
-    }
-    if (!phone) return res.status(500).json({ error: 'Не удалось создать временный логин ученика. Повторите попытку.' });
+    const phone = normalizePhone(trial.parentPhone);
+    if (accounts.some((account) => account.phone === phone)) return res.status(409).json({ error: 'Контакт родителя уже используется как логин другого аккаунта. Укажите другой контакт или освободите номер.' });
     const salt = crypto.randomBytes(16);
-    const passwordHash = await hashPassword('study2026', salt);
-    const student = { id: crypto.randomUUID(), role: 'student', phone, firstName: trial.firstName, lastName: trial.lastName, studentClass: trial.studentClass, teacherId: trial.teacherId, lessonLink: trial.lessonLink, lessonDescription: trial.lessonDescription || '', children: [], status: 'active', salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString() };
+    const passwordHash = await hashPassword('test2026', salt);
+    const student = { id: crypto.randomUUID(), role: 'student', phone, firstName: trial.firstName, lastName: trial.lastName, studentClass: trial.studentClass, teacherId: trial.teacherId, lessonLink: trial.lessonLink, lessonDescription: trial.lessonDescription || '', children: [], status: 'active', progress: { trialAccount: true }, salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString() };
     await writeAccounts([...accounts, student]);
     const trialTests = await readStudentTests(trial.id);
     if (trialTests.length) await writeStudentTests(student.id, trialTests.map((test) => ({ ...test, studentId: student.id, studentName: `${student.firstName} ${student.lastName}`, studentClass: student.studentClass })));
@@ -928,7 +923,7 @@ app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) 
     trials[index] = { ...trial, status: 'enrolled', enrolledAt: new Date().toISOString(), studentId: student.id };
     await writeTrialLessons(trials);
     await recordAdminAuditSafely(req.adminSession.sub, 'Пробный ученик записался', `${student.firstName} ${student.lastName}, ${student.studentClass}`);
-    return res.json({ trial: trials[index], student: publicAccount(student), temporaryLogin: phone, temporaryPassword: 'study2026' });
+    return res.json({ trial: trials[index], student: publicAccount(student), temporaryLogin: phone, temporaryPassword: 'test2026' });
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить результат пробного урока.' }); }
 });
 
@@ -1164,6 +1159,40 @@ app.post('/api/parent/students/:studentId/prize-kit', async (req, res) => {
   const order = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), items: kit, cost, status: 'requested' };
   const progress = { ...(student.progress || {}), stars: balance - cost, prizeOrders: [...(Array.isArray(student.progress?.prizeOrders) ? student.progress.prizeOrders : []), order] };
   await writeAccounts(accounts.map((account) => account.id === student.id ? { ...account, progress } : account));
+  return res.status(201).json({ ok: true, order, stars: progress.stars });
+});
+
+app.post('/api/student/prize-kit', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'student') return res.status(403).json({ error: 'Оформить призы может только ученик.' });
+  const kit = [
+    { id: 'stickers', name: 'Стикерпак', stars: 5 },
+    { id: 'notebook', name: 'Блокнот', stars: 7 },
+    { id: 'tshirt', name: 'Фирменная футболка', stars: 10 },
+    { id: 'backpack', name: 'Фирменный рюкзак', stars: 12 },
+  ];
+  const requested = req.body?.itemIds;
+  if (!Array.isArray(requested) || requested.length !== kit.length || kit.some((item) => !requested.includes(item.id))) return res.status(400).json({ error: 'Получить призы можно только полным набором.' });
+  const trials = await readTrialLessons();
+  const trialRecord = trials.find((entry) => entry.status === 'enrolled' && entry.studentId === user.account.id);
+  if (trialRecord) {
+    let scheduleData = { lessons: [] };
+    if (supabase) {
+      const scheduleResult = await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle();
+      if (scheduleResult.error) return res.status(503).json({ error: 'Не удалось проверить расписание ученика.' });
+      if (scheduleResult.data?.value) scheduleData = JSON.parse(scheduleResult.data.value);
+    } else scheduleData = await readJsonFileOr(schedulePath, scheduleData);
+    if (Array.isArray(scheduleData)) scheduleData = { lessons: scheduleData };
+    const hasRegularLessons = (scheduleData.lessons || []).some((lesson) => lesson.studentId === user.account.id);
+    if (!hasRegularLessons) return res.status(403).json({ error: 'Призы станут доступны, когда запишетесь на занятия.' });
+  }
+  const cost = kit.reduce((sum, item) => sum + item.stars, 0);
+  const balance = Number(user.account.progress?.stars) || 0;
+  if (balance < cost) return res.status(400).json({ error: `Для полного набора нужно ${cost} звезды. Сейчас у ученика ${balance}.` });
+  const order = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), items: kit, cost, status: 'requested' };
+  const progress = { ...(user.account.progress || {}), trialAccount: Boolean(user.account.progress?.trialAccount), stars: balance - cost, prizeOrders: [...(Array.isArray(user.account.progress?.prizeOrders) ? user.account.progress.prizeOrders : []), order] };
+  await writeAccounts(accounts.map((account) => account.id === user.account.id ? { ...account, progress } : account));
   return res.status(201).json({ ok: true, order, stars: progress.stars });
 });
 
@@ -1472,8 +1501,14 @@ app.get('/api/auth/portal', async (req, res) => {
     } else scheduleData = await readJsonFileOr(schedulePath, scheduleData);
     if (Array.isArray(scheduleData)) scheduleData = { lessons: scheduleData, targets: {} };
     const relatedIds = new Set(relatedAccounts.map((item) => item.id));
+    const convertedTrial = current.role === 'student'
+      ? (await readTrialLessons()).find((lesson) => lesson.status === 'enrolled' && lesson.studentId === current.id)
+      : null;
+    const hasRegularSchedule = current.role === 'student' && (scheduleData.lessons || []).some((lesson) => lesson.studentId === current.id);
+    const trialAccount = Boolean(convertedTrial && !hasRegularSchedule);
+    account.trialAccount = trialAccount;
     const lessons = (scheduleData.lessons || []).filter((lesson) => current.role === 'student'
-      ? lesson.studentId === current.id
+      ? !trialAccount && lesson.studentId === current.id
       : current.role === 'parent'
         ? relatedIds.has(lesson.studentId)
         : lesson.teacherId === current.id).map((lesson) => ({
@@ -1486,6 +1521,16 @@ app.get('/api/auth/portal', async (req, res) => {
           : publicAccount(accounts.find((item) => item.id === lesson.studentId))
         : null,
     }));
+    if (trialAccount && convertedTrial) lessons.push({
+      ...convertedTrial,
+      trial: true,
+      scheduledAt: getTrialScheduledAt(convertedTrial),
+      title: 'Пробный урок',
+      lessonLink: convertedTrial.lessonLink || current.lessonLink || '',
+      lessonDescription: convertedTrial.lessonDescription || current.lessonDescription || '',
+      studentId: current.id,
+      student: publicAccount(current),
+    });
     if (current.role === 'teacher') {
       const trialLessons = await readTrialLessons();
       lessons.push(...trialLessons.filter((lesson) => lesson.teacherId === current.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status)).map((lesson) => ({

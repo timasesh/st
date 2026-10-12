@@ -254,7 +254,7 @@ function PasswordField({
   );
 }
 
-type PortalPerson = { id: string; role: 'student' | 'parent' | 'teacher'; firstName: string; lastName: string; phone?: string; studentClass?: string; lessonLink?: string; lessonDescription?: string; progress?: { stars?: number } | null; teacher?: { firstName: string; lastName: string } | null; parent?: { firstName: string; lastName: string } | null; children?: PortalPerson[] };
+type PortalPerson = { id: string; role: 'student' | 'parent' | 'teacher'; firstName: string; lastName: string; phone?: string; studentClass?: string; lessonLink?: string; lessonDescription?: string; trialAccount?: boolean; progress?: { stars?: number } | null; teacher?: { firstName: string; lastName: string } | null; parent?: { firstName: string; lastName: string } | null; children?: PortalPerson[] };
 type PortalLesson = { id: string; studentId?: string; day: number; hour: number; title: string; lessonLink?: string; lessonDescription?: string; attendance?: boolean; trial?: boolean; attendanceOpen?: boolean; scheduledAt?: string; student?: PortalPerson | null };
 type PortalMessage = { id: string; at: string; sender: string; body: string; read: boolean };
 type StudentLessonHistoryEntry = { id: string; lessonId?: string; date: string; time: string; studentName: string; studentClass: string; homeworkGrade: string; topic: string; nextHomework: string; testGrade: string; attendance?: boolean; attendanceReason?: string; createdAt: string; attachment?: { filename: string; mimeType: string; updatedAt: string } | null };
@@ -309,7 +309,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
   });
   const [teacherTab, setTeacherTab] = useState<'lessons' | 'students' | 'schedule'>('lessons');
   const [parentTab, setParentTab] = useState<'children' | 'schedule' | 'prizes'>('children');
-  const [studentTab, setStudentTab] = useState<'lessons' | 'schedule' | 'tests' | 'homework' | 'skyquest'>('lessons');
+  const [studentTab, setStudentTab] = useState<'lessons' | 'schedule' | 'tests' | 'homework' | 'prizes' | 'skyquest'>('lessons');
   const [selectedHomework, setSelectedHomework] = useState<StudentLessonHistoryEntry | null>(null);
   const [homeworkFile, setHomeworkFile] = useState<File | null>(null);
   const [homeworkSaving, setHomeworkSaving] = useState(false);
@@ -550,6 +550,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
           testNotice={studentTestNotice}
           onStartTest={(test) => { setStudentTest(test); setStudentTestAnswers(Array(test.questions.length).fill(-1)); setStudentTestNotice(''); }}
           onOpenHomework={(item) => { setSelectedHomework(item); setHomeworkFile(null); setHomeworkNotice(''); }}
+          onPrizeBalanceUpdate={(stars) => setPortal((current) => current ? { ...current, progress: { ...(current.progress || {}), stars } } : current)}
         />
       ) : (
         <>
@@ -842,7 +843,7 @@ export function AdminDashboardPage() {
       setSelectedTrial(null); setTrialDeclineReason(''); setTrialOtherReason(''); setShowTrialDeclineForm(false);
       if (outcome === 'declined') { setSuccess('Отказ сохранён.'); return; }
       await loadAccounts();
-      setActiveRole('parent'); setActiveView('accounts'); setSearch(''); setEditingAccountId(null); setFirstName(''); setLastName(''); setPhone(selectedTrial.parentPhone); setPassword('study2026'); setStudentClass(selectedTrial.studentClass); setTeacherId(''); setSelectedChildren([result.student.id]); setChildSearch(''); setError(''); setSuccess(''); setTrialConversionInfo(`Ученик создан. Его временный логин: ${result.temporaryLogin}, пароль: study2026. Временный пароль родителя: study2026.`); setShowAccountModal(true);
+      setActiveRole('student'); setActiveView('accounts'); setSearch(''); setError(''); setSuccess(`Пробный аккаунт ученика ${result.student.firstName} ${result.student.lastName} создан. Логин: ${result.temporaryLogin}, пароль: ${result.temporaryPassword}.`);
     } catch (reason) { setError(getFriendlyError(reason, 'Не удалось сохранить результат.')); }
     finally { setSaving(false); }
   };
@@ -1156,8 +1157,8 @@ export function AdminDashboardPage() {
           )}
           {showTrialModal && (
             <div className="admin-modal fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowTrialModal(false); }}>
-              <section role="dialog" aria-modal="true" aria-labelledby="trial-modal-title" className="admin-card my-auto w-full max-w-xl rounded-2xl border border-border bg-white p-6 shadow-2xl">
-                <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-blue-100 p-2.5 text-blue-700"><UserPlus className="h-5 w-5" /></span><div><h2 id="trial-modal-title" className="font-display text-xl font-extrabold">{editingTrialId ? 'Перенести пробный урок' : 'Создать пробный урок'}</h2><p className="text-sm text-muted">Ученик пока не получает логин в личный кабинет.</p></div></div>
+              <section role="dialog" aria-modal="true" aria-labelledby="trial-modal-title" className="admin-card my-auto max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-white p-5 shadow-2xl sm:p-7">
+                <div className="mb-5 flex items-center gap-3"><span className="rounded-xl bg-blue-100 p-2.5 text-blue-700"><UserPlus className="h-5 w-5" /></span><div><h2 id="trial-modal-title" className="font-display text-xl font-extrabold">{editingTrialId ? 'Перенести пробный урок' : 'Создать пробный урок'}</h2><p className="text-sm text-muted">После отметки «Записался» ученик получит пробный аккаунт. Логин — контакт родителя, пароль — test2026.</p></div></div>
                 <form onSubmit={createTrialLesson} className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2"><label className="block space-y-1.5 text-sm font-bold">Имя<input autoFocus required maxLength={80} value={trialFirstName} onChange={(event) => setTrialFirstName(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label><label className="block space-y-1.5 text-sm font-bold">Фамилия<input required maxLength={80} value={trialLastName} onChange={(event) => setTrialLastName(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none" /></label></div>
                   <label className="block space-y-1.5 text-sm font-bold">Класс<select required value={trialClass} onChange={(event) => setTrialClass(event.target.value)} className="admin-input w-full rounded-xl border-2 border-border bg-primary-light px-3 py-2.5 font-normal focus:border-primary focus:outline-none">{[5, 6, 7, 8, 9].map((grade) => <option key={grade} value={`${grade} класс`}>{grade} класс</option>)}</select></label>
