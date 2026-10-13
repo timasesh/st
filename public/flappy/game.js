@@ -24,6 +24,11 @@ const PIPE_SPEED = 3;
 const PIPE_GAP = 155;
 const PIPE_INTERVAL = 1800;
 
+function getPipeSpeed() {
+  const speedScore = loginDemo ? Math.min(score, 25) : score;
+  return (PIPE_SPEED + speedScore * 0.04) * (loginDemo ? 1.5 : 1);
+}
+
 // --- State ---
 let gameState = 'start';
 let score = 0, bestScore = 0, frame = 0;
@@ -501,43 +506,7 @@ function drawNeutralPlayer(size) {
     const width = size * 1.45;
     const height = width * rocketImage.naturalHeight / rocketImage.naturalWidth;
     ctx.drawImage(rocketImage, -width / 2, -height / 2, width, height);
-    return;
   }
-
-  const r = size * 0.38;
-
-  const bodyGrad = ctx.createRadialGradient(-r * 0.2, -r * 0.35, r * 0.1, 0, 0, r);
-  bodyGrad.addColorStop(0, '#93c5fd');
-  bodyGrad.addColorStop(1, '#2563eb');
-  ctx.fillStyle = bodyGrad;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#1d4ed8';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.arc(r * 0.28, -r * 0.12, r * 0.24, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#1e3a5f';
-  ctx.beginPath();
-  ctx.arc(r * 0.34, -r * 0.1, r * 0.11, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#3b82f6';
-  ctx.beginPath();
-  ctx.ellipse(-r * 0.55, r * 0.05, r * 0.38, r * 0.22, -0.35, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#f59e0b';
-  ctx.fillRect(-r * 0.2, r * 0.02, r * 0.55, r * 0.58);
-  ctx.fillStyle = '#fcd34d';
-  ctx.font = `bold ${Math.round(r * 0.32)}px Nunito, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('ST', r * 0.07, r * 0.38);
 }
 
 function drawPlayer() {
@@ -680,7 +649,7 @@ function drawLoginDemoStar() {
       demoStarOnScreen.baseY = demoStarOnScreen.pipe.topH + PIPE_GAP / 2;
     } else {
       demoStarOnScreen.pipe = null;
-      demoStarOnScreen.x -= PIPE_SPEED + score * 0.04;
+      demoStarOnScreen.x -= getPipeSpeed();
     }
     demoStarOnScreen.phase += 0.06;
   }
@@ -857,7 +826,7 @@ function updatePipes() {
     lastPipe = now;
   }
 
-  const speed = PIPE_SPEED + score * 0.04;
+  const speed = getPipeSpeed();
   pipes.forEach(p => {
     p.x -= speed;
     if (p.moving) {
@@ -899,14 +868,6 @@ function updatePipes() {
         }
       }
       if (!loginDemo) addScorePopup(player.x + 30, player.y);
-
-      if (loginDemo && score >= 25) {
-        score = 0;
-        pipes = [];
-        pipesSpawned = 0;
-        demoLastPipeBand = 'center';
-        lastPipe = Date.now();
-      }
 
       if (!loginDemo && score % 10 === 0) {
         floatingTexts.push({
@@ -1174,15 +1135,32 @@ function gameLoop() {
         const nextPipe = pipes.filter(pipe => pipe.x + pipe.w >= player.x + 4).sort((a, b) => a.x - b.x)[0];
         const targetY = nextPipe ? nextPipe.topH + PIPE_GAP / 2 - player.h / 2 : H / 2 - player.h / 2;
         const verticalSpeedScale = 0.8;
-        const horizontalSpeed = PIPE_SPEED + score * 0.04;
+        const horizontalSpeed = getPipeSpeed();
         const horizontalDistance = nextPipe
           ? Math.max(player.w / 2, nextPipe.x + nextPipe.w / 2 - (player.x + player.w / 2))
           : W / 2;
         const framesToGap = horizontalDistance / horizontalSpeed;
         const verticalDistance = targetY - player.y;
+        const followingPipe = nextPipe && pipes
+          .filter(pipe => pipe !== nextPipe && pipe.x > nextPipe.x)
+          .sort((a, b) => a.x - b.x)[0];
+        const followingGapY = followingPipe
+          ? followingPipe.topH + PIPE_GAP / 2 - player.h / 2
+          : targetY;
+        const framesBetweenGaps = followingPipe
+          ? Math.max(1, (followingPipe.x - nextPipe.x) / horizontalSpeed)
+          : 1;
+        const exitVelocity = followingPipe
+          ? (followingGapY - targetY) / framesBetweenGaps
+          : 0;
+        const exitVelocityWeight = followingPipe
+          ? Math.max(0, Math.min(1, 1 - framesToGap / framesBetweenGaps))
+          : 0;
         // Plan the acceleration early: this is the velocity needed at the end
-        // of a constant-acceleration path that reaches the gap center in time.
-        const requiredVelocity = (2 * verticalDistance / framesToGap) - player.vy;
+        // of a constant-acceleration path, with enough momentum to continue
+        // toward the following gap instead of stopping at this one.
+        const requiredVelocity = (2 * verticalDistance / framesToGap)
+          - player.vy + exitVelocity * exitVelocityWeight;
         const desiredVelocity = Math.max(
           MAX_ASCENT_SPEED * verticalSpeedScale,
           Math.min(9 * verticalSpeedScale, requiredVelocity)

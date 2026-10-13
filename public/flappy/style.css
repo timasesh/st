@@ -52,7 +52,7 @@ body.login-demo-mode #topControls {
 }
 
 body.login-demo-mode #coinDisplay {
-  display: block !important;
+  display: none !important;
   top: 18px;
   left: auto;
   right: 16px;
