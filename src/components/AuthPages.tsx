@@ -87,7 +87,7 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
   };
 
   return (
-    <main className="grid min-h-dvh overflow-hidden bg-[#f1f6ff] text-slate-900 lg:h-dvh lg:grid-cols-[minmax(410px,0.78fr)_minmax(0,1.22fr)]">
+    <main className="grid min-h-dvh overflow-hidden bg-[#f1f6ff] text-slate-900 lg:h-dvh lg:grid-cols-2">
       <section className="relative z-10 flex min-h-[680px] flex-col justify-center px-5 py-8 sm:px-10 lg:min-h-0 lg:px-12 xl:px-20">
         <div aria-hidden="true" className="pointer-events-none absolute -left-28 top-12 h-64 w-64 rounded-full bg-blue-100/70 blur-3xl" />
         <div className="relative mx-auto w-full max-w-[440px]">

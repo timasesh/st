@@ -2,7 +2,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const loginDemo = new URLSearchParams(window.location.search).get('loginDemo') === '1';
 const W = 400, H = 650;
-const pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
+const pixelRatio = loginDemo ? 1 : Math.min(window.devicePixelRatio || 1, 3);
 canvas.width = Math.round(W * pixelRatio);
 canvas.height = Math.round(H * pixelRatio);
 ctx.scale(pixelRatio, pixelRatio);
@@ -45,6 +45,7 @@ let isDying = false;
 
 // Coins
 let totalCoins = parseInt(localStorage.getItem('studyTaskFlappyCoins') || '0');
+let demoStars = 0;
 let skyQuestAccountSync = false;
 let skyQuestSyncQueue = Promise.resolve();
 function updateSkyQuestBalance(delta) {
@@ -745,7 +746,10 @@ function drawReadyHint() {
 // ===== GAME LOGIC =====
 function spawnPipe() {
   const minTop = 80, maxTop = H - PIPE_GAP - 120;
-  const topH = Math.floor(Math.random() * (maxTop - minTop) + minTop);
+  const demoPipeTops = [225, 230, 240, 250, 255, 250, 240, 230];
+  const topH = loginDemo
+    ? demoPipeTops[pipesSpawned % demoPipeTops.length]
+    : Math.floor(Math.random() * (maxTop - minTop) + minTop);
   const isMoving = (pipesSpawned % 9 === 8);
   pipes.push({
     x: W + 10, topH, baseTopH: topH, w: 62, passed: false,
@@ -798,6 +802,8 @@ function updatePipes() {
       p.passed = true;
       score++;
       if (loginDemo && score % 5 === 0) {
+        demoStars++;
+        document.getElementById('coinCount').textContent = String(demoStars);
         floatingTexts.push({
           x: player.x + 45, y: player.y - 14,
           text: '⭐ +1 звезда', color: '#ffdd00', size: 15,
@@ -838,7 +844,7 @@ function updatePipes() {
 
     const px = player.x + 4, py = player.y + 4;
     const pw = player.w - 8, ph = player.h - 8;
-    if (px < p.x + p.w && px + pw > p.x) {
+    if (!loginDemo && px < p.x + p.w && px + pw > p.x) {
       if (py < p.topH || py + ph > p.topH + PIPE_GAP) {
         if (playerHasShield) {
           playerHasShield = false;
@@ -861,15 +867,13 @@ function updatePipes() {
     }
   });
 
-  if (player.y + player.h >= H || player.y <= 0) die();
+  if (!loginDemo && (player.y + player.h >= H || player.y <= 0)) die();
 }
 
 // Функция `die` реализует локальную часть бизнес-логики модуля.
 function die() {
   if (loginDemo) {
-    startGame();
-    gameState = 'playing';
-    lastPipe = Date.now();
+    startLoginDemo();
     return;
   }
   if (!player.alive) return;
@@ -1092,7 +1096,12 @@ function gameLoop() {
         const nextPipe = pipes.filter(pipe => pipe.x + pipe.w >= player.x + 4).sort((a, b) => a.x - b.x)[0];
         const targetY = nextPipe ? nextPipe.topH + PIPE_GAP / 2 - player.h / 2 : H / 2 - player.h / 2;
         const desiredVelocity = Math.max(-6, Math.min(6, (targetY - player.y) * 0.08));
-        flightHeld = player.vy > desiredVelocity;
+        const nextLiftVelocity = Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT);
+        const nextFallVelocity = Math.min(9, player.vy + GRAVITY);
+        const velocityDeadband = 0.45;
+        flightHeld = flightHeld
+          ? nextLiftVelocity > desiredVelocity - velocityDeadband
+          : nextFallVelocity > desiredVelocity + velocityDeadband;
       }
       player.vy = flightHeld
         ? Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT)
@@ -1192,9 +1201,15 @@ gameLoop();
 
 if (loginDemo) {
   document.body.classList.add('login-demo-mode');
+  startLoginDemo();
+}
+
+function startLoginDemo() {
   startGame();
   gameState = 'playing';
   lastPipe = Date.now();
+  document.getElementById('coinDisplay').style.display = 'block';
+  document.getElementById('coinCount').textContent = String(demoStars);
 }
 
 // Auto-start when embedded with ?autostart=1
