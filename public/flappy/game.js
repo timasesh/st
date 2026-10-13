@@ -1187,17 +1187,29 @@ function gameLoop() {
           MAX_ASCENT_SPEED * verticalSpeedScale,
           Math.min(9 * verticalSpeedScale, requiredVelocity)
         );
-        const nextLiftVelocity = Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT) * verticalSpeedScale;
-        const nextFallVelocity = Math.min(9, player.vy + GRAVITY) * verticalSpeedScale;
+        const nextLiftVelocity = Math.max(
+          MAX_ASCENT_SPEED * verticalSpeedScale,
+          player.vy + (GRAVITY - LIFT) * verticalSpeedScale
+        );
+        const nextFallVelocity = Math.min(
+          9 * verticalSpeedScale,
+          player.vy + GRAVITY * verticalSpeedScale
+        );
         const velocityDeadband = 0.45;
         flightHeld = flightHeld
           ? nextLiftVelocity > desiredVelocity - velocityDeadband
           : nextFallVelocity > desiredVelocity + velocityDeadband;
       }
-      const nextVerticalSpeed = flightHeld
-        ? Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT)
-        : Math.min(9, player.vy + GRAVITY);
-      player.vy = loginDemo ? nextVerticalSpeed * 0.8 : nextVerticalSpeed;
+      const verticalSpeedScale = loginDemo ? 0.8 : 1;
+      player.vy = flightHeld
+        ? Math.max(
+          MAX_ASCENT_SPEED * verticalSpeedScale,
+          player.vy + (GRAVITY - LIFT) * verticalSpeedScale
+        )
+        : Math.min(
+          9 * verticalSpeedScale,
+          player.vy + GRAVITY * verticalSpeedScale
+        );
       player.y += player.vy;
       updatePipes();
     }
