@@ -56,16 +56,17 @@ body.login-demo-mode #coinDisplay {
   top: 18px;
   left: auto;
   right: 16px;
-  border: 1px solid rgba(255, 234, 161, 0.3);
+  border: 2px solid #3b82f6;
   border-radius: 999px;
-  background: rgba(9, 20, 46, 0.55);
+  background: #ffffff;
+  color: #1d4ed8;
   padding: 10px 14px;
   font-family: 'Nunito', sans-serif;
   font-size: 18px;
   font-weight: 900;
   letter-spacing: 0.02em;
   text-shadow: none;
-  backdrop-filter: blur(8px);
+  box-shadow: 0 5px 18px rgba(37, 99, 235, 0.24);
 }
 
 canvas {

@@ -46,6 +46,8 @@ let isDying = false;
 // Coins
 let totalCoins = parseInt(localStorage.getItem('studyTaskFlappyCoins') || '0');
 let demoStars = 0;
+let demoStarOnScreen = null;
+let demoLastPipeBand = 'center';
 let skyQuestAccountSync = false;
 let skyQuestSyncQueue = Promise.resolve();
 function updateSkyQuestBalance(delta) {
@@ -660,6 +662,32 @@ function addParticles(x, y) {
   }
 }
 
+// The login showcase displays the game's star as a collectible without changing account balances.
+function drawLoginDemoStar() {
+  if (!loginDemo || !demoStarOnScreen) return;
+  if (gameState === 'playing' && !isPaused) {
+    demoStarOnScreen.x -= PIPE_SPEED;
+    demoStarOnScreen.phase += 0.06;
+  }
+  if (demoStarOnScreen.x < -32) {
+    demoStarOnScreen = null;
+    return;
+  }
+
+  const { x, baseY, phase } = demoStarOnScreen;
+  const y = baseY + Math.sin(phase) * 7;
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, 38);
+  glow.addColorStop(0, 'rgba(255,220,70,0.58)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(x, y, 38, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.sin(phase * 0.65) * 0.12);
+  drawStar(0, 0, 19 + Math.sin(phase * 1.4) * 1.5);
+  ctx.restore();
+}
+
 // ===== CONFETTI =====
 const CONFETTI_COLORS = ['#FFD700','#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD'];
 
@@ -746,10 +774,19 @@ function drawReadyHint() {
 // ===== GAME LOGIC =====
 function spawnPipe() {
   const minTop = 80, maxTop = H - PIPE_GAP - 120;
-  const demoPipeTops = [225, 230, 240, 250, 255, 250, 240, 230];
-  const topH = loginDemo
-    ? demoPipeTops[pipesSpawned % demoPipeTops.length]
-    : Math.floor(Math.random() * (maxTop - minTop) + minTop);
+  let topH;
+  if (loginDemo) {
+    const bands = [
+      { name: 'top', min: minTop, max: 112 },
+      { name: 'center', min: 210, max: 245 },
+      { name: 'bottom', min: 345, max: maxTop }
+    ].filter(band => band.name !== demoLastPipeBand);
+    const band = bands[Math.floor(Math.random() * bands.length)];
+    topH = Math.floor(Math.random() * (band.max - band.min + 1) + band.min);
+    demoLastPipeBand = band.name;
+  } else {
+    topH = Math.floor(Math.random() * (maxTop - minTop) + minTop);
+  }
   const isMoving = (pipesSpawned % 9 === 8);
   pipes.push({
     x: W + 10, topH, baseTopH: topH, w: 62, passed: false,
@@ -804,6 +841,12 @@ function updatePipes() {
       if (loginDemo && score % 5 === 0) {
         demoStars++;
         document.getElementById('coinCount').textContent = String(demoStars);
+        const nextPipe = pipes.filter(pipe => pipe.x + pipe.w >= player.x + 4).sort((a, b) => a.x - b.x)[0];
+        demoStarOnScreen = {
+          x: nextPipe ? nextPipe.x + nextPipe.w / 2 : W * 0.72,
+          baseY: nextPipe ? nextPipe.topH + PIPE_GAP / 2 : player.y + player.h / 2,
+          phase: 0
+        };
         floatingTexts.push({
           x: player.x + 45, y: player.y - 14,
           text: '⭐ +1 звезда', color: '#ffdd00', size: 15,
@@ -828,6 +871,7 @@ function updatePipes() {
         score = 0;
         pipes = [];
         pipesSpawned = 0;
+        demoLastPipeBand = 'center';
         lastPipe = Date.now();
       }
 
@@ -1090,6 +1134,7 @@ function gameLoop() {
     pipes.forEach(p => drawPipe(p));
     drawShield();
     drawCoin();
+    drawLoginDemoStar();
 
     if (gameState === 'playing' && !isPaused) {
       if (loginDemo) {
