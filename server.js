@@ -30,6 +30,7 @@ const homeworkAttachmentsBucket = 'homework-attachments';
 let warnedAboutHomeworkStorageMigration = false;
 const skyQuestProgressPath = path.join(dataDir, 'skyquest-progress.json');
 const cookieName = 'study_admin_session';
+const cleanupCookieName = 'study_admin_cleanup';
 const userCookieName = 'study_user_session';
 const sessionDurationSeconds = 12 * 60 * 60;
 const DEFAULT_CREDENTIALS = {
@@ -598,6 +599,262 @@ function requireAdmin(req, res, next) {
   req.adminSession = session;
   next();
 }
+
+const cleanupPinFailures = new Map();
+const cleanupPin = process.env.ADMIN_CLEANUP_PIN || '2545';
+function cleanupPinMatches(candidate) {
+  if (typeof candidate !== 'string' || candidate.length > 16) return false;
+  const expected = crypto.createHash('sha256').update(cleanupPin).digest();
+  const provided = crypto.createHash('sha256').update(candidate).digest();
+  return crypto.timingSafeEqual(expected, provided);
+}
+function requireCleanupAccess(req, res, next) {
+  requireAdmin(req, res, () => {
+    const session = getCookieToken(req, cleanupCookieName);
+    if (!session || session.scope !== 'cleanup' || session.sub !== req.adminSession.sub) return res.status(423).json({ error: 'Сначала введите PIN-код для открытия раздела.' });
+    next();
+  });
+}
+
+app.post('/api/admin/cleanup/unlock', requireAdmin, (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  const attempts = (cleanupPinFailures.get(ip) || []).filter((time) => time > cutoff);
+  cleanupPinFailures.set(ip, attempts);
+  if (attempts.length >= 8) return res.status(429).json({ error: 'Слишком много попыток. Попробуйте ещё раз через 15 минут.' });
+  if (!cleanupPinMatches(req.body?.pin)) {
+    attempts.push(Date.now());
+    cleanupPinFailures.set(ip, attempts);
+    return res.status(401).json({ error: 'Неверный PIN-код. Проверьте цифры и попробуйте ещё раз.' });
+  }
+  cleanupPinFailures.delete(ip);
+  res.cookie(cleanupCookieName, signSession({ sub: req.adminSession.sub, scope: 'cleanup', exp: Date.now() + 5 * 60 * 1000 }), {
+    httpOnly: true, secure: isProduction, sameSite: 'strict', path: '/', maxAge: 5 * 60 * 1000,
+  });
+  return res.json({ ok: true, expiresInSeconds: 300 });
+});
+
+app.post('/api/admin/cleanup/lock', requireAdmin, (_req, res) => {
+  res.clearCookie(cleanupCookieName, { httpOnly: true, secure: isProduction, sameSite: 'strict', path: '/' });
+  return res.json({ ok: true });
+});
+
+const cleanupModelLabels = {
+  accounts: 'Аккаунты', schedule: 'Расписание', scheduleTargets: 'Планы занятий', trials: 'Пробные уроки',
+  tests: 'Тесты', lessonHistory: 'История занятий', homework: 'Домашние задания', homeworkFiles: 'Файлы заданий',
+  gameProgress: 'Игровой прогресс', messages: 'Сообщения', audit: 'История действий', studentProgress: 'Прогресс учеников',
+};
+const encodeCleanupId = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+const decodeCleanupId = (value) => JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+async function getCleanupSetting(key) {
+  if (supabase) {
+    const result = await supabase.from('app_settings').select('value').eq('key', key).maybeSingle();
+    if (result.error) throw result.error;
+    return result.data?.value;
+  }
+  const map = key === 'weekly_schedule' ? await readJsonFileOr(schedulePath, { lessons: [], targets: {} })
+    : key === 'trial_lessons' ? await readJsonFileOr(path.join(dataDir, 'trial-lessons.json'), [])
+      : key.startsWith('account_inbox:') ? (await readJsonFileOr(inboxesPath, {}))[key.slice('account_inbox:'.length)]
+        : key.startsWith('student_lesson_history:') ? (await readJsonFileOr(studentLessonHistoryPath, {}))[key.slice('student_lesson_history:'.length)]
+          : key.startsWith('student_tests:') ? (await readJsonFileOr(studentTestsPath, {}))[key.slice('student_tests:'.length)]
+            : key.startsWith('admin_audit:') ? (await readJsonFileOr(auditLogPath, [])).find((entry) => entry.id === key.slice('admin_audit:'.length)) : undefined;
+  return map === undefined ? undefined : JSON.stringify(map);
+}
+async function saveCleanupSetting(key, value) {
+  if (supabase) {
+    const result = value == null
+      ? await supabase.from('app_settings').delete().eq('key', key)
+      : await supabase.from('app_settings').upsert({ key, value: JSON.stringify(value) });
+    if (result.error) throw result.error;
+    return;
+  }
+  if (key === 'weekly_schedule') { await writeJsonAtomically(schedulePath, value); return; }
+  if (key === 'trial_lessons') { await writeJsonAtomically(path.join(dataDir, 'trial-lessons.json'), value); return; }
+  if (key.startsWith('account_inbox:')) {
+    const map = await readJsonFileOr(inboxesPath, {}); const id = key.slice('account_inbox:'.length);
+    if (value == null) delete map[id]; else map[id] = value;
+    await writeJsonAtomically(inboxesPath, map); return;
+  }
+  if (key.startsWith('student_lesson_history:')) {
+    const map = await readJsonFileOr(studentLessonHistoryPath, {}); const id = key.slice('student_lesson_history:'.length);
+    if (value == null) delete map[id]; else map[id] = value;
+    await writeJsonAtomically(studentLessonHistoryPath, map); return;
+  }
+  if (key.startsWith('student_tests:')) {
+    const map = await readJsonFileOr(studentTestsPath, {}); const id = key.slice('student_tests:'.length);
+    if (value == null) delete map[id]; else map[id] = value;
+    await writeJsonAtomically(studentTestsPath, map); return;
+  }
+  if (key.startsWith('admin_audit:')) {
+    const entries = await readJsonFileOr(auditLogPath, []);
+    await writeJsonAtomically(auditLogPath, entries.filter((entry) => entry.id !== key.slice('admin_audit:'.length))); return;
+  }
+}
+async function listCleanupSettingRows(prefix) {
+  if (supabase) {
+    const rows = [];
+    const pattern = `${prefix.replace(/[_%]/g, '\\$&')}%`;
+    for (let offset = 0; ; offset += 1000) {
+      const result = await supabase.from('app_settings').select('key,value').like('key', pattern).order('key').range(offset, offset + 999);
+      if (result.error) throw result.error;
+      rows.push(...(result.data || []));
+      if ((result.data || []).length < 1000) return rows;
+    }
+  }
+  let map;
+  if (prefix === 'account_inbox:') map = await readJsonFileOr(inboxesPath, {});
+  else if (prefix === 'student_lesson_history:') map = await readJsonFileOr(studentLessonHistoryPath, {});
+  else if (prefix === 'student_tests:') map = await readJsonFileOr(studentTestsPath, {});
+  else if (prefix === 'admin_audit:') return (await readJsonFileOr(auditLogPath, [])).map((entry) => ({ key: `admin_audit:${entry.id}`, value: JSON.stringify(entry) }));
+  else return [];
+  return Object.entries(map).map(([id, value]) => ({ key: `${prefix}${id}`, value: JSON.stringify(value) }));
+}
+
+app.get('/api/admin/cleanup/data', requireCleanupAccess, async (_req, res) => {
+  try {
+    await refreshAccounts();
+    const people = new Map(accounts.map((account) => [account.id, account]));
+    const list = (items) => items.map((item) => ({ ...item, model: cleanupModelLabels[item.model] }));
+    const scheduleRaw = await getCleanupSetting('weekly_schedule');
+    const scheduleData = scheduleRaw ? JSON.parse(scheduleRaw) : { lessons: [], targets: {} };
+    const schedule = Array.isArray(scheduleData) ? scheduleData : (scheduleData.lessons || []);
+    const trialsRaw = await getCleanupSetting('trial_lessons');
+    const trials = trialsRaw ? JSON.parse(trialsRaw) : [];
+    const testsRows = await listCleanupSettingRows('student_tests:');
+    const historyRows = await listCleanupSettingRows('student_lesson_history:');
+    const inboxRows = await listCleanupSettingRows('account_inbox:');
+    const auditRows = await listCleanupSettingRows('admin_audit:');
+    const tests = testsRows.flatMap((row) => {
+      const sid = row.key.slice('student_tests:'.length); const student = people.get(sid); const quizzes = JSON.parse(row.value || '[]');
+      return (Array.isArray(quizzes) ? quizzes : []).map((quiz, index) => ({ id: encodeCleanupId({ sid, quizId: quiz.id, index }), label: quiz.title || 'Тест без названия', details: `${student ? `${student.firstName} ${student.lastName}` : 'Удалённый аккаунт'} · ${quiz.questions?.length || 0} вопросов`, model: 'Тесты' }));
+    });
+    const histories = historyRows.flatMap((row) => {
+      const sid = row.key.slice('student_lesson_history:'.length); const student = people.get(sid); const entries = JSON.parse(row.value || '[]');
+      return (Array.isArray(entries) ? entries : []).map((entry, index) => ({ id: encodeCleanupId({ sid, entryId: entry.id, index }), label: entry.topic || entry.date || 'Запись занятия', details: `${student ? `${student.firstName} ${student.lastName}` : entry.studentName || 'Удалённый аккаунт'} · ${entry.date || ''} ${entry.time || ''}`, model: 'История занятий' }));
+    });
+    const homework = historyRows.flatMap((row) => {
+      const sid = row.key.slice('student_lesson_history:'.length); const student = people.get(sid); const entries = JSON.parse(row.value || '[]');
+      return (Array.isArray(entries) ? entries : []).filter((entry) => entry.nextHomework).map((entry, index) => ({ id: encodeCleanupId({ sid, entryId: entry.id, index: entries.indexOf(entry) }), label: entry.nextHomework.slice(0, 120), details: `${student ? `${student.firstName} ${student.lastName}` : entry.studentName || 'Удалённый аккаунт'} · ${entry.date || ''}`, model: 'Домашние задания' }));
+    });
+    const messages = inboxRows.flatMap((row) => {
+      const accountId = row.key.slice('account_inbox:'.length); const account = people.get(accountId); const items = JSON.parse(row.value || '[]');
+      return (Array.isArray(items) ? items : []).map((message, index) => ({ id: encodeCleanupId({ accountId, messageId: message.id, index }), label: (message.body || 'Сообщение').slice(0, 120), details: `${account ? `${account.firstName} ${account.lastName}` : 'Удалённый аккаунт'} · ${message.at ? new Date(message.at).toLocaleString('ru-KZ') : ''}`, model: 'Сообщения' }));
+    });
+    const audit = auditRows.map((row) => { const entry = JSON.parse(row.value || '{}'); return { id: row.key.slice('admin_audit:'.length), label: entry.action || 'Действие', details: `${entry.actor || 'Администратор'} · ${entry.at ? new Date(entry.at).toLocaleString('ru-KZ') : ''}${entry.details ? ` · ${entry.details}` : ''}`, model: 'История действий' }; });
+    const attachmentRows = [];
+    const legacyFiles = await readJsonFileOr(homeworkAttachmentsPath, {});
+    for (const [key, file] of Object.entries(legacyFiles)) attachmentRows.push({ id: encodeCleanupId({ studentId: file.studentId || key.split(':')[0], entryId: file.entryId || key.slice(key.indexOf(':') + 1), legacy: true }), label: file.filename || 'Файл задания', details: `${people.get(file.studentId || key.split(':')[0])?.firstName || 'Ученик'} · ${file.mimeType || ''}`, model: 'Файлы заданий' });
+    if (supabase) {
+      let attachmentOffset = 0;
+      while (true) {
+        const result = await supabase.from('homework_attachments').select('student_id,entry_id,filename,mime_type,updated_at').order('updated_at', { ascending: false }).range(attachmentOffset, attachmentOffset + 999);
+        if (result.error && !isHomeworkStorageMigrationMissing(result.error)) throw result.error;
+        for (const file of result.data || []) if (!attachmentRows.some((item) => item.id === encodeCleanupId({ studentId: file.student_id, entryId: file.entry_id, legacy: true }))) {
+          attachmentRows.push({ id: encodeCleanupId({ studentId: file.student_id, entryId: file.entry_id }), label: file.filename, details: `${people.get(file.student_id)?.firstName || 'Ученик'} · ${file.mime_type}`, model: 'Файлы заданий' });
+        }
+        if ((result.data || []).length < 1000 || result.error) break;
+        attachmentOffset += 1000;
+      }
+      const storage = supabase.storage.from(homeworkAttachmentsBucket);
+      for (let folderOffset = 0; ; folderOffset += 1000) {
+        const folders = await storage.list('', { limit: 1000, offset: folderOffset });
+        if (folders.error && !isHomeworkStorageMigrationMissing(folders.error)) throw folders.error;
+        for (const folder of folders.data || []) {
+          if (folder.id) continue;
+          for (let objectOffset = 0; ; objectOffset += 1000) {
+            const objects = await storage.list(folder.name, { limit: 1000, offset: objectOffset });
+            if (objects.error) throw objects.error;
+            for (const object of objects.data || []) {
+              const objectId = encodeCleanupId({ studentId: folder.name, entryId: object.name });
+              if (!attachmentRows.some((item) => item.id === objectId)) attachmentRows.push({ id: objectId, label: object.name, details: `${people.get(folder.name)?.firstName || 'Ученик'} · файл в хранилище`, model: 'Файлы заданий' });
+            }
+            if ((objects.data || []).length < 1000) break;
+          }
+        }
+        if ((folders.data || []).length < 1000 || folders.error) break;
+      }
+    }
+    let gameProgress;
+    if (supabase) {
+      const gameRows = [];
+      for (let offset = 0; ; offset += 1000) {
+        const result = await supabase.from('skyquest_progress').select('student_id,stars,best_score').range(offset, offset + 999);
+        if (result.error) throw result.error;
+        gameRows.push(...(result.data || []));
+        if ((result.data || []).length < 1000) break;
+      }
+      gameProgress = gameRows.map((row) => ({ id: row.student_id, label: `${people.get(row.student_id)?.firstName || 'Ученик'} ${people.get(row.student_id)?.lastName || ''}`.trim(), details: `${row.stars} звёзд · рекорд ${row.best_score}`, model: 'Игровой прогресс' }));
+    } else gameProgress = Object.entries(await readJsonFileOr(skyQuestProgressPath, {})).map(([id, progress]) => ({ id, label: `${people.get(id)?.firstName || 'Ученик'} ${people.get(id)?.lastName || ''}`.trim(), details: `${progress.stars || 0} звёзд · рекорд ${progress.bestScore || 0}`, model: 'Игровой прогресс' }));
+    const rows = {
+      accounts: list(accounts.map((account) => ({ id: account.id, label: `${account.firstName} ${account.lastName}`, details: `${account.role} · ${account.phone}`, model: 'accounts' }))),
+      schedule: list(schedule.map((lesson, index) => ({ id: lesson.id || String(index), label: lesson.title || 'Занятие', details: `${people.get(lesson.studentId)?.firstName || 'Ученик'} · ${lesson.day + 1} день · ${lesson.hour}:00`, model: 'schedule' }))),
+      scheduleTargets: list(Object.entries(scheduleData.targets || {}).map(([id, count]) => ({ id, label: `${people.get(id)?.firstName || 'Ученик'} ${people.get(id)?.lastName || ''}`.trim(), details: `План: ${count} занятий в неделю`, model: 'scheduleTargets' }))),
+      trials: list(trials.map((trial, index) => ({ id: trial.id || String(index), label: `${trial.firstName || 'Пробный'} ${trial.lastName || 'урок'}`, details: `${trial.status || 'запланирован'} · ${trial.day ?? ''} ${trial.hour ?? ''}:00`, model: 'trials' }))),
+      tests: list(tests), lessonHistory: list(histories), homework: list(homework), homeworkFiles: list(attachmentRows), gameProgress: list(gameProgress), messages: list(messages), audit: list(audit),
+      studentProgress: list(accounts.filter((account) => account.progress).map((account) => ({ id: account.id, label: `${account.firstName} ${account.lastName}`, details: `Уровень ${account.progress?.level || 1} · ${account.progress?.xp || 0} XP · ${account.progress?.stars || 0} звёзд`, model: 'studentProgress' }))),
+    };
+    return res.json({ models: Object.entries(cleanupModelLabels).map(([key, label]) => ({ key, label, count: rows[key]?.length || 0 })), rows });
+  } catch (error) { console.error('[Admin cleanup] Could not load model records:', error); return res.status(500).json({ error: 'Не удалось загрузить список объектов для очистки.' }); }
+});
+
+app.delete('/api/admin/cleanup/data/:model/:id', requireCleanupAccess, async (req, res) => {
+  const { model, id } = req.params;
+  try {
+    await refreshAccounts();
+    if (model === 'accounts') {
+      const account = accounts.find((item) => item.id === id);
+      if (!account) return res.status(404).json({ error: 'Аккаунт не найден.' });
+      if (account.role === 'teacher' && accounts.some((item) => item.role === 'student' && item.status !== 'withdrawn' && item.teacherId === account.id)) return res.status(409).json({ error: 'Сначала переназначьте активных учеников этого преподавателя.' });
+      await writeAccounts(accounts.filter((item) => item.id !== id).map((item) => {
+        if (account.role === 'teacher' && item.role === 'student' && item.teacherId === id) return { ...item, teacherId: undefined };
+        if (item.role === 'parent') return { ...item, children: (item.children || []).filter((childId) => childId !== id) };
+        return item;
+      }));
+    } else if (model === 'studentProgress') {
+      const account = accounts.find((item) => item.id === id);
+      if (!account) return res.status(404).json({ error: 'Аккаунт не найден.' });
+      await writeAccounts(accounts.map((item) => item.id === id ? { ...item, progress: null } : item));
+    } else if (model === 'schedule' || model === 'scheduleTargets') {
+      const raw = await getCleanupSetting('weekly_schedule'); const data = raw ? JSON.parse(raw) : { lessons: [], targets: {} };
+      const scheduleData = Array.isArray(data) ? { lessons: data, targets: {} } : data;
+      if (model === 'schedule') scheduleData.lessons = (scheduleData.lessons || []).filter((lesson, index) => (lesson.id || String(index)) !== id);
+      else delete (scheduleData.targets || {})[id];
+      await saveCleanupSetting('weekly_schedule', scheduleData);
+    } else if (model === 'trials') {
+      const raw = await getCleanupSetting('trial_lessons'); const trials = raw ? JSON.parse(raw) : [];
+      const next = trials.filter((trial, index) => (trial.id || String(index)) !== id);
+      if (next.length === trials.length) return res.status(404).json({ error: 'Пробный урок не найден.' });
+      await saveCleanupSetting('trial_lessons', next);
+    } else if (['tests', 'lessonHistory', 'homework', 'messages'].includes(model)) {
+      const keyData = decodeCleanupId(id);
+      const prefix = model === 'tests' ? `student_tests:${keyData.sid}` : model === 'messages' ? `account_inbox:${keyData.accountId}` : `student_lesson_history:${keyData.sid}`;
+      const raw = await getCleanupSetting(prefix); const items = raw ? JSON.parse(raw) : [];
+      const index = Number.isInteger(keyData.index) ? keyData.index : items.findIndex((item) => item.id === (keyData.quizId || keyData.entryId || keyData.messageId));
+      if (index < 0 || index >= items.length) return res.status(404).json({ error: 'Объект не найден.' });
+      if (model === 'homework') items[index] = { ...items[index], nextHomework: '' };
+      else items.splice(index, 1);
+      await saveCleanupSetting(prefix, items.length ? items : null);
+    } else if (model === 'audit') {
+      const key = `admin_audit:${id}`;
+      if (supabase) { const result = await supabase.from('app_settings').delete().eq('key', key); if (result.error) throw result.error; }
+      else await saveCleanupSetting(key, null);
+    } else if (model === 'gameProgress') {
+      if (supabase) { const result = await supabase.from('skyquest_progress').delete().eq('student_id', id); if (result.error) throw result.error; }
+      else { const data = await readJsonFileOr(skyQuestProgressPath, {}); delete data[id]; await writeJsonAtomically(skyQuestProgressPath, data); }
+    } else if (model === 'homeworkFiles') {
+      const file = decodeCleanupId(id); const objectPath = `${file.studentId}/${file.entryId}`;
+      if (supabase && !file.legacy) {
+        const removed = await supabase.storage.from(homeworkAttachmentsBucket).remove([objectPath]);
+        if (removed.error && !isHomeworkStorageMigrationMissing(removed.error)) throw removed.error;
+        const metadata = await supabase.from('homework_attachments').delete().eq('student_id', file.studentId).eq('entry_id', file.entryId);
+        if (metadata.error && !isHomeworkStorageMigrationMissing(metadata.error)) throw metadata.error;
+      }
+      const legacy = await readJsonFileOr(homeworkAttachmentsPath, {}); delete legacy[`${file.studentId}:${file.entryId}`]; await writeJsonAtomically(homeworkAttachmentsPath, legacy);
+    } else return res.status(400).json({ error: 'Эту модель нельзя удалять через панель.' });
+    if (model !== 'audit') await recordAdminAuditSafely(req.adminSession.sub, 'Удалён объект из раздела данных', cleanupModelLabels[model]);
+    return res.json({ ok: true });
+  } catch (error) { console.error(`[Admin cleanup] Could not delete ${model}:`, error); return res.status(500).json({ error: 'Не удалось удалить объект. Обновите список и попробуйте ещё раз.' }); }
+});
 
 function setSessionCookie(res) {
   const token = signSession({ sub: credentials.username, exp: Date.now() + sessionDurationSeconds * 1000 });
