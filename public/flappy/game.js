@@ -665,11 +665,20 @@ function addParticles(x, y) {
 // The login showcase displays the game's star as a collectible without changing account balances.
 function drawLoginDemoStar() {
   if (!loginDemo || !demoStarOnScreen) return;
-  if (gameState === 'playing' && !isPaused) {
+  if (demoStarOnScreen.collected) {
+    if (gameState === 'playing' && !isPaused) {
+      demoStarOnScreen.baseY -= 1.5;
+      demoStarOnScreen.life--;
+    }
+    if (demoStarOnScreen.life <= 0) {
+      demoStarOnScreen = null;
+      return;
+    }
+  } else if (gameState === 'playing' && !isPaused) {
     demoStarOnScreen.x -= PIPE_SPEED;
     demoStarOnScreen.phase += 0.06;
   }
-  if (demoStarOnScreen.x < -32) {
+  if (!demoStarOnScreen.collected && demoStarOnScreen.x < -32) {
     demoStarOnScreen = null;
     return;
   }
@@ -682,10 +691,27 @@ function drawLoginDemoStar() {
   ctx.fillStyle = glow;
   ctx.beginPath(); ctx.arc(x, y, 38, 0, Math.PI * 2); ctx.fill();
   ctx.save();
+  if (demoStarOnScreen.collected) ctx.globalAlpha = Math.min(1, demoStarOnScreen.life / 16);
   ctx.translate(x, y);
   ctx.rotate(Math.sin(phase * 0.65) * 0.12);
   drawStar(0, 0, 19 + Math.sin(phase * 1.4) * 1.5);
   ctx.restore();
+
+  if (!demoStarOnScreen.collected && gameState === 'playing' && !isPaused) {
+    const dx = x - (player.x + player.w / 2);
+    const dy = y - (player.y + player.h / 2);
+    if (Math.hypot(dx, dy) < 19 + Math.max(player.w, player.h) / 2) {
+      demoStarOnScreen.collected = true;
+      demoStarOnScreen.life = 28;
+      demoStars++;
+      document.getElementById('coinCount').textContent = String(demoStars);
+      floatingTexts.push({
+        x: player.x + 35, y: player.y - 14,
+        text: '⭐ +1 звезда', color: '#ffdd00', size: 15,
+        life: 48, maxLife: 48
+      });
+    }
+  }
 }
 
 // ===== CONFETTI =====
@@ -839,19 +865,12 @@ function updatePipes() {
       p.passed = true;
       score++;
       if (loginDemo && score % 5 === 0) {
-        demoStars++;
-        document.getElementById('coinCount').textContent = String(demoStars);
         const nextPipe = pipes.filter(pipe => pipe.x + pipe.w >= player.x + 4).sort((a, b) => a.x - b.x)[0];
         demoStarOnScreen = {
           x: nextPipe ? nextPipe.x + nextPipe.w / 2 : W * 0.72,
           baseY: nextPipe ? nextPipe.topH + PIPE_GAP / 2 : player.y + player.h / 2,
-          phase: 0
+          phase: 0, collected: false, life: 0
         };
-        floatingTexts.push({
-          x: player.x + 45, y: player.y - 14,
-          text: '⭐ +1 звезда', color: '#ffdd00', size: 15,
-          life: 72, maxLife: 72
-        });
       }
       if (!loginDemo && score > bestScore) {
         bestScore = score;
@@ -1140,17 +1159,19 @@ function gameLoop() {
       if (loginDemo) {
         const nextPipe = pipes.filter(pipe => pipe.x + pipe.w >= player.x + 4).sort((a, b) => a.x - b.x)[0];
         const targetY = nextPipe ? nextPipe.topH + PIPE_GAP / 2 - player.h / 2 : H / 2 - player.h / 2;
-        const desiredVelocity = Math.max(-6, Math.min(6, (targetY - player.y) * 0.08));
-        const nextLiftVelocity = Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT);
-        const nextFallVelocity = Math.min(9, player.vy + GRAVITY);
+        const verticalSpeedScale = 0.8;
+        const desiredVelocity = Math.max(-6, Math.min(6, (targetY - player.y) * 0.08)) * verticalSpeedScale;
+        const nextLiftVelocity = Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT) * verticalSpeedScale;
+        const nextFallVelocity = Math.min(9, player.vy + GRAVITY) * verticalSpeedScale;
         const velocityDeadband = 0.45;
         flightHeld = flightHeld
           ? nextLiftVelocity > desiredVelocity - velocityDeadband
           : nextFallVelocity > desiredVelocity + velocityDeadband;
       }
-      player.vy = flightHeld
+      const nextVerticalSpeed = flightHeld
         ? Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT)
         : Math.min(9, player.vy + GRAVITY);
+      player.vy = loginDemo ? nextVerticalSpeed * 0.8 : nextVerticalSpeed;
       player.y += player.vy;
       updatePipes();
     }
