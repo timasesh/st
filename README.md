@@ -1,33 +1,50 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Study Task
 
-# Run and deploy your AI Studio app
+Study Task is a Russian-language learning platform for students, parents, teachers, and administrators. It is a React, TypeScript, Vite, and Express application with Supabase-backed production data.
 
-This contains everything you need to run your app locally.
+## Requirements
 
-View your app in AI Studio: https://ai.studio/apps/7afd469a-b6d6-472b-9278-244320bfb712
+- Node.js 20 or newer
+- npm
+- A Supabase project for persistent production data
 
-## Run Locally
+## Local development
 
-**Prerequisites:**  Node.js
+```sh
+npm ci
+Copy-Item .env.example .env.local # PowerShell; on macOS/Linux use cp .env.example .env.local
+npm run dev
+```
 
+The server runs the Vite development middleware on `http://localhost:3000`. To use the local JSON fallback instead of Supabase, leave `SUPABASE_URL` and `SUPABASE_SECRET_KEY` blank. Local data is written under `.data` (or `DATA_DIR`). Do not use this fallback for multiple server instances.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Environment variables
 
-## Sign-in pages
+See [`.env.example`](.env.example). Configure `SUPABASE_URL` and `SUPABASE_SECRET_KEY` together. `SUPABASE_SERVICE_ROLE_KEY` is also accepted for compatibility; either key is highly privileged and must only exist in the server environment. Set `ADMIN_BOOTSTRAP_PASSWORD` before the first startup to initialize the administrator. `NVIDIA_API_KEY` is needed only for teacher test generation.
 
-- Student sign-in: `/login` (registration is disabled).
-- Administrator sign-in: `/admin_login`.
-- The first administrator login must be followed by a password change before `/admin` opens.
-- The initial administrator credentials are `study-admin` and the temporary password supplied for this setup. The password is stored as a salted scrypt hash in `.data/admin.json`; session signing material is also stored in `.data/`. Both are excluded from Git.
+## Supabase setup and migrations
 
-Run `npm run build` and then `npm start` to serve the production build and the administrator authentication API. Keep `DATA_DIR` on persistent storage in production so the changed administrator password and session secret survive restarts. Set `DATA_DIR` to a private, writable directory before deploying.
+For a new project, run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor before starting the application. It creates the application tables, the private homework-file bucket, row-level security, and server-only RPC functions.
 
-## AI test generation
+Existing projects should apply each SQL file in `supabase/migrations/` once, in filename order. The migration adds the lesson-link columns, private homework storage metadata and bucket, and the daily Sky Quest reward limit. The application cannot apply SQL migrations itself; deploy only after the migration succeeds. The schema files are idempotent where possible, but keep a database backup before changing production data.
 
-Teacher-created image tests use the NVIDIA API from the server. Add `NVIDIA_API_KEY` to the Render Web Service's **Environment** settings and redeploy. The key is never sent to the browser. `NVIDIA_MODEL` is optional; the default is `moonshotai/kimi-k3`. Generated tests contain 10 multiple-choice questions and are stored in Supabase with the student's account.
+If homework files exist in the old local JSON store, run `npm run migrate:homework` from a machine that can read that `DATA_DIR`, after applying the storage migration and setting the Supabase credentials. The migration script is safe to rerun and leaves source files unchanged.
+
+## Production build and Render
+
+Render Web Service commands:
+
+- Build: `npm ci --include=dev && npm run build`
+- Start: `npm start`
+
+Set the Supabase, administrator bootstrap, and optional NVIDIA environment variables in Render. The server serves the Vite build from `dist` and listens on Render's `PORT`. Keep production credentials out of Git and browser bundles.
+
+## Quality checks
+
+```sh
+npm run lint
+npm test
+npm run build
+```
+
+`npm run clean` removes only the generated `dist` directory; it never removes application source.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import InteractivePlatform from './components/InteractivePlatform';
@@ -8,7 +8,18 @@ import Pricing from './components/Pricing';
 import FreeTrial from './components/FreeTrial';
 import ContactForm from './components/ContactForm';
 import Footer from './components/Footer';
-import { AdminDashboardPage, AdminLoginPage, StudentLoginPage, UserPortalPage } from './components/AuthPages';
+const StudentLoginPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.StudentLoginPage })));
+const AdminLoginPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.AdminLoginPage })));
+const UserPortalPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.UserPortalPage })));
+const AdminDashboardPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.AdminDashboardPage })));
+
+function PageLoading() {
+  return <main className="grid min-h-[60vh] place-items-center bg-surface p-6 text-center text-sm font-semibold text-muted" role="status">Загружаем страницу…</main>;
+}
+
+function withPageLoading(page: React.ReactNode) {
+  return <Suspense fallback={<PageLoading />}>{page}</Suspense>;
+}
 
 import { Rocket, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -24,7 +35,7 @@ type StoredProgress = {
 };
 
 const DEFAULT_PROGRESS: StoredProgress = {
-  stars: 5,
+  stars: 0,
   xp: 0,
   level: 1,
   claimedPrizes: [],
@@ -86,7 +97,8 @@ export default function App() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({ stars, xp, level, claimedPrizes, unlockedAchievements }),
+          // Star balances are server-owned and must never be overwritten by values from the browser.
+          body: JSON.stringify({ xp, level, claimedPrizes, unlockedAchievements }),
         }).catch((e) => console.warn('Could not sync student progress:', e));
       }
     } catch (e) {
@@ -206,25 +218,25 @@ export default function App() {
   };
 
   if (window.location.pathname === '/login') {
-    return <StudentLoginPage onLoginSuccess={handleLoginSuccess} />;
+    return withPageLoading(<StudentLoginPage onLoginSuccess={handleLoginSuccess} />);
   }
   if (window.location.pathname === '/teacher_login') {
-    return <StudentLoginPage expectedRole="teacher" onLoginSuccess={handleLoginSuccess} />;
+    return withPageLoading(<StudentLoginPage expectedRole="teacher" onLoginSuccess={handleLoginSuccess} />);
   }
   if (window.location.pathname === '/student' || window.location.pathname === '/student/') {
-    return <UserPortalPage expectedRole="student" />;
+    return withPageLoading(<UserPortalPage expectedRole="student" />);
   }
   if (window.location.pathname === '/parent' || window.location.pathname === '/parent/') {
-    return <UserPortalPage expectedRole="parent" />;
+    return withPageLoading(<UserPortalPage expectedRole="parent" />);
   }
   if (window.location.pathname === '/teacher' || window.location.pathname === '/teacher/') {
-    return <UserPortalPage expectedRole="teacher" />;
+    return withPageLoading(<UserPortalPage expectedRole="teacher" />);
   }
   if (window.location.pathname === '/admin_login') {
-    return <AdminLoginPage />;
+    return withPageLoading(<AdminLoginPage />);
   }
   if (window.location.pathname === '/admin') {
-    return <AdminDashboardPage />;
+    return withPageLoading(<AdminDashboardPage />);
   }
 
   return (
