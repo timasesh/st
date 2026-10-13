@@ -384,6 +384,62 @@ body {
   color: #000;
 }
 
+/* Decorative, non-interactive Sky Quest loop on the login page. */
+.login-skyquest {
+  isolation: isolate;
+}
+.login-background {
+  transition: fill 1.8s ease, filter 1.8s ease;
+}
+.login-obstacle-train {
+  will-change: transform;
+}
+.login-rocket-path {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: login-rocket-flight 4.8s ease-in-out infinite;
+  will-change: transform;
+}
+.login-engine-sparks {
+  animation: login-engine-flicker .16s steps(2, end) infinite alternate;
+}
+.login-twinkle {
+  animation: login-star-twinkle 2.6s ease-in-out infinite alternate;
+}
+.login-landmark {
+  animation: login-landmark-drift 9s ease-in-out infinite alternate;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.login-star-reward {
+  animation: login-star-reward 1.5s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes login-rocket-flight {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  20% { transform: translateY(-62px) rotate(-7deg); }
+  43% { transform: translateY(-24px) rotate(2deg); }
+  69% { transform: translateY(61px) rotate(7deg); }
+  86% { transform: translateY(23px) rotate(2deg); }
+}
+@keyframes login-engine-flicker {
+  from { opacity: .4; transform: translateX(-5px) scale(.8); }
+  to { opacity: 1; transform: translateX(3px) scale(1.25); }
+}
+@keyframes login-star-twinkle {
+  from { opacity: .3; }
+  to { opacity: .95; }
+}
+@keyframes login-landmark-drift {
+  from { translate: 0 0; }
+  to { translate: -28px 14px; }
+}
+@keyframes login-star-reward {
+  0% { opacity: 0; transform: translateY(12px) scale(.75); }
+  18% { opacity: 1; transform: translateY(0) scale(1.08); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-30px) scale(.95); }
+}
+
 .admin-dashboard.theme-dark .teacher-schedule-slot,
 .admin-dashboard.theme-dark .teacher-schedule-slot strong,
 .admin-dashboard.theme-dark .teacher-schedule-slot span {

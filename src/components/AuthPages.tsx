@@ -5,6 +5,7 @@ import StudentDashboard from './StudentDashboard';
 import PortalSettings from './PortalSettings';
 import { ParentChildrenView, ParentPrizesView } from './ParentPortalSections';
 import AdminDataCleanup from './AdminDataCleanup';
+import SkyQuestLoginScene from './SkyQuestLoginScene';
 
 type LoginPageProps = {
   onLoginSuccess: (name: string, studentClass: string, accountId: string, progress: Partial<LoginProgress> | null, role: 'student' | 'parent' | 'teacher') => void;
@@ -86,52 +87,53 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
   };
 
   return (
-    <AuthShell compact={!expectedRole} eyebrow={expectedRole ? 'ЛИЧНЫЙ КАБИНЕТ ПРЕПОДАВАТЕЛЯ' : 'STUDYTASK · ЛИЧНЫЙ КАБИНЕТ'}>
-      <span className={`mx-auto grid place-items-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/25 ${expectedRole ? 'mb-2 mt-2 h-11 w-11' : 'mb-1 mt-1 h-9 w-9'}`}><UserRound className={`${expectedRole ? 'h-5 w-5' : 'h-4 w-4'} text-white`} /></span>
-      <h1 className={`font-display font-extrabold tracking-tight ${expectedRole ? 'text-2xl' : 'text-xl'}`}>С возвращением!</h1>
-      <p className="mx-auto mt-1 max-w-xs text-sm leading-5 text-blue-100">{expectedRole ? 'Войдите по данным, выданным администратором' : 'Войдите в свой учебный профиль'}</p>
-      <form onSubmit={submit} className={`bg-white text-left ${expectedRole ? 'space-y-4 p-6 sm:p-7' : 'space-y-2.5 p-3 sm:p-4'}`}>
-        {!expectedRole && <fieldset className="space-y-1.5"><legend className="text-sm font-bold text-slate-700">Кто входит в аккаунт?</legend><div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1"><button type="button" aria-pressed={accountType === 'student'} onClick={() => { setAccountType('student'); setError(''); }} className={`flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-bold transition ${accountType === 'student' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><GraduationCap className="h-4 w-4"/>Ученик</button><button type="button" aria-pressed={accountType === 'parent'} onClick={() => { setAccountType('parent'); setError(''); }} className={`flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-bold transition ${accountType === 'parent' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}><Users className="h-4 w-4"/>Родитель</button></div><p className="text-[11px] leading-4 text-slate-500">{accountType === 'parent' ? 'Данные родительского аккаунта от администратора.' : 'Данные аккаунта ученика от администратора.'}</p></fieldset>}
-        <label className="block space-y-1.5 text-sm font-bold text-slate-700" htmlFor="student-phone">
-          Номер телефона аккаунта
-          <input
-            id="student-phone"
-            type="tel"
-            autoComplete="username"
-            required
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            placeholder="+7 700 000 00 00"
-            className={`w-full rounded-xl border border-slate-200 bg-slate-50 px-4 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 ${expectedRole ? 'py-3.5' : 'py-2.5'}`}
-          />
-        </label>
-        <label className="block space-y-1.5 text-sm font-bold text-slate-700" htmlFor="student-password">
-          Пароль
-          <span className="relative block">
-            <LockKeyhole className="absolute left-3.5 top-3.5 h-4 w-4 text-muted" />
-            <input
-              id="student-password"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Введи пароль"
-              className={`w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-12 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 ${expectedRole ? 'py-3.5' : 'py-2.5'}`}
-            />
-            <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'} className="absolute right-3 top-3 rounded p-1 text-muted hover:text-primary">
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+    <main className="grid min-h-dvh overflow-hidden bg-[#f1f6ff] text-slate-900 lg:h-dvh lg:grid-cols-[minmax(410px,0.78fr)_minmax(0,1.22fr)]">
+      <section className="relative z-10 flex min-h-[680px] flex-col justify-center px-5 py-8 sm:px-10 lg:min-h-0 lg:px-12 xl:px-20">
+        <div aria-hidden="true" className="pointer-events-none absolute -left-28 top-12 h-64 w-64 rounded-full bg-blue-100/70 blur-3xl" />
+        <div className="relative mx-auto w-full max-w-[440px]">
+          <a href="/" className="mb-10 inline-flex items-center gap-3 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 sm:mb-14">
+            <img src="/static/ST.webp" alt="" className="h-12 w-12 rounded-xl object-contain" />
+            <span><strong className="block font-display text-xl font-extrabold tracking-tight text-slate-900">StudyTask</strong><span className="text-sm text-slate-500">Учёба с интересом</span></span>
+          </a>
+          <div className="mb-7">
+            <p className="mb-2 text-xs font-extrabold uppercase tracking-[.17em] text-blue-600">{expectedRole ? 'Кабинет преподавателя' : 'Личный кабинет'}</p>
+            <h1 className="font-display text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">С возвращением!</h1>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">{expectedRole ? 'Войдите по данным, выданным администратором.' : 'Войдите, чтобы продолжить занятия и увидеть свой прогресс.'}</p>
+          </div>
+
+          <form onSubmit={submit} className="space-y-5 rounded-[1.75rem] border border-white bg-white/90 p-5 shadow-[0_24px_80px_-40px_rgba(34,88,170,.36)] sm:p-7">
+            {!expectedRole && <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-bold text-slate-700">Войти как</legend>
+              <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1.5">
+                <button type="button" aria-pressed={accountType === 'student'} onClick={() => { setAccountType('student'); setError(''); }} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${accountType === 'student' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><GraduationCap className="h-4 w-4" /> Ученик</button>
+                <button type="button" aria-pressed={accountType === 'parent'} onClick={() => { setAccountType('parent'); setError(''); }} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${accountType === 'parent' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><Users className="h-4 w-4" /> Родитель</button>
+              </div>
+            </fieldset>}
+            <label className="block space-y-2 text-sm font-bold text-slate-700" htmlFor="student-phone">
+              Номер телефона
+              <span className="relative block"><UserRound className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input id="student-phone" type="tel" autoComplete="username" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+7 700 000 00 00" className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" /></span>
+            </label>
+            <label className="block space-y-2 text-sm font-bold text-slate-700" htmlFor="student-password">
+              Пароль
+              <span className="relative block"><LockKeyhole className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input id="student-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Введите пароль" className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-12 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-blue-700">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span>
+            </label>
+            {error && <p role="alert" className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2.5 text-sm font-semibold leading-5 text-rose-700">{error}</p>}
+            <button type="submit" disabled={loading} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 font-display text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:translate-y-0 disabled:opacity-65">
+              {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><LogIn className="h-4 w-4" /> Войти в кабинет</>}
             </button>
-          </span>
-        </label>
-        {error && <p role="alert" className="text-sm font-semibold text-rose-600">{error}</p>}
-        <button type="submit" disabled={loading} className={`flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 px-5 font-display text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-600/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:translate-y-0 disabled:opacity-70 ${expectedRole ? 'min-h-12 py-3' : 'min-h-9 py-1.5'}`}>
-          {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><LogIn className="h-4 w-4" /> Войти {accountType === 'parent' && !expectedRole ? 'как родитель' : 'в профиль'}</>}
-        </button>
-        <p className="text-center text-xs leading-5 text-slate-500">Вход доступен по данным аккаунта, который создал администратор.</p>
-      </form>
-      {expectedRole && <><a href="/admin_login" className="block border-t border-border px-5 py-3 text-center text-xs font-semibold text-muted hover:text-primary">Вход для администратора</a><a href="/login" className="block border-t border-border px-5 py-3 text-center text-xs font-semibold text-muted hover:text-primary">Вход ученика или родителя</a></>}
-    </AuthShell>
+            <p className="text-center text-xs leading-5 text-slate-500">Данные для входа выдаёт администратор платформы.</p>
+          </form>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-semibold text-slate-500">
+            {expectedRole ? <><a href="/admin_login" className="transition hover:text-blue-700">Вход администратора</a><a href="/login" className="transition hover:text-blue-700">Ученику или родителю</a></> : <><a href="/teacher_login" className="transition hover:text-blue-700">Вход для преподавателя</a><a href="/admin_login" className="transition hover:text-blue-700">Администратор</a></>}
+          </div>
+          <a href="/" className="mt-7 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 transition hover:text-blue-700"><ArrowLeft className="h-3.5 w-3.5" /> На главную</a>
+        </div>
+      </section>
+      <div className="pointer-events-none relative min-h-0 select-none overflow-hidden lg:min-h-dvh" aria-hidden="true">
+        <SkyQuestLoginScene />
+        <div className="absolute right-5 top-1/2 hidden -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/20 px-3 py-2 text-[10px] font-bold uppercase tracking-[.18em] text-white/50 backdrop-blur lg:block">ST · Sky Quest</div>
+      </div>
+    </main>
   );
 }
 
