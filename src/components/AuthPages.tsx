@@ -131,7 +131,6 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
       </section>
       <div className="pointer-events-none relative min-h-0 select-none overflow-hidden lg:min-h-dvh" aria-hidden="true">
         <SkyQuestLoginScene />
-        <div className="absolute right-5 top-1/2 hidden -translate-y-1/2 rounded-full border border-white/15 bg-slate-950/20 px-3 py-2 text-[10px] font-bold uppercase tracking-[.18em] text-white/50 backdrop-blur lg:block">ST · Sky Quest</div>
       </div>
     </main>
   );

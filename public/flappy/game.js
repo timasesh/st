@@ -1,5 +1,6 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const loginDemo = new URLSearchParams(window.location.search).get('loginDemo') === '1';
 const W = 400, H = 650;
 const pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
 canvas.width = Math.round(W * pixelRatio);
@@ -753,6 +754,8 @@ function spawnPipe() {
 
   pipesSpawned++;
 
+  if (loginDemo) return;
+
   if (pipesSpawned >= nextCoinPipe && !coinOnScreen) {
     coinOnScreen = {
       x: W + 36,
@@ -794,7 +797,14 @@ function updatePipes() {
     if (!p.passed && p.x + p.w < player.x) {
       p.passed = true;
       score++;
-      if (score > bestScore) {
+      if (loginDemo && score % 5 === 0) {
+        floatingTexts.push({
+          x: player.x + 45, y: player.y - 14,
+          text: '⭐ +1 звезда', color: '#ffdd00', size: 15,
+          life: 72, maxLife: 72
+        });
+      }
+      if (!loginDemo && score > bestScore) {
         bestScore = score;
         if (!newRecordConfetti) {
           newRecordConfetti = true;
@@ -806,9 +816,16 @@ function updatePipes() {
           });
         }
       }
-      addScorePopup(player.x + 30, player.y);
+      if (!loginDemo) addScorePopup(player.x + 30, player.y);
 
-      if (score % 10 === 0) {
+      if (loginDemo && score >= 25) {
+        score = 0;
+        pipes = [];
+        pipesSpawned = 0;
+        lastPipe = Date.now();
+      }
+
+      if (!loginDemo && score % 10 === 0) {
         floatingTexts.push({
           x: W/2, y: H/2 - 40,
           text: score === 10 ? '🎉 10 уроков — отлично!' :
@@ -849,6 +866,12 @@ function updatePipes() {
 
 // Функция `die` реализует локальную часть бизнес-логики модуля.
 function die() {
+  if (loginDemo) {
+    startGame();
+    gameState = 'playing';
+    lastPipe = Date.now();
+    return;
+  }
   if (!player.alive) return;
   if (invincible > 0) return;
 
@@ -1065,6 +1088,12 @@ function gameLoop() {
     drawCoin();
 
     if (gameState === 'playing' && !isPaused) {
+      if (loginDemo) {
+        const nextPipe = pipes.filter(pipe => pipe.x + pipe.w >= player.x + 4).sort((a, b) => a.x - b.x)[0];
+        const targetY = nextPipe ? nextPipe.topH + PIPE_GAP / 2 - player.h / 2 : H / 2 - player.h / 2;
+        const desiredVelocity = Math.max(-6, Math.min(6, (targetY - player.y) * 0.08));
+        flightHeld = player.vy > desiredVelocity;
+      }
       player.vy = flightHeld
         ? Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT)
         : Math.min(9, player.vy + GRAVITY);
@@ -1114,6 +1143,7 @@ function gameLoop() {
 
 // ===== EVENTS =====
 document.addEventListener('keydown', e => {
+  if (loginDemo) return;
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
     e.preventDefault();
     if (!e.repeat) startFlight();
@@ -1124,6 +1154,7 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('keyup', e => {
+  if (loginDemo) return;
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') stopFlight();
 });
 
@@ -1135,6 +1166,7 @@ const gameWrapper = document.getElementById('gameWrapper');
 });
 
 canvas.addEventListener('pointerdown', e => {
+  if (loginDemo) { e.preventDefault(); return; }
   e.preventDefault();
   if (gameState !== 'playing' && gameState !== 'ready') return;
   if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
@@ -1146,7 +1178,7 @@ canvas.addEventListener('pointercancel', stopFlight);
 canvas.addEventListener('lostpointercapture', stopFlight);
 
 document.getElementById('startCoinCount').textContent = totalCoins;
-fetch('/api/student/skyquest', { credentials: 'same-origin' })
+if (!loginDemo) fetch('/api/student/skyquest', { credentials: 'same-origin' })
   .then(response => response.ok ? response.json() : null)
   .then(result => {
     if (!result || !Number.isFinite(Number(result.stars))) return;
@@ -1158,10 +1190,17 @@ fetch('/api/student/skyquest', { credentials: 'same-origin' })
 // Start game loop (procedural background, no AlmaU image)
 gameLoop();
 
+if (loginDemo) {
+  document.body.classList.add('login-demo-mode');
+  startGame();
+  gameState = 'playing';
+  lastPipe = Date.now();
+}
+
 // Auto-start when embedded with ?autostart=1
 (function() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get('autostart') === '1') {
+  if (!loginDemo && params.get('autostart') === '1') {
     setTimeout(() => startGame(), 300);
   }
 })();
