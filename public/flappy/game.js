@@ -1160,7 +1160,12 @@ function gameLoop() {
         const nextPipe = pipes.filter(pipe => pipe.x + pipe.w >= player.x + 4).sort((a, b) => a.x - b.x)[0];
         const targetY = nextPipe ? nextPipe.topH + PIPE_GAP / 2 - player.h / 2 : H / 2 - player.h / 2;
         const verticalSpeedScale = 0.8;
-        const desiredVelocity = Math.max(-6, Math.min(6, (targetY - player.y) * 0.08)) * verticalSpeedScale;
+        const horizontalSpeed = PIPE_SPEED + score * 0.04;
+        const horizontalDistance = nextPipe
+          ? Math.max(player.w / 2, nextPipe.x + nextPipe.w / 2 - (player.x + player.w / 2))
+          : W / 2;
+        const lineVelocity = (targetY - player.y) * horizontalSpeed / horizontalDistance;
+        const desiredVelocity = Math.max(-6, Math.min(6, lineVelocity)) * verticalSpeedScale;
         const nextLiftVelocity = Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT) * verticalSpeedScale;
         const nextFallVelocity = Math.min(9, player.vy + GRAVITY) * verticalSpeedScale;
         const velocityDeadband = 0.45;
