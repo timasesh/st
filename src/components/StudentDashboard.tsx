@@ -109,6 +109,11 @@ function getAstanaClock(now: Date) {
   return { day: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(get('weekday')), hour: Number(get('hour')), minute: Number(get('minute')) };
 }
 
+function canJoinLesson(day: number, hour: number, clock: ReturnType<typeof getAstanaClock>) {
+  const currentMinutes = clock.hour * 60 + clock.minute;
+  return day === clock.day && currentMinutes >= hour * 60 && currentMinutes < (hour + 1) * 60 + 10;
+}
+
 function getLessonOffset(lesson: StudentLesson, now: Date) {
   const clock = getAstanaClock(now);
   let days = (lesson.day - clock.day + 7) % 7;
@@ -161,7 +166,7 @@ export default function StudentDashboard({ portal, now, loading, error, activeTa
   const nextHomework = homework.find((item) => !item.attachment);
   const nextTest = assignedTests[0];
   const clock = getAstanaClock(now);
-  const lessonIsLive = Boolean(nextLesson && nextLesson.daysUntil === 0 && nextLesson.hour === clock.hour);
+  const lessonIsLive = Boolean(nextLesson && nextLesson.daysUntil === 0 && canJoinLesson(nextLesson.day, nextLesson.hour, clock));
   const completedTests = tests.filter((test) => test.status === 'completed');
   const unreadMessages = portal.messages.filter((message) => !message.read).length;
 
