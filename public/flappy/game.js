@@ -675,7 +675,13 @@ function drawLoginDemoStar() {
       return;
     }
   } else if (gameState === 'playing' && !isPaused) {
-    demoStarOnScreen.x -= PIPE_SPEED;
+    if (demoStarOnScreen.pipe && pipes.includes(demoStarOnScreen.pipe)) {
+      demoStarOnScreen.x = demoStarOnScreen.pipe.x + demoStarOnScreen.pipe.w / 2;
+      demoStarOnScreen.baseY = demoStarOnScreen.pipe.topH + PIPE_GAP / 2;
+    } else {
+      demoStarOnScreen.pipe = null;
+      demoStarOnScreen.x -= PIPE_SPEED + score * 0.04;
+    }
     demoStarOnScreen.phase += 0.06;
   }
   if (!demoStarOnScreen.collected && demoStarOnScreen.x < -32) {
@@ -700,11 +706,12 @@ function drawLoginDemoStar() {
   if (!demoStarOnScreen.collected && gameState === 'playing' && !isPaused) {
     const dx = x - (player.x + player.w / 2);
     const dy = y - (player.y + player.h / 2);
-    if (Math.hypot(dx, dy) < 19 + Math.max(player.w, player.h) / 2) {
+    const overlapsStarLane = Math.abs(dx) <= player.w / 2 + 20
+      && Math.abs(dy) <= PIPE_GAP / 2 - player.h / 2 + 10;
+    if (overlapsStarLane) {
       demoStarOnScreen.collected = true;
       demoStarOnScreen.life = 28;
-      demoStars++;
-      document.getElementById('coinCount').textContent = String(demoStars);
+      demoStarOnScreen.pipe = null;
       floatingTexts.push({
         x: player.x + 35, y: player.y - 14,
         text: '⭐ +1 звезда', color: '#ffdd00', size: 15,
@@ -865,12 +872,19 @@ function updatePipes() {
       p.passed = true;
       score++;
       if (loginDemo && score % 5 === 0) {
+        demoStars++;
+        document.getElementById('coinCount').textContent = String(demoStars);
         const nextPipe = pipes.filter(pipe => pipe.x + pipe.w >= player.x + 4).sort((a, b) => a.x - b.x)[0];
         demoStarOnScreen = {
           x: nextPipe ? nextPipe.x + nextPipe.w / 2 : W * 0.72,
           baseY: nextPipe ? nextPipe.topH + PIPE_GAP / 2 : player.y + player.h / 2,
-          phase: 0, collected: false, life: 0
+          pipe: nextPipe || null, phase: 0, collected: false, life: 0
         };
+        floatingTexts.push({
+          x: player.x + 45, y: player.y - 14,
+          text: '⭐ +1 звезда', color: '#ffdd00', size: 15,
+          life: 48, maxLife: 48
+        });
       }
       if (!loginDemo && score > bestScore) {
         bestScore = score;
