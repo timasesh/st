@@ -1164,8 +1164,15 @@ function gameLoop() {
         const horizontalDistance = nextPipe
           ? Math.max(player.w / 2, nextPipe.x + nextPipe.w / 2 - (player.x + player.w / 2))
           : W / 2;
-        const lineVelocity = (targetY - player.y) * horizontalSpeed / horizontalDistance;
-        const desiredVelocity = Math.max(-6, Math.min(6, lineVelocity)) * verticalSpeedScale;
+        const framesToGap = horizontalDistance / horizontalSpeed;
+        const verticalDistance = targetY - player.y;
+        // Plan the acceleration early: this is the velocity needed at the end
+        // of a constant-acceleration path that reaches the gap center in time.
+        const requiredVelocity = (2 * verticalDistance / framesToGap) - player.vy;
+        const desiredVelocity = Math.max(
+          MAX_ASCENT_SPEED * verticalSpeedScale,
+          Math.min(9 * verticalSpeedScale, requiredVelocity)
+        );
         const nextLiftVelocity = Math.max(MAX_ASCENT_SPEED, player.vy + GRAVITY - LIFT) * verticalSpeedScale;
         const nextFallVelocity = Math.min(9, player.vy + GRAVITY) * verticalSpeedScale;
         const velocityDeadband = 0.45;
