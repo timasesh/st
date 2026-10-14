@@ -5,7 +5,6 @@ import StudentDashboard from './StudentDashboard';
 import PortalSettings from './PortalSettings';
 import { ParentChildrenView, ParentPrizesView } from './ParentPortalSections';
 import AdminDataCleanup from './AdminDataCleanup';
-import SkyQuestLoginScene from './SkyQuestLoginScene';
 
 type LoginPageProps = {
   onLoginSuccess: (name: string, studentClass: string, accountId: string, progress: Partial<LoginProgress> | null, role: 'student' | 'parent' | 'teacher') => void;
@@ -87,21 +86,21 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
   };
 
   return (
-    <main className="grid min-h-dvh overflow-hidden bg-[#f1f6ff] text-slate-900 lg:h-dvh lg:grid-cols-2">
-      <section className="relative z-10 flex min-h-[680px] flex-col justify-center px-5 py-8 sm:px-10 lg:min-h-0 lg:px-12 xl:px-20">
-        <div aria-hidden="true" className="pointer-events-none absolute -left-28 top-12 h-64 w-64 rounded-full bg-blue-100/70 blur-3xl" />
-        <div className="relative mx-auto w-full max-w-[440px]">
-          <a href="/" className="mb-10 inline-flex items-center gap-3 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 sm:mb-14">
-            <img src="/static/ST.webp" alt="" className="h-12 w-12 rounded-xl object-contain" />
+    <main className="relative flex min-h-dvh items-center justify-center overflow-x-hidden bg-[radial-gradient(ellipse_at_top_left,_#dceaff_0%,_#f4f8ff_42%,_#edf4ff_100%)] px-4 py-7 text-slate-900 sm:px-6 sm:py-10">
+      <div aria-hidden="true" className="pointer-events-none absolute -left-24 top-12 h-64 w-64 rounded-full bg-blue-200/45 blur-3xl sm:h-80 sm:w-80" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-20 h-72 w-72 rounded-full bg-indigo-200/35 blur-3xl" />
+      <section className="relative z-10 w-full max-w-[440px]">
+          <a href="/" className="mb-7 inline-flex items-center gap-3 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 sm:mb-9">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-lg shadow-blue-900/10 ring-1 ring-blue-100"><img src="/static/ST.webp" alt="" className="h-10 w-10 rounded-xl object-contain" /></span>
             <span><strong className="block font-display text-xl font-extrabold tracking-tight text-slate-900">StudyTask</strong><span className="text-sm text-slate-500">Учёба с интересом</span></span>
           </a>
-          <div className="mb-7">
-            <p className="mb-2 text-xs font-extrabold uppercase tracking-[.17em] text-blue-600">{expectedRole ? 'Кабинет преподавателя' : 'Личный кабинет'}</p>
-            <h1 className="font-display text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">С возвращением!</h1>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">{expectedRole ? 'Войдите по данным, выданным администратором.' : 'Войдите, чтобы продолжить занятия и увидеть свой прогресс.'}</p>
+          <div className="mb-6 sm:mb-7">
+            <p className="mb-2 text-[11px] font-extrabold uppercase tracking-[.18em] text-blue-600">{expectedRole ? 'Кабинет преподавателя' : 'Ваш учебный кабинет'}</p>
+            <h1 className="font-display text-[2rem] font-extrabold leading-tight tracking-tight text-slate-950 sm:text-4xl">С возвращением!</h1>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">{expectedRole ? 'Войдите по данным, выданным администратором.' : 'Занятия, задания и ваш прогресс — в одном месте.'}</p>
           </div>
 
-          <form onSubmit={submit} className="space-y-5 rounded-[1.75rem] border border-white bg-white/90 p-5 shadow-[0_24px_80px_-40px_rgba(34,88,170,.36)] sm:p-7">
+          <form onSubmit={submit} className="space-y-5 rounded-[1.75rem] border border-white/90 bg-white p-5 shadow-[0_28px_90px_-42px_rgba(34,88,170,.42)] ring-1 ring-blue-100/70 sm:p-7">
             {!expectedRole && <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-bold text-slate-700">Войти как</legend>
               <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1.5">
@@ -126,12 +125,8 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
           <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-semibold text-slate-500">
             {expectedRole ? <><a href="/admin_login" className="transition hover:text-blue-700">Вход администратора</a><a href="/login" className="transition hover:text-blue-700">Ученику или родителю</a></> : <><a href="/teacher_login" className="transition hover:text-blue-700">Вход для преподавателя</a><a href="/admin_login" className="transition hover:text-blue-700">Администратор</a></>}
           </div>
-          <a href="/" className="mt-7 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 transition hover:text-blue-700"><ArrowLeft className="h-3.5 w-3.5" /> На главную</a>
-        </div>
+          <a href="/" className="mt-6 inline-flex min-h-10 items-center gap-1.5 rounded-lg text-xs font-semibold text-slate-400 transition hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"><ArrowLeft className="h-3.5 w-3.5" /> На главную</a>
       </section>
-      <div className="pointer-events-none relative min-h-0 select-none overflow-hidden lg:min-h-dvh" aria-hidden="true">
-        <SkyQuestLoginScene />
-      </div>
     </main>
   );
 }
