@@ -958,6 +958,14 @@ app.post('/api/admin/logout', (req, res) => {
 });
 
 const accountRoles = new Set(['student', 'parent', 'teacher']);
+async function getVisibleRosterAccounts() {
+  const enrolledTrialStudentIds = new Set((await readTrialLessons())
+    .filter((lesson) => lesson.status === 'enrolled' && lesson.studentId)
+    .map((lesson) => lesson.studentId));
+  return accounts.filter((account) => account.role !== 'student'
+    || !account.progress?.trialAccount
+    || enrolledTrialStudentIds.has(account.id));
+}
 function isValidLessonLink(value) {
   try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) && url.hostname.includes('.'); }
   catch { return false; }
@@ -965,13 +973,17 @@ function isValidLessonLink(value) {
 const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
 
 app.get('/api/admin/students', requireAdmin, async (_req, res) => {
-  await refreshAccounts();
-  res.json(accounts.filter((account) => account.role === 'student').map(publicAccount));
+  try {
+    await refreshAccounts();
+    res.json((await getVisibleRosterAccounts()).filter((account) => account.role === 'student').map(publicAccount));
+  } catch (error) { res.status(503).json({ error: error.message || 'Не удалось загрузить список учеников.' }); }
 });
 
 app.get('/api/admin/accounts', requireAdmin, async (_req, res) => {
-  await refreshAccounts();
-  res.json(accounts.map(publicAccount));
+  try {
+    await refreshAccounts();
+    res.json((await getVisibleRosterAccounts()).map(publicAccount));
+  } catch (error) { res.status(503).json({ error: error.message || 'Не удалось загрузить аккаунты.' }); }
 });
 
 app.get('/api/admin/tests', requireAdmin, async (_req, res) => {
@@ -1942,10 +1954,13 @@ app.get('/api/auth/portal', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Войдите в личный кабинет.' });
   const current = user.account;
   const account = publicAccount(current);
+  let visibleRosterAccounts;
+  try { visibleRosterAccounts = await getVisibleRosterAccounts(); }
+  catch (error) { return res.status(503).json({ error: error.message || 'Не удалось загрузить список учеников.' }); }
   const relatedAccounts = current.role === 'parent'
-    ? accounts.filter((item) => current.children?.includes(item.id) && item.role === 'student')
+    ? visibleRosterAccounts.filter((item) => current.children?.includes(item.id) && item.role === 'student')
     : current.role === 'teacher'
-      ? accounts.filter((item) => item.role === 'student' && item.status !== 'withdrawn' && item.teacherId === current.id)
+      ? visibleRosterAccounts.filter((item) => item.role === 'student' && item.status !== 'withdrawn' && item.teacherId === current.id)
       : [];
   let scheduleData = { lessons: [], targets: {} };
   try {
