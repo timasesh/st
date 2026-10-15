@@ -1179,8 +1179,6 @@ function nextTrialSlotStart(day, hour, baseDate = new Date()) {
   const weekdays = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
   const today = weekdays[values.weekday];
   let delta = (day - today + 7) % 7;
-  const currentMinutes = Number(values.hour) * 60 + Number(values.minute);
-  if (delta === 0 && currentMinutes >= (hour + 1) * 60) delta = 7;
   const [year, month, date] = [Number(values.year), Number(values.month), Number(values.day)];
   const slotDate = new Date(Date.UTC(year, month - 1, date + delta));
   const target = { year: slotDate.getUTCFullYear(), month: slotDate.getUTCMonth() + 1, day: slotDate.getUTCDate(), hour };
@@ -1693,7 +1691,9 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     const trial = (await readTrialLessons()).find((item) => item.id === lessonId && item.id === subject.id && item.teacherId === user.account.id && ['scheduled', 'trial', undefined].includes(item.status));
     if (trial) {
       const start = new Date(getTrialScheduledAt(trial)).getTime();
-      lessonIsCurrent = Date.now() >= start && Date.now() < start + 60 * 60 * 1000;
+      // A trial lesson may be recorded after it ends; it belongs to its scheduled date,
+      // not to a recurring weekday slot.
+      lessonIsCurrent = Date.now() >= start;
     }
   } else {
     let schedule = await readJsonFileOr(schedulePath, { lessons: [], targets: {} });
@@ -1791,16 +1791,6 @@ app.post('/api/teacher/students/:studentId/tests', async (req, res) => {
     const deadlineAt = new Date(lessonStart.getTime() + 65 * 60000).toISOString();
     const saved = { id: crypto.randomUUID(), studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, lessonId, lessonHour, title: quiz.title, durationMinutes, questions: quiz.questions, status: 'assigned', createdAt: new Date().toISOString(), availableAt, deadlineAt };
     await writeStudentTests(subject.id, [saved, ...tests]);
-    const history = await readStudentLessonHistory(subject.id);
-    const lessonTime = Number.isInteger(lessonHour) && lessonHour >= 0 && lessonHour <= 23 ? `${String(lessonHour).padStart(2, '0')}:00` : '00:00';
-    const astanaParts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-    const astanaPart = (type) => astanaParts.find((item) => item.type === type)?.value || '';
-    const historyEntry = { id: crypto.randomUUID(), date: `${astanaPart('year')}-${astanaPart('month')}-${astanaPart('day')}`, time: lessonTime, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, homeworkGrade: '', topic: `Тест создан: ${quiz.title}`, nextHomework: '', testGrade: '', attendance: true, attendanceReason: '', createdAt: new Date().toISOString() };
-    await writeStudentLessonHistory(subject.id, [historyEntry, ...history]);
-    if (subject.trial) {
-      const teacher = getUserSession(req).account;
-      await saveTrialAttendance(subject.id, true, `${teacher.firstName} ${teacher.lastName}`);
-    }
     return res.status(201).json({ test: { ...saved, questions: saved.questions.map(({ correctIndex, ...question }) => question) } });
   } catch (error) { return res.status(400).json({ error: error.message || 'Не удалось сохранить тест.' }); }
 });
@@ -2002,7 +1992,7 @@ app.get('/api/auth/portal', async (req, res) => {
         ...lesson,
         trial: true,
         scheduledAt: getTrialScheduledAt(lesson),
-        attendanceOpen: Date.now() >= new Date(getTrialScheduledAt(lesson)).getTime() && Date.now() < new Date(getTrialScheduledAt(lesson)).getTime() + 60 * 60 * 1000,
+        attendanceOpen: Date.now() >= new Date(getTrialScheduledAt(lesson)).getTime(),
         title: `Пробный урок · ${lesson.firstName} ${lesson.lastName}`,
         student: { id: lesson.id, role: 'student', firstName: lesson.firstName, lastName: lesson.lastName, studentClass: lesson.studentClass },
       })));
