@@ -2020,8 +2020,15 @@ app.get('/api/auth/portal', async (req, res) => {
       const historyByLesson = await Promise.all(lessons.map(async (lesson) => {
         const subjectId = lesson.trial ? lesson.id : lesson.studentId;
         if (!subjectId) return null;
-        const history = await readStudentLessonHistory(subjectId);
-        return history.some((entry) => entry.date === today && entry.time === `${String(lesson.hour).padStart(2, '0')}:00`) ? lesson.id : null;
+        const [history, tests] = await Promise.all([readStudentLessonHistory(subjectId), readStudentTests(subjectId)]);
+        const hasLessonRecord = history.some((entry) => entry.date === today && entry.time === `${String(lesson.hour).padStart(2, '0')}:00`);
+        const hasSkippedTest = tests.some((test) => {
+          if (test.lessonId !== lesson.id || test.status !== 'skipped' || !test.createdAt) return false;
+          const skippedDate = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(test.createdAt));
+          const skippedPart = (type) => skippedDate.find((item) => item.type === type)?.value || '';
+          return `${skippedPart('year')}-${skippedPart('month')}-${skippedPart('day')}` === today;
+        });
+        return hasLessonRecord || hasSkippedTest ? lesson.id : null;
       }));
       recordedLessonIds = historyByLesson.filter(Boolean);
     }
