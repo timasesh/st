@@ -11,7 +11,7 @@ export default function ContactForm() {
 
           <div className="lg:col-span-5 space-y-8">
             <div className="space-y-4">
-              <span className="inline-block text-sm font-bold text-primary bg-white px-4 py-1.5 rounded-full border-2 border-border">
+              <span className="eyebrow">
                 Связаться с нами
               </span>
               <h2 className="font-display font-extrabold text-foreground text-3xl sm:text-4xl leading-tight">

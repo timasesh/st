@@ -1,232 +1,236 @@
-import React from 'react';
-import {
-  Star,
-  Trophy,
-  Target,
-  Rocket,
-  User,
-  Medal,
-  Shield,
-  Lock,
-  Sparkles,
-  MessageCircle,
-} from 'lucide-react';
-import { motion } from 'motion/react';
+import React, { useEffect, useRef, useState } from 'react';
+import { MessageCircle, Sparkles, ArrowRight, Star, Zap } from 'lucide-react';
+import { motion, useInView, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react';
 import { whatsappUrl } from '../constants';
+import LoopVideo from './LoopVideo';
 
 interface HeroProps {
   onBookTrial: () => void;
   stars: number;
 }
 
+const WORD = {
+  hidden: { opacity: 0, y: 28, rotateX: -40 },
+  show: { opacity: 1, y: 0, rotateX: 0 },
+};
+
+function CountUp({ to, suffix = '' }: { to: number; suffix?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true });
+  const reduce = useReducedMotion();
+  const [val, setVal] = useState(reduce ? to : 0);
+  useEffect(() => {
+    if (!inView || reduce) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - t0) / 1100);
+      setVal(Math.round(to * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, reduce, to]);
+  return <span ref={ref}>{val}{suffix}</span>;
+}
+
+function Headline() {
+  const reduce = useReducedMotion();
+  const words = [
+    { t: 'учёба,' },
+    { t: 'которая' },
+    { t: 'похожа', shine: true },
+    { t: 'на игру', shine: true },
+  ];
+  return (
+    <h1 className="font-display font-extrabold tracking-[-0.035em] leading-[1.04] text-[clamp(2.4rem,1.2rem+4.6vw,4.4rem)] [perspective:800px]">
+      <span className="mb-3 flex items-center justify-center lg:justify-start gap-2 text-base sm:text-lg font-bold tracking-normal text-sky-300">
+        <Sparkles className="w-4 h-4 text-amber-300" />
+        StudyTask:
+      </span>
+      <motion.span
+        className="block"
+        initial={reduce ? false : 'hidden'}
+        animate="show"
+        transition={{ staggerChildren: 0.09, delayChildren: 0.15 }}
+      >
+        {words.map((w, i) => (
+          <motion.span
+            key={i}
+            variants={WORD}
+            transition={{ type: 'spring', stiffness: 120, damping: 16 }}
+            className={`inline-block mr-[0.28em] last:mr-0 ${w.shine ? 'text-shine' : ''}`}
+          >
+            {w.t}
+          </motion.span>
+        ))}
+      </motion.span>
+    </h1>
+  );
+}
+
 export default function Hero({ onBookTrial, stars }: HeroProps) {
+  const reduce = useReducedMotion();
+  const sectionRef = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end start'] });
+  const yVideo = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : 70]);
+  const yChipA = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : -50]);
+  const yChipB = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : 40]);
+
+  // subtle pointer tilt of the video frame
+  const mx = useMotionValue(0);
+  const my = useMotionValue(0);
+  const rx = useSpring(useTransform(my, [-0.5, 0.5], [6, -6]), { stiffness: 120, damping: 18 });
+  const ry = useSpring(useTransform(mx, [-0.5, 0.5], [-8, 8]), { stiffness: 120, damping: 18 });
+  const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (reduce || e.pointerType !== 'mouse') return;
+    const r = e.currentTarget.getBoundingClientRect();
+    mx.set((e.clientX - r.left) / r.width - 0.5);
+    my.set((e.clientY - r.top) / r.height - 0.5);
+  };
+  const onLeave = () => { mx.set(0); my.set(0); };
+
   return (
     <section
       id="home"
-      className="relative min-h-screen pt-28 pb-20 flex items-center bg-primary-light overflow-hidden"
+      ref={sectionRef}
+      className="hero-dark relative min-h-screen pt-32 pb-24 lg:pb-28 flex items-center overflow-hidden rounded-b-[2.25rem] sm:rounded-b-[4rem]"
     >
-      <div
-        aria-hidden
-        className="absolute top-20 -left-16 w-48 h-48 rounded-[3rem] bg-blue-200/50 border-2 border-blue-200 animate-float-soft"
-      />
-      <div
-        aria-hidden
-        className="absolute top-40 right-8 w-32 h-32 rounded-full bg-blue-200/40 border-2 border-blue-200 animate-float-soft-reverse animation-delay-2000"
-      />
-      <div
-        aria-hidden
-        className="absolute bottom-24 left-1/4 w-24 h-24 rounded-2xl bg-amber-200/50 border-2 border-amber-200 rotate-12 animate-float-soft animation-delay-4000"
-      />
-
+      <div className="grain" aria-hidden />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-14 lg:gap-10 items-center">
 
-          <div className="lg:col-span-7 space-y-7 text-center lg:text-left">
+          <div className="lg:col-span-6 space-y-8 text-center lg:text-left">
             <motion.div
-              initial={{ opacity: 0, y: -12 }}
+              initial={reduce ? false : { opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-              className="inline-flex items-center gap-2 bg-white text-primary px-4 py-2 rounded-full text-sm font-bold w-fit border-2 border-border clay-card-sm"
+              transition={{ duration: 0.5 }}
+              className="eyebrow eyebrow-dark glass !px-4 !py-2"
             >
-              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 animate-ping" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              </span>
               Математика, 5–9 классы: набор открыт
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
+            <Headline />
+
+            <motion.p
+              initial={reduce ? false : { opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.08 }}
-              className="space-y-4"
+              transition={{ duration: 0.6, delay: 0.5 }}
+              className="text-blue-100/85 text-lg sm:text-xl leading-relaxed max-w-xl mx-auto lg:mx-0"
             >
-              <h1 className="font-display font-extrabold text-foreground text-4xl sm:text-5xl lg:text-[3.4rem] leading-[1.12] tracking-tight">
-                StudyTask: учёба, которая похожа на игру
-              </h1>
-
-              <p className="text-muted text-lg leading-relaxed max-w-lg mx-auto lg:mx-0">
-                Живые уроки математики для 5–9 классов онлайн. После каждого занятия квиз,
-                за него звёзды, а звёзды меняются на призы. Первый пробный урок бесплатно.
-              </p>
-            </motion.div>
+              Живые уроки математики для 5–9 классов онлайн. После каждого занятия квиз,
+              за него звёзды, а звёзды меняются на призы. Первый пробный урок бесплатно.
+            </motion.p>
 
             <motion.div
-              initial={{ opacity: 0, y: 16 }}
+              initial={reduce ? false : { opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.16 }}
-              className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3"
+              transition={{ duration: 0.6, delay: 0.62 }}
+              className="flex flex-col sm:flex-row sm:flex-wrap items-center justify-center lg:justify-start gap-3"
             >
               <button
                 type="button"
                 onClick={onBookTrial}
-                className="bg-primary hover:bg-primary-dark text-white px-8 py-4 rounded-[1.25rem] font-display font-bold text-lg clay-btn w-full sm:w-auto cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/30 min-h-12"
+                className="cta-primary group px-7 py-4 rounded-2xl font-display font-extrabold text-base sm:text-lg whitespace-nowrap w-full sm:w-auto cursor-pointer inline-flex items-center justify-center gap-2 min-h-14"
               >
                 Записаться на пробный
+                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
               </button>
 
               <a
                 href={whatsappUrl('Здравствуйте! Хочу записаться на пробный урок математики.')}
                 target="_blank"
                 rel="noreferrer"
-                className="bg-white text-foreground border-2 border-border px-8 py-4 rounded-[1.25rem] font-bold text-lg hover:bg-primary-light transition-colors w-full sm:w-auto cursor-pointer flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 min-h-12"
+                className="glass px-7 py-4 rounded-2xl font-bold text-base sm:text-lg whitespace-nowrap text-white hover:bg-white/15 transition-colors w-full sm:w-auto cursor-pointer flex items-center justify-center gap-2 min-h-14"
               >
-                <MessageCircle className="w-5 h-5 text-emerald-600" />
+                <MessageCircle className="w-5 h-5 text-emerald-400" />
                 Написать в WhatsApp
               </a>
             </motion.div>
 
             <motion.div
-              initial={{ opacity: 0 }}
+              initial={reduce ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.24 }}
-              className="space-y-3 pt-2"
+              transition={{ duration: 0.7, delay: 0.8 }}
+              className="space-y-4 pt-1"
             >
-              <p className="text-sm text-foreground font-medium max-w-lg mx-auto lg:mx-0">
+              <p className="text-sm text-blue-100/70 max-w-lg mx-auto lg:mx-0">
                 Занятия ведут опытные преподаватели, которые умеют объяснять просто и интересно.
               </p>
-              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4">
+              <dl className="grid grid-cols-3 sm:flex sm:flex-wrap items-stretch justify-center lg:justify-start gap-2 sm:gap-3">
                 {[
-                  { value: '5–9', label: 'классы, математика' },
-                  { value: '1 урок', label: 'пробный бесплатно' },
-                  { value: '60 мин', label: 'длительность урока' },
+                  { value: <>5–9</>, label: 'классы, математика' },
+                  { value: <>1 урок</>, label: 'пробный бесплатно' },
+                  { value: <CountUp to={60} suffix=" мин" />, label: 'длительность урока' },
                 ].map((stat) => (
-                  <div
-                    key={stat.label}
-                    className="clay-card-sm px-4 py-3 flex items-center gap-2"
-                  >
-                    <div>
-                      <span className="block font-display font-bold text-foreground text-lg leading-none">
-                        {stat.value}
-                      </span>
-                      <span className="text-xs text-muted">{stat.label}</span>
-                    </div>
+                  <div key={stat.label} className="glass rounded-2xl px-3 sm:px-5 py-3 text-left">
+                    <dt className="sr-only">{stat.label}</dt>
+                    <dd className="font-display font-extrabold text-xl sm:text-2xl leading-none tabular-nums">{stat.value}</dd>
+                    <div className="text-xs text-blue-200/75 mt-1.5" aria-hidden>{stat.label}</div>
                   </div>
                 ))}
-              </div>
+              </dl>
             </motion.div>
           </div>
 
-          <div className="lg:col-span-5 relative w-full flex justify-center items-center">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              className="w-full max-w-md clay-card p-6 space-y-5 relative"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <img src="/static/ST.webp" alt="Study Task" className="w-12 h-12 rounded-2xl object-contain bg-white p-1 shadow-md" />
-                  <div>
-                    <h3 className="font-display font-bold text-foreground text-sm">
-                      Иван Смирнов
-                    </h3>
-                    <span className="text-xs text-muted">5 класс · математика</span>
+          <div className="lg:col-span-6 relative flex justify-center">
+            <motion.div style={{ y: yVideo }} className="relative w-full max-w-[34rem]">
+              <motion.div
+                initial={reduce ? false : { opacity: 0, scale: 0.92, y: 30 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 80, damping: 16, delay: 0.25 }}
+                onPointerMove={onMove}
+                onPointerLeave={onLeave}
+                style={{ rotateX: rx, rotateY: ry, transformPerspective: 1000 }}
+                className="relative rounded-[2.25rem] p-2.5 sm:p-3 glass"
+              >
+                <div className="absolute -inset-6 -z-10 rounded-[3rem] bg-gradient-to-tr from-blue-500/30 via-sky-400/20 to-amber-300/20 blur-3xl" aria-hidden />
+                <LoopVideo
+                  name="hero-loop"
+                  alt="Как проходит обучение в StudyTask: урок, квиз, звёзды и приз"
+                  className="rounded-[1.7rem]"
+                />
+              </motion.div>
+
+              <motion.div style={{ y: yChipA }} className="absolute left-4 sm:left-8 -bottom-9 z-20">
+                <div className="animate-chip-float rounded-2xl px-4 py-3 flex items-center gap-3 bg-[#0f1b4d]/95 border border-white/15 shadow-[0_18px_40px_rgba(2,6,40,0.55)]">
+                  <span className="grid place-items-center w-10 h-10 rounded-xl bg-amber-400/20">
+                    <Star className="w-5 h-5 text-amber-300 fill-amber-300" />
+                  </span>
+                  <div className="leading-tight">
+                    <div className="font-display font-extrabold text-xl tabular-nums">{stars + 15}</div>
+                    <div className="text-[11px] text-blue-200/80">звёзд у Ивана</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 bg-amber-50 border-2 border-amber-200 rounded-full px-3 py-1">
-                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                  <span className="text-sm font-bold text-amber-700">{stars + 15}</span>
-                </div>
-              </div>
+              </motion.div>
 
-              <div className="space-y-2 bg-accent-light/60 p-4 rounded-2xl border-2 border-border/60">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-accent flex items-center gap-1">
-                    <Trophy className="w-3.5 h-3.5" /> Уровень 3
-                  </span>
-                  <span className="text-muted font-medium">75% до 4-го</span>
+              <motion.div style={{ y: yChipB }} className="absolute right-4 sm:right-8 -top-4 z-20">
+                <div className="animate-chip-float-2 rounded-2xl px-4 py-3 flex items-center gap-2.5 bg-emerald-500 text-white shadow-[0_18px_40px_rgba(16,185,129,0.35)]">
+                  <Zap className="w-4 h-4 fill-white" />
+                  <span className="text-sm font-extrabold">+50 XP за урок</span>
                 </div>
-                <div className="w-full bg-white h-3 rounded-full overflow-hidden border border-border">
-                  <div className="bg-gradient-to-r from-primary to-accent h-full rounded-full w-3/4 transition-all" />
-                </div>
-              </div>
-
-              <div className="space-y-2.5">
-                <h4 className="text-xs font-bold text-muted">Задания на сегодня</h4>
-
-                <div className="flex items-center justify-between p-3 bg-white border-2 border-border/50 rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-accent-light flex items-center justify-center text-accent font-bold text-sm">
-                      1
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-bold text-foreground">Дроби и деление</h5>
-                      <p className="text-[11px] text-muted">Математика · квиз пройден</p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-bold text-amber-600 flex items-center gap-0.5">
-                    +10 <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-white border-2 border-dashed border-emerald-200 rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 font-bold text-sm">
-                      2
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-bold text-foreground">Проценты</h5>
-                      <p className="text-[11px] text-emerald-600 font-medium">Сейчас в процессе</p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-bold text-amber-600 flex items-center gap-0.5">
-                    +15 <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-muted">Награды</h4>
-                <div className="flex gap-3 justify-center">
-                  {[
-                    { icon: Medal, label: 'Дроби', color: 'from-amber-300 to-orange-400' },
-                    { icon: Shield, label: 'Уравнения', color: 'from-blue-300 to-indigo-400' },
-                    { icon: Rocket, label: 'Геометрия', color: 'from-emerald-300 to-teal-400' },
-                    { icon: Lock, label: 'Скоро', color: '', locked: true },
-                  ].map((badge) => (
-                    <div key={badge.label} className="flex flex-col items-center gap-1">
-                      <div
-                        className={`w-11 h-11 rounded-full flex items-center justify-center ${
-                          badge.locked
-                            ? 'bg-accent-light border-2 border-dashed border-border text-muted'
-                            : `bg-gradient-to-br ${badge.color} text-white shadow-md`
-                        }`}
-                      >
-                        <badge.icon className="w-5 h-5" />
-                      </div>
-                      <span className={`text-[10px] font-bold ${badge.locked ? 'text-muted/60' : 'text-foreground'}`}>
-                        {badge.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="absolute -bottom-3 -right-2 bg-emerald-500 text-white rounded-2xl px-4 py-2 flex items-center gap-2 shadow-lg border-2 border-emerald-400">
-                <Target className="w-4 h-4" />
-                <span className="text-xs font-bold">+50 XP за урок</span>
-              </div>
+              </motion.div>
             </motion.div>
           </div>
+        </div>
+      </div>
 
+      <div className="marquee absolute bottom-6 inset-x-0 overflow-hidden opacity-80 [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]" aria-hidden>
+        <div className="marquee-track gap-10 text-blue-200/55 font-display font-extrabold text-sm sm:text-base uppercase tracking-[0.18em]">
+          {Array.from({ length: 2 }).map((_, k) => (
+            <div key={k} className="flex shrink-0 items-center gap-10 pr-10">
+              {['Урок', 'Квиз', 'Звёзды', 'Приз', 'Урок', 'Квиз', 'Звёзды', 'Приз'].map((w, i) => (
+                <span key={i} className="flex items-center gap-10">
+                  {w}
+                  <Star className="w-3.5 h-3.5 text-amber-300/70 fill-amber-300/70" />
+                </span>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </section>
