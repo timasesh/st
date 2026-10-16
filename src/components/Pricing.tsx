@@ -97,10 +97,10 @@ export default function Pricing() {
     <section id="pricing" className="py-24 bg-surface relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-2xl mx-auto mb-14 space-y-3">
-          <span className="inline-block text-sm font-bold text-primary bg-primary-light px-4 py-1.5 rounded-full border-2 border-border">
+          <span className="eyebrow">
             Тарифы
           </span>
-          <h2 className="font-display font-extrabold text-foreground text-4xl">
+          <h2 className="section-title">
             Цены и форматы
           </h2>
           <p className="text-muted">
