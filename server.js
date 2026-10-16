@@ -1102,7 +1102,10 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
       || typeof lesson.title !== 'string' || !lesson.title.trim() || lesson.title.trim().length > 100) {
       return res.status(400).json({ error: 'Проверьте преподавателя, день, час и название каждого урока.' });
     }
-    const student = accounts.find((account) => account.id === lesson.studentId && account.role === 'student' && account.status !== 'withdrawn');
+    // kind === 'block' — занятый администратором слот преподавателя без ученика (обед, ученик вне центра и т.п.).
+    const isBlock = lesson.kind === 'block';
+    if (isBlock && lesson.studentId) return res.status(400).json({ error: 'Занятый слот не может быть привязан к ученику.' });
+    const student = isBlock ? null : accounts.find((account) => account.id === lesson.studentId && account.role === 'student' && account.status !== 'withdrawn');
     const teacherId = student?.teacherId || lesson.teacherId;
     const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
     if (lesson.studentId && !student) return res.status(400).json({ error: 'В расписании выбран неизвестный ученик.' });
@@ -1114,7 +1117,7 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
     }
     if (occupied.has(normalizedSlotKey)) return res.status(409).json({ error: 'У преподавателя уже есть урок в этом часовом слоте.' });
     occupied.add(normalizedSlotKey);
-    cleaned.push({ id: lesson.id, ...(student ? { studentId: student.id } : {}), teacherId, day: lesson.day, hour: lesson.hour, title: lesson.title.trim() });
+    cleaned.push({ id: lesson.id, ...(student ? { studentId: student.id } : {}), ...(isBlock ? { kind: 'block' } : {}), teacherId, day: lesson.day, hour: lesson.hour, title: lesson.title.trim() });
   }
   const targets = {};
   for (const [studentId, count] of Object.entries(incomingTargets)) {
@@ -1977,7 +1980,7 @@ app.get('/api/auth/portal', async (req, res) => {
     const hasRegularSchedule = current.role === 'student' && (scheduleData.lessons || []).some((lesson) => lesson.studentId === current.id);
     const trialAccount = Boolean(convertedTrial && !hasRegularSchedule);
     account.trialAccount = trialAccount;
-    const lessons = (scheduleData.lessons || []).filter((lesson) => current.role === 'student'
+    const lessons = (scheduleData.lessons || []).filter((lesson) => lesson.kind !== 'block').filter((lesson) => current.role === 'student'
       ? !trialAccount && lesson.studentId === current.id
       : current.role === 'parent'
         ? relatedIds.has(lesson.studentId)
