@@ -30,8 +30,6 @@ function makeSprite(w, h, fn) {
 
 const bgImage = null; // neutral procedural city background
 
-const shieldImage = new Image();
-shieldImage.src = './shield.png';
 
 // ---- FX sprite sheets & nebula, rendered with OpenMontage / Remotion (projects/studytask-landing: SkyQuestFX) ----
 const fxImages = {};
@@ -609,9 +607,9 @@ function drawBlackHole(x, y, radius) {
 // ===== PIPES =====
 const pipeGlow = {};
 function drawPipe(pipe) {
-  drawBookStack(pipe.x, 0, pipe.w, pipe.topH, true);
+  drawBookStack(pipe.x, 0, pipe.w, pipe.topH, true, pipe.moving);
   const botY = pipe.topH + PIPE_GAP;
-  drawBookStack(pipe.x, botY, pipe.w, H - botY, false);
+  drawBookStack(pipe.x, botY, pipe.w, H - botY, false, pipe.moving);
 
   const gapMid = pipe.topH + PIPE_GAP/2;
   const glowKey = pipe.moving ? 'm' : 'n';
@@ -634,54 +632,144 @@ function drawPipe(pipe) {
 
 const stackCache = new Map();
 const STACK_OX = 12;
-function drawBookStack(x, y, w, h, isTop) {
+function drawBookStack(x, y, w, h, isTop, moving) {
   if (h <= 0) return;
-  if (!(Number.isInteger(h) && Number.isInteger(w))) return drawBookStackRaw(x, y, w, h, isTop);
-  const key = (isTop ? 't' : 'b') + w + 'x' + h;
+  const wr = Math.round(w), hr = Math.max(1, Math.round(h));
+  const key = (isTop ? 't' : 'b') + (moving ? 'm' : 'n') + wr + 'x' + hr;
   let sprite = stackCache.get(key);
   if (!sprite) {
-    if (stackCache.size > 60) stackCache.clear();
-    sprite = makeSprite(w + STACK_OX * 2, h + 4, () => drawBookStackRaw(STACK_OX, 0, w, h, isTop));
+    if (stackCache.size > 160) stackCache.clear();
+    sprite = makeSprite(wr + STACK_OX * 2, hr + 4, () => drawBookStackRaw(STACK_OX, 0, wr, hr, isTop, moving));
     stackCache.set(key, sprite);
   }
-  ctx.drawImage(sprite, x - STACK_OX, y, w + STACK_OX * 2, h + 4);
+  ctx.drawImage(sprite, x - STACK_OX, y, wr + STACK_OX * 2, hr + 4);
 }
-function drawBookStackRaw(x, y, w, h, isTop) {
-  const bookColors = ['#ef4444', '#2563eb', '#f59e0b', '#16a34a', '#9333ea', '#0891b2'];
-  const layers = Math.max(1, Math.ceil(h / 23));
-  const bookH = h / layers;
-
-  for (let i = 0; i < layers; i++) {
-    const row = isTop ? i : layers - i - 1;
-    const width = w + 8 + (i % 3) * 3;
-    const offset = ((i % 4) - 1.5) * 2;
-    const bx = x + (w - width) / 2 + offset;
-    const by = y + row * bookH;
-    const inset = Math.max(1, bookH * 0.08);
-    const visibleH = Math.max(2, bookH - inset * 2);
-    const color = bookColors[(i + Math.floor(h / 37)) % bookColors.length];
-
-    // Colored cover, offset spine, and page edge make each obstacle read as a book.
-    ctx.fillStyle = 'rgba(0,0,0,0.24)';
-    ctx.fillRect(bx + 2, by + inset + 2, width, visibleH);
-    ctx.fillStyle = color;
-    ctx.fillRect(bx, by + inset, width, visibleH);
-    ctx.fillStyle = 'rgba(255,255,255,0.76)';
-    ctx.fillRect(bx + width - 6, by + inset + 2, 4, Math.max(1, visibleH - 4));
-    ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    ctx.fillRect(bx + 5, by + inset + 2, 3, Math.max(1, visibleH - 4));
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillRect(bx + 13, by + inset + visibleH * 0.35, width * 0.42, 1.5);
-    if (visibleH > 15) {
-      ctx.fillRect(bx + 13, by + inset + visibleH * 0.58, width * 0.3, 1.2);
-    }
-    ctx.strokeStyle = 'rgba(15,23,42,0.45)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(bx + 0.5, by + inset + 0.5, width - 1, visibleH - 1);
+function rrPath(c, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  c.beginPath(); c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+// [светлый, тёмный] — современная, чуть приглушённая палитра обложек
+const BOOK_PALETTE = [
+  ['#7c83ff', '#3b3fb8'], ['#38bdf8', '#0b6aa8'], ['#fb7185', '#a3173f'],
+  ['#fbbf24', '#b45309'], ['#34d399', '#067a55'], ['#c084fc', '#6d28b0'],
+];
+function drawBook(bx, by, bw, bh, i) {
+  const c = ctx, pal = BOOK_PALETTE[i % BOOK_PALETTE.length];
+  // тень под книгой
+  rrPath(c, bx + 1.5, by + 2.5, bw, bh, 4); c.fillStyle = 'rgba(4,10,40,.30)'; c.fill();
+  // обложка
+  rrPath(c, bx, by, bw, bh, 4);
+  let g = c.createLinearGradient(0, by, 0, by + bh);
+  g.addColorStop(0, pal[0]); g.addColorStop(1, pal[1]);
+  c.fillStyle = g; c.fill();
+  c.save(); rrPath(c, bx, by, bw, bh, 4); c.clip();
+  // корешок слева
+  g = c.createLinearGradient(bx, 0, bx + 13, 0);
+  g.addColorStop(0, 'rgba(0,0,0,.28)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = g; c.fillRect(bx, by, 13, bh);
+  c.fillStyle = 'rgba(255,224,130,.95)';
+  c.fillRect(bx + 5, by, 1.6, bh); c.fillRect(bx + 9, by, 1, bh);
+  // блок страниц справа
+  const pw = 9;
+  g = c.createLinearGradient(0, by, 0, by + bh);
+  g.addColorStop(0, '#fffdf4'); g.addColorStop(1, '#d9d2bd');
+  c.fillStyle = g; c.fillRect(bx + bw - pw, by + 2.5, pw, bh - 5);
+  c.fillStyle = 'rgba(80,70,40,.22)';
+  for (let ly = by + 4.5; ly < by + bh - 3; ly += 2.6) c.fillRect(bx + bw - pw, ly, pw, 0.7);
+  // название
+  c.fillStyle = 'rgba(255,255,255,.82)';
+  rrPath(c, bx + 16, by + bh * 0.34, Math.max(10, bw * 0.34), 2.4, 1.2); c.fill();
+  if (bh > 22) { rrPath(c, bx + 16, by + bh * 0.58, Math.max(8, bw * 0.22), 2, 1); c.fillStyle = 'rgba(255,255,255,.55)'; c.fill(); }
+  // верхний блик и нижняя кромка
+  c.fillStyle = 'rgba(255,255,255,.38)'; c.fillRect(bx, by, bw, 1.8);
+  c.fillStyle = 'rgba(0,0,0,.22)'; c.fillRect(bx, by + bh - 1.6, bw, 1.6);
+  c.restore();
+  rrPath(c, bx + .5, by + .5, bw - 1, bh - 1, 4);
+  c.strokeStyle = 'rgba(10,16,48,.62)'; c.lineWidth = 1; c.stroke();
+}
+function drawBookStackRaw(x, y, w, h, isTop, moving) {
+  const c = ctx;
+  c.save();
+  c.beginPath(); c.rect(x - STACK_OX, y, w + STACK_OX * 2, h + 4); c.clip();
+  // Книги кладутся от края проёма наружу — раскладка не «прыгает», когда колонна движется.
+  let off = 0, i = 0;
+  while (off < h + 1) {
+    const bh = 24 + (i * 7) % 5;
+    const width = w + 6 + ((i * 5) % 4) * 3;
+    const shift = (((i * 3) % 5) - 2) * 1.6;
+    const bx = x + (w - width) / 2 + shift;
+    const by = isTop ? y + h - off - bh : y + off;
+    drawBook(bx, by, width, bh - 1, i);
+    off += bh; i++;
   }
+  // светящийся край проёма
+  const edgeY = isTop ? y + h : y;
+  const col = moving ? '255,176,40' : '70,225,255';
+  const g = c.createLinearGradient(0, isTop ? edgeY - 14 : edgeY + 14, 0, edgeY);
+  g.addColorStop(0, `rgba(${col},0)`); g.addColorStop(1, `rgba(${col},.42)`);
+  c.fillStyle = g; c.fillRect(x - 6, isTop ? edgeY - 14 : edgeY, w + 12, 14);
+  c.fillStyle = `rgba(${col},.95)`;
+  c.fillRect(x - 6, isTop ? edgeY - 2.4 : edgeY, w + 12, 2.4);
+  c.fillStyle = 'rgba(255,255,255,.85)';
+  c.fillRect(x - 6, isTop ? edgeY - 1.2 : edgeY + 0.6, w + 12, 0.9);
+  c.restore();
 }
 
 // ===== SHIELD =====
+let shieldSpriteCache = null;
+function shieldShapePath(c, cx, cy, k) {
+  c.beginPath();
+  c.moveTo(cx, cy - 25 * k);
+  c.bezierCurveTo(cx + 8 * k, cy - 19 * k, cx + 17 * k, cy - 17 * k, cx + 22 * k, cy - 17 * k);
+  c.bezierCurveTo(cx + 23 * k, cy + 2 * k, cx + 17 * k, cy + 16 * k, cx, cy + 26 * k);
+  c.bezierCurveTo(cx - 17 * k, cy + 16 * k, cx - 23 * k, cy + 2 * k, cx - 22 * k, cy - 17 * k);
+  c.bezierCurveTo(cx - 17 * k, cy - 17 * k, cx - 8 * k, cy - 19 * k, cx, cy - 25 * k);
+  c.closePath();
+}
+function getShieldSprite() {
+  if (shieldSpriteCache) return shieldSpriteCache;
+  return (shieldSpriteCache = makeSprite(56, 64, () => {
+    const c = ctx, cx = 28, cy = 32;
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    shieldShapePath(c, cx, cy + 1.5, 1); c.fillStyle = 'rgba(4,16,60,.35)'; c.fill();
+    // внешний обод
+    shieldShapePath(c, cx, cy, 1);
+    let g = c.createLinearGradient(cx - 22, cy - 25, cx + 22, cy + 26);
+    g.addColorStop(0, '#e6faff'); g.addColorStop(.45, '#7dd3fc'); g.addColorStop(1, '#2563eb');
+    c.fillStyle = g; c.fill(); c.lineWidth = 1.8; c.strokeStyle = '#0c2459'; c.stroke();
+    // внутренняя панель
+    shieldShapePath(c, cx, cy + 0.5, 0.8);
+    g = c.createLinearGradient(0, cy - 22, 0, cy + 24);
+    g.addColorStop(0, '#38bdf8'); g.addColorStop(.55, '#1d6fe8'); g.addColorStop(1, '#1e3fae');
+    c.fillStyle = g; c.fill(); c.lineWidth = 1; c.strokeStyle = 'rgba(12,36,89,.7)'; c.stroke();
+    // стеклянный блик
+    c.save(); shieldShapePath(c, cx, cy + 0.5, 0.8); c.clip();
+    c.beginPath(); c.moveTo(cx - 20, cy - 22); c.lineTo(cx + 2, cy - 22); c.quadraticCurveTo(cx - 8, cy - 2, cx - 20, cy + 8); c.closePath();
+    c.fillStyle = 'rgba(255,255,255,.30)'; c.fill();
+    c.restore();
+    // эмблема: галочка
+    c.beginPath(); c.moveTo(cx - 8.5, cy + 1.5); c.lineTo(cx - 2.5, cy + 8); c.lineTo(cx + 9, cy - 6.5);
+    c.strokeStyle = 'rgba(8,30,90,.45)'; c.lineWidth = 6.2; c.stroke();
+    c.strokeStyle = '#ffffff'; c.lineWidth = 4.4; c.stroke();
+  }));
+}
+// маленькие четырёхлучевые искорки вокруг объекта
+function drawTwinkles(x, y, r, phase, rgb) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let k = 0; k < 3; k++) {
+    const a = phase * 0.9 + k * (Math.PI * 2 / 3);
+    const tw = 0.5 + 0.5 * Math.sin(phase * 3 + k * 2);
+    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r * 0.85, sz = 2.2 + tw * 3;
+    ctx.fillStyle = `rgba(${rgb},${0.35 + tw * 0.55})`;
+    ctx.beginPath();
+    ctx.moveTo(px, py - sz); ctx.quadraticCurveTo(px, py, px + sz, py); ctx.quadraticCurveTo(px, py, px, py + sz);
+    ctx.quadraticCurveTo(px, py, px - sz, py); ctx.quadraticCurveTo(px, py, px, py - sz); ctx.fill();
+  }
+  ctx.restore();
+}
 function drawShield() {
   if (!shield) return;
 
@@ -701,8 +789,13 @@ function drawShield() {
   ctx.arc(shield.x, shield.y, 34, 0, Math.PI*2);
   ctx.fill();
 
-  const shieldSize = 38;
-  ctx.drawImage(shieldImage, shield.x - shieldSize / 2, shield.y - shieldSize / 2, shieldSize, shieldSize);
+  const bob = Math.sin(shield.phase * 1.3) * 2.2;
+  const sc = 1 + Math.sin(shield.phase * 2) * 0.04;
+  ctx.save();
+  ctx.translate(shield.x, shield.y + bob); ctx.scale(sc, sc);
+  ctx.drawImage(getShieldSprite(), -28, -32, 56, 64);
+  ctx.restore();
+  drawTwinkles(shield.x, shield.y + bob, 25, shield.phase, '170,235,255');
 
   if (gameState === 'playing' && !isPaused) {
     const dx = shield.x - (player.x + player.w/2);
@@ -742,6 +835,7 @@ function drawCoin() {
   ctx.beginPath(); ctx.arc(x, y, r * 2.2, 0, Math.PI*2); ctx.fill();
 
   drawStar(x, y, r);
+  drawTwinkles(x, y, r * 1.55, coinOnScreen.phase, '255,240,170');
 
   // Collision
   if (gameState === 'playing' && !isPaused) {
@@ -762,28 +856,48 @@ function drawCoin() {
   }
 }
 
+const starSprites = new Map();
 function drawStar(x, y, radius) {
-  const innerRadius = radius * 0.46;
-  const gradient = ctx.createLinearGradient(x, y - radius, x, y + radius);
-  gradient.addColorStop(0, '#fff7ad');
-  gradient.addColorStop(0.45, '#facc15');
-  gradient.addColorStop(1, '#f97316');
-
-  ctx.beginPath();
-  for (let point = 0; point < 10; point++) {
-    const angle = -Math.PI / 2 + point * Math.PI / 5;
-    const distance = point % 2 === 0 ? radius : innerRadius;
-    const px = x + Math.cos(angle) * distance;
-    const py = y + Math.sin(angle) * distance;
-    if (point === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
+  const r = Math.max(6, Math.round(radius));
+  let sprite = starSprites.get(r);
+  if (!sprite) {
+    const S = r * 2 + 12;
+    sprite = makeSprite(S, S, () => {
+      const c = ctx, cx = S / 2, cy = S / 2 + r * 0.04, R = r * 1.1, inner = R * 0.5;
+      const v = [];
+      for (let k = 0; k < 10; k++) {
+        const ang = -Math.PI / 2 + k * Math.PI / 5, d = k % 2 === 0 ? R : inner;
+        v.push([cx + Math.cos(ang) * d, cy + Math.sin(ang) * d]);
+      }
+      const roundedStar = () => {
+        c.beginPath();
+        const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const m0 = mid(v[9], v[0]); c.moveTo(m0[0], m0[1]);
+        for (let k = 0; k < 10; k++) { const m = mid(v[k], v[(k + 1) % 10]); c.quadraticCurveTo(v[k][0], v[k][1], m[0], m[1]); }
+        c.closePath();
+      };
+      roundedStar();
+      const g = c.createLinearGradient(cx, cy - R, cx, cy + R);
+      g.addColorStop(0, '#fff9c2'); g.addColorStop(.42, '#fcd34d'); g.addColorStop(1, '#f59e0b');
+      c.fillStyle = g; c.fill();
+      c.save(); roundedStar(); c.clip();
+      // грани: светлая и тёмная половины каждого луча
+      for (let k = 0; k < 5; k++) {
+        const o = v[k * 2], l = v[(k * 2 + 9) % 10], rr2 = v[(k * 2 + 1) % 10];
+        c.beginPath(); c.moveTo(cx, cy); c.lineTo(o[0], o[1]); c.lineTo(l[0], l[1]); c.closePath(); c.fillStyle = 'rgba(255,255,255,.26)'; c.fill();
+        c.beginPath(); c.moveTo(cx, cy); c.lineTo(o[0], o[1]); c.lineTo(rr2[0], rr2[1]); c.closePath(); c.fillStyle = 'rgba(217,119,6,.28)'; c.fill();
+      }
+      const core = c.createRadialGradient(cx - R * 0.15, cy - R * 0.2, 0, cx, cy, R * 0.6);
+      core.addColorStop(0, 'rgba(255,255,255,.75)'); core.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = core; c.fillRect(0, 0, S, S);
+      c.restore();
+      roundedStar(); c.lineJoin = 'round'; c.lineWidth = Math.max(1.2, r * 0.09); c.strokeStyle = 'rgba(146,64,14,.72)'; c.stroke();
+    });
+    if (starSprites.size > 40) starSprites.clear();
+    starSprites.set(r, sprite);
   }
-  ctx.closePath();
-  ctx.fillStyle = gradient;
-  ctx.fill();
-  ctx.strokeStyle = '#fff1a6';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  const S = r * 2 + 12, scale = radius / r;
+  ctx.drawImage(sprite, x - S * scale / 2, y - S * scale / 2, S * scale, S * scale);
 }
 
 // ===== PLAYER =====
@@ -804,18 +918,23 @@ function drawPlayer() {
   player.angle += (targetAngle - player.angle) * (player.vy < 0 ? 0.08 : 0.1);
   ctx.rotate(player.angle);
 
-  // Shield / break aura
+  // Щит / эффект поломки щита: энергетический пузырь
   if (playerHasShield || shieldGlow > 0) {
     if (shieldGlow > 0) shieldGlow--;
     const t = playerHasShield ? (0.5 + Math.sin(frame * 0.15) * 0.2) : (shieldGlow / 40) * 0.7;
-    const auraColor = shieldGlow > 0 ? `rgba(255,120,0,${t})` : `rgba(0,160,255,${t})`;
-    const auraGrd = ctx.createRadialGradient(0, 0, 8, 0, 0, 37);
-    auraGrd.addColorStop(0, shieldGlow > 0 ? `rgba(255,120,0,${t*0.5})` : `rgba(0,160,255,${t*0.5})`);
-    auraGrd.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = auraGrd;
-    ctx.beginPath(); ctx.arc(0, 0, 37, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, 0, 33, 0, Math.PI*2);
-    ctx.strokeStyle = auraColor; ctx.lineWidth = 2.5; ctx.stroke();
+    const col = shieldGlow > 0 ? '255,140,30' : '56,189,248';
+    ctx.save();
+    ctx.scale(1.3, 1);
+    const bub = ctx.createRadialGradient(0, 0, 12, 0, 0, 39);
+    bub.addColorStop(0, `rgba(${col},0)`); bub.addColorStop(.72, `rgba(${col},${(0.07 * t).toFixed(3)})`); bub.addColorStop(1, `rgba(${col},${(0.5 * t).toFixed(3)})`);
+    ctx.fillStyle = bub; ctx.beginPath(); ctx.arc(0, 0, 39, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 1.6; ctx.strokeStyle = `rgba(${col},${(0.9 * t + 0.1).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(0, 0, 38, 0, Math.PI * 2); ctx.stroke();
+    ctx.rotate(frame * 0.035); ctx.lineCap = 'round'; ctx.lineWidth = 2.6;
+    ctx.strokeStyle = `rgba(255,255,255,${(0.85 * t + 0.15).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(0, 0, 38, 0.15, 0.85); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, 38, Math.PI + 0.15, Math.PI + 0.6); ctx.stroke();
+    ctx.restore();
   }
 
   drawNeutralPlayer(42);
