@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -237,6 +235,7 @@
     radial-gradient(60rem 40rem at 82% 8%, rgba(37, 99, 235, 0.55), transparent 62%),
     radial-gradient(48rem 36rem at 5% 100%, rgba(56, 189, 248, 0.28), transparent 60%),
     radial-gradient(38rem 30rem at 55% 55%, rgba(99, 102, 241, 0.25), transparent 62%);
+  will-change: transform;
   animation: aurora-drift 22s ease-in-out infinite alternate;
 }
 .landing-site .hero-dark::after {
@@ -254,8 +253,7 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  opacity: 0.09;
-  mix-blend-mode: overlay;
+  opacity: 0.05;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
@@ -287,10 +285,11 @@
 .landing-site .cta-primary::after {
   content: '';
   position: absolute;
-  inset: -40% auto -40% -60%;
+  inset: -40% auto -40% 0;
   width: 40%;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
-  transform: skewX(-22deg);
+  transform: translate3d(-150%, 0, 0) skewX(-22deg);
+  will-change: transform;
   animation: cta-sweep 4.5s ease-in-out infinite;
 }
 .landing-site .cta-primary:hover {
@@ -320,6 +319,7 @@
 .landing-site .marquee-track {
   display: flex;
   width: max-content;
+  will-change: transform;
   animation: marquee 32s linear infinite;
 }
 .landing-site .marquee:hover .marquee-track { animation-play-state: paused; }
@@ -356,8 +356,8 @@
   100% { background-position: 220% 50%; }
 }
 @keyframes cta-sweep {
-  0%, 35% { left: -60%; }
-  80%, 100% { left: 130%; }
+  0%, 35% { transform: translate3d(-150%, 0, 0) skewX(-22deg); }
+  80%, 100% { transform: translate3d(420%, 0, 0) skewX(-22deg); }
 }
 @keyframes marquee {
   to { transform: translateX(-50%); }
@@ -575,4 +575,31 @@ body {
 .admin-dashboard.theme-dark .teacher-schedule-slot strong,
 .admin-dashboard.theme-dark .teacher-schedule-slot span {
   color: #000 !important;
+}
+
+
+/* ---------- performance & mobile layer ---------- */
+.landing-site .hero-glow {
+  background: radial-gradient(closest-side, rgba(56, 189, 248, 0.28), rgba(37, 99, 235, 0.14) 55%, transparent 100%);
+}
+/* pause decorative loops while the hero is off-screen */
+.landing-site .fx-paused .marquee-track,
+.landing-site .fx-paused.hero-dark::before,
+.landing-site .fx-paused .text-shine,
+.landing-site .fx-paused .cta-primary::after,
+.landing-site .fx-paused .animate-chip-float,
+.landing-site .fx-paused .animate-chip-float-2 { animation-play-state: paused; }
+
+/* phones & touch: cheaper rendering */
+@media (max-width: 767px), (pointer: coarse) {
+  .landing-site .hero-dark::before { animation: none; }
+  .landing-site .text-shine { animation: none; background-position: 40% 50%; }
+  .landing-site .glass {
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    background: rgba(24, 38, 100, 0.72);
+  }
+  .landing-site .grain { display: none; }
+  .landing-site .marquee { -webkit-mask-image: none; mask-image: none; }
+  .landing-site .bento-card { box-shadow: 0 10px 28px rgba(30, 64, 175, 0.08); }
+  .landing-site .bento-card:hover { transform: none; }
 }

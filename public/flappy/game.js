@@ -1,21 +1,267 @@
 const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const realCtx = canvas.getContext('2d');
+let ctx = realCtx; // swapped for a no-op / offscreen context when needed (see gameLoop, makeSprite)
+// Drawing context that ignores everything: used for catch-up ticks so logic runs but pixels are skipped.
+const NOOP = new Proxy(function () {}, { get: () => NOOP, apply: () => NOOP, set: () => true });
 const loginDemo = new URLSearchParams(window.location.search).get('loginDemo') === '1';
 const W = 400, H = 650;
 const pixelRatio = loginDemo ? 1 : Math.min(window.devicePixelRatio || 1, 3);
 canvas.width = Math.round(W * pixelRatio);
 canvas.height = Math.round(H * pixelRatio);
-ctx.scale(pixelRatio, pixelRatio);
-ctx.imageSmoothingEnabled = true;
-ctx.imageSmoothingQuality = 'high';
+realCtx.scale(pixelRatio, pixelRatio);
+realCtx.imageSmoothingEnabled = true;
+realCtx.imageSmoothingQuality = 'high';
+
+// Simulation clock: 1 tick = 1/60 s. Replaces simNow() so timing follows game time, not wall time.
+const STEP_MS = 1000 / 60;
+let simTicks = 0;
+const simNow = () => simTicks * STEP_MS;
+
+// Pre-render helper: draws fn(0,0) into an offscreen canvas of w*h CSS px (origin at its centre).
+function makeSprite(w, h, fn) {
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(w * pixelRatio); c.height = Math.ceil(h * pixelRatio);
+  const o = c.getContext('2d');
+  o.scale(pixelRatio, pixelRatio);
+  const prev = ctx; ctx = o;
+  try { fn(o); } finally { ctx = prev; }
+  return c;
+}
 
 const bgImage = null; // neutral procedural city background
 
 const shieldImage = new Image();
 shieldImage.src = './shield.png';
 
-const rocketImage = new Image();
-rocketImage.src = './ракета.png';
+// ---- FX sprite sheets & nebula, rendered with OpenMontage / Remotion (projects/studytask-landing: SkyQuestFX) ----
+const fxImages = {};
+['burst:fx-burst.png', 'boom:fx-boom.png', 'neb0:nebula0.webp', 'neb1:nebula1.webp'].forEach((pair) => {
+  const [name, file] = pair.split(':');
+  const img = new Image(); img.src = './' + file; fxImages[name] = img;
+});
+const FX_DEF = { burst: { frames: 12, cell: 128 }, boom: { frames: 14, cell: 160 } };
+let fxList = [];
+function spawnFx(kind, x, y, size) {
+  if (fxList.length < 8) fxList.push({ kind, x, y, size, t: 0 });
+}
+function drawFx() {
+  if (!fxList.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = fxList.length - 1; i >= 0; i--) {
+    const f = fxList[i], d = FX_DEF[f.kind], img = fxImages[f.kind];
+    f.t += 0.55;
+    const fi = Math.floor(f.t);
+    if (fi >= d.frames) { fxList.splice(i, 1); continue; }
+    if (img.complete && img.naturalWidth) {
+      ctx.drawImage(img, fi * d.cell, 0, d.cell, d.cell, f.x - f.size / 2, f.y - f.size / 2, f.size, f.size);
+    }
+  }
+  ctx.restore();
+}
+
+// Rocket exhaust: искры + дымок из сопла (учитывает наклон ракеты)
+let trail = [];
+function drawTrail() {
+  if (gameState === 'playing' && !isPaused && player.alive && frame % 2 === 0 && trail.length < 70) {
+    const cx = player.x + player.w / 2, cy = player.y + player.h / 2;
+    const reach = 31 + (flightHeld ? 12 : 6);
+    const tx = cx - Math.cos(player.angle) * reach, ty = cy - Math.sin(player.angle) * reach;
+    trail.push({ kind: 'spark', x: tx, y: ty + (Math.random() - 0.5) * 5, r: 2 + Math.random() * 2.6, life: 18, max: 18, vy: (Math.random() - 0.5) * 0.7 });
+    if (frame % 4 === 0) trail.push({ kind: 'smoke', x: tx - 6, y: ty + (Math.random() - 0.5) * 4, r: 3 + Math.random() * 2, life: 34, max: 34, vy: -0.12 - Math.random() * 0.18 });
+  }
+  if (!trail.length) return;
+  ctx.save();
+  for (let i = trail.length - 1; i >= 0; i--) {
+    const p = trail[i];
+    if (!isPaused) { p.x -= PIPE_SPEED * (p.kind === 'smoke' ? 1.05 : 0.9); p.y += p.vy; p.life--; }
+    if (p.life <= 0) { trail.splice(i, 1); continue; }
+    const k = p.life / p.max;
+    if (p.kind === 'smoke') {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(190,208,255,${0.20 * k})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (2.4 - k * 1.4), 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(255,${Math.round(110 + 110 * k)},${Math.round(40 + 90 * k)},${0.85 * k})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (0.4 + k * 0.6), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// Nebula parallax + shooting stars (space stages)
+let nebX = 0, nebX2 = 0, shoot = null, nextShoot = 120;
+function drawNebula(stage, moving) {
+  const a = fxImages[stage % 2 ? 'neb0' : 'neb1'], b = fxImages[stage % 2 ? 'neb1' : 'neb0'];
+  if (moving) { nebX = (nebX - 0.18) % 800; nebX2 = (nebX2 - 0.07) % 800; }
+  if (b.complete && b.naturalWidth) {
+    ctx.globalAlpha = 0.32;
+    ctx.drawImage(b, nebX2 + 800, -70, 800, 650); ctx.drawImage(b, nebX2, -70, 800, 650); ctx.drawImage(b, nebX2 - 800, -70, 800, 650);
+  }
+  if (a.complete && a.naturalWidth) {
+    ctx.globalAlpha = 0.6;
+    ctx.drawImage(a, nebX, 30, 800, 650); ctx.drawImage(a, nebX + 800, 30, 800, 650);
+  }
+  ctx.globalAlpha = 1;
+}
+function drawShootingStar(moving) {
+  if (!shoot) {
+    if (moving && --nextShoot <= 0) {
+      shoot = { x: W * (0.45 + Math.random() * 0.55), y: Math.random() * H * 0.35, vx: -9, vy: 4.6, life: 28 };
+      nextShoot = 220 + Math.random() * 360;
+    }
+    return;
+  }
+  shoot.x += shoot.vx; shoot.y += shoot.vy; shoot.life--;
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (let k = 0; k < 6; k++) {
+    ctx.strokeStyle = `rgba(255,255,255,${(1 - k / 6) * Math.min(1, shoot.life / 10)})`;
+    ctx.lineWidth = 2.4 - k * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(shoot.x - shoot.vx * k * 1.2, shoot.y - shoot.vy * k * 1.2);
+    ctx.lineTo(shoot.x - shoot.vx * (k + 1) * 1.2, shoot.y - shoot.vy * (k + 1) * 1.2);
+    ctx.stroke();
+  }
+  ctx.restore();
+  if (shoot.life <= 0) shoot = null;
+}
+
+// ===== ST ROCKET: векторная модель (рисуется кодом, без PNG) =====
+// Логотип ST — фирменный st-logo.webp, накладывается на корпус режимом multiply.
+const RK_W = 120, RK_H = 64;          // размеры модели в условных единицах
+const RK_ASPECT = RK_H / RK_W;
+const stLogo = new Image();
+let rocketSprite = null;
+function buildRocketSprite() {
+  const k = Math.min(4, Math.max(2, pixelRatio * 2)) * 1.6; // запас резкости при масштабировании
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(RK_W * k); c.height = Math.ceil(RK_H * k);
+  const o = c.getContext('2d');
+  o.scale(k, k);
+  o.lineJoin = 'round'; o.lineCap = 'round';
+  const NAVY = '#0c2459';
+  const hullPath = () => {
+    o.beginPath();
+    o.moveTo(24, 19);
+    o.bezierCurveTo(42, 12.5, 76, 11.5, 93, 16.5);
+    o.bezierCurveTo(105, 20.5, 113, 27, 117, 32);
+    o.bezierCurveTo(113, 37, 105, 43.5, 93, 47.5);
+    o.bezierCurveTo(76, 52.5, 42, 51.5, 24, 45);
+    o.closePath();
+  };
+  const fin = (flip) => {
+    o.save();
+    if (flip) { o.translate(0, RK_H); o.scale(1, -1); }
+    o.beginPath();
+    o.moveTo(58, 16); o.quadraticCurveTo(46, 4, 31, 1); o.lineTo(19, 1.5);
+    o.quadraticCurveTo(27, 9, 28, 21); o.closePath();
+    const g = o.createLinearGradient(20, 1, 58, 18);
+    g.addColorStop(0, '#1e5be0'); g.addColorStop(1, '#5aa6ff');
+    o.fillStyle = g; o.fill();
+    o.lineWidth = 2.2; o.strokeStyle = NAVY; o.stroke();
+    o.beginPath(); o.moveTo(30, 5); o.quadraticCurveTo(40, 8, 50, 14);
+    o.strokeStyle = 'rgba(255,255,255,.55)'; o.lineWidth = 1.6; o.stroke();
+    o.restore();
+  };
+  // плавники (сзади корпуса)
+  fin(false); fin(true);
+  // сопло
+  o.beginPath(); o.moveTo(24, 23); o.lineTo(9, 19.5); o.quadraticCurveTo(6.5, 32, 9, 44.5); o.lineTo(24, 41); o.closePath();
+  let g = o.createLinearGradient(0, 19, 0, 45);
+  g.addColorStop(0, '#6b7a99'); g.addColorStop(.5, '#2c3a5c'); g.addColorStop(1, '#151f3a');
+  o.fillStyle = g; o.fill(); o.lineWidth = 2.2; o.strokeStyle = NAVY; o.stroke();
+  o.beginPath(); o.moveTo(14, 21.5); o.quadraticCurveTo(11.5, 32, 14, 42.5);
+  o.strokeStyle = 'rgba(255,255,255,.28)'; o.lineWidth = 1.4; o.stroke();
+  // корпус
+  hullPath();
+  g = o.createLinearGradient(0, 12, 0, 52);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(.38, '#f1f6ff'); g.addColorStop(.74, '#c9d9f6'); g.addColorStop(1, '#93aadd');
+  o.fillStyle = g; o.fill();
+  o.save(); hullPath(); o.clip();
+  // носовой конус
+  o.beginPath(); o.moveTo(85, 8); o.quadraticCurveTo(92, 32, 85, 56); o.lineTo(124, 56); o.lineTo(124, 8); o.closePath();
+  g = o.createLinearGradient(85, 0, 120, 0);
+  g.addColorStop(0, '#4a9bff'); g.addColorStop(.55, '#2169ea'); g.addColorStop(1, '#1346b8');
+  o.fillStyle = g; o.fill();
+  o.lineWidth = 1.6; o.strokeStyle = 'rgba(12,36,89,.55)'; o.stroke();
+  // хвостовое кольцо
+  o.fillStyle = '#2169ea'; o.fillRect(24, 10, 11, 44);
+  o.fillStyle = 'rgba(255,255,255,.35)'; o.fillRect(33.2, 10, 1.4, 44);
+  // объём: нижняя тень и блик
+  g = o.createLinearGradient(0, 30, 0, 53);
+  g.addColorStop(0, 'rgba(10,30,90,0)'); g.addColorStop(1, 'rgba(10,30,90,.30)');
+  o.fillStyle = g; o.fillRect(20, 30, 100, 24);
+  o.beginPath(); o.moveTo(42, 17.5); o.quadraticCurveTo(64, 14.6, 84, 17);
+  o.strokeStyle = 'rgba(255,255,255,.85)'; o.lineWidth = 2.6; o.stroke();
+  o.beginPath(); o.moveTo(98, 21); o.quadraticCurveTo(106, 24, 110, 28);
+  o.strokeStyle = 'rgba(255,255,255,.55)'; o.lineWidth = 2; o.stroke();
+  o.restore();
+  hullPath(); o.lineWidth = 2.4; o.strokeStyle = NAVY; o.stroke();
+  // иллюминатор-медальон под логотип
+  const cx = 60, cy = 32, R = 20.5;
+  o.beginPath(); o.arc(cx, cy, R + 2.2, 0, Math.PI * 2);
+  g = o.createLinearGradient(0, cy - R, 0, cy + R);
+  g.addColorStop(0, '#6db0ff'); g.addColorStop(1, '#1346b8');
+  o.fillStyle = g; o.fill(); o.lineWidth = 1.8; o.strokeStyle = NAVY; o.stroke();
+  o.beginPath(); o.arc(cx, cy, R, 0, Math.PI * 2);
+  g = o.createRadialGradient(cx - 6, cy - 8, 2, cx, cy, R);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#e3ecfb');
+  o.fillStyle = g; o.fill(); o.lineWidth = 1.2; o.strokeStyle = 'rgba(12,36,89,.6)'; o.stroke();
+  // заклёпки
+  o.fillStyle = '#7e93c4';
+  for (let a = 0; a < 8; a++) { const t = a * Math.PI / 4 + Math.PI / 8; o.beginPath(); o.arc(cx + Math.cos(t) * (R + 2.2 - 0.2), cy + Math.sin(t) * (R + 2.2 - 0.2), 0.9, 0, Math.PI * 2); o.fill(); }
+  // логотип ST (фирменный)
+  o.save();
+  o.beginPath(); o.arc(cx, cy, R - 0.6, 0, Math.PI * 2); o.clip();
+  if (stLogo.complete && stLogo.naturalWidth > 0) {
+    o.globalCompositeOperation = 'multiply';
+    const ls = 36; o.drawImage(stLogo, cx - ls / 2, cy - ls / 2 + 0.5, ls, ls);
+  } else {
+    o.fillStyle = '#4a90e2'; o.font = '900 20px Nunito, Arial Black, sans-serif'; o.textAlign = 'center'; o.textBaseline = 'middle';
+    o.fillText('ST', cx, cy + 1);
+  }
+  o.restore();
+  // блик на стекле медальона
+  o.beginPath(); o.ellipse(cx - 6, cy - 10, 8, 3, -0.5, 0, Math.PI * 2);
+  o.fillStyle = 'rgba(255,255,255,.55)'; o.fill();
+  rocketSprite = c;
+  const prev = document.querySelector('.character-preview');
+  if (prev) { prev.innerHTML = ''; const im = new Image(); im.alt = 'Ракета ST'; im.src = c.toDataURL('image/png'); prev.appendChild(im); }
+}
+stLogo.onload = buildRocketSprite;
+stLogo.src = './st-logo.webp';
+buildRocketSprite();
+
+// Пламя двигателя: анимируется каждый кадр, при удержании тяги — длиннее и ярче.
+let flameBoost = 0;
+function drawRocketFlame(scale) {
+  const target = (typeof flightHeld !== 'undefined' && flightHeld && gameState === 'playing') ? 1 : 0;
+  flameBoost += (target - flameBoost) * 0.18;
+  const t = (typeof frame === 'number' ? frame : 0);
+  const flick = 1 + 0.12 * Math.sin(t * 0.95) + 0.08 * Math.sin(t * 1.9 + 1.3);
+  const L = (30 + 20 * flameBoost) * flick;            // длина факела
+  const half = 9.5 + 1.8 * flameBoost;                   // ширина у сопла
+  ctx.save();
+  ctx.scale(scale, scale);
+  ctx.translate(-RK_W / 2, -RK_H / 2);                   // начало координат модели — левый верх
+  const glow = ctx.createRadialGradient(9, 32, 1, 9, 32, 24 + 8 * flameBoost);
+  glow.addColorStop(0, `rgba(255,150,40,${0.34 + 0.14 * flameBoost})`); glow.addColorStop(1, 'rgba(255,90,20,0)');
+  ctx.fillStyle = glow; ctx.fillRect(-30, 0, 70, RK_H);
+  const layer = (len, w, color, wob) => {
+    ctx.beginPath();
+    ctx.moveTo(10, 32 - w);
+    ctx.bezierCurveTo(10 - len * 0.35, 32 - w * 1.05, 10 - len * 0.8, 32 - w * 0.35 + wob, 10 - len, 32 + wob * 0.5);
+    ctx.bezierCurveTo(10 - len * 0.8, 32 + w * 0.35 + wob, 10 - len * 0.35, 32 + w * 1.05, 10, 32 + w);
+    ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+  };
+  const wob = Math.sin(t * 0.7) * 1.6;
+  layer(L, half, '#ff5a1a', wob);
+  layer(L * 0.74, half * 0.72, '#ffa826', -wob * 0.8);
+  layer(L * 0.46, half * 0.42, '#fff3c4', wob * 0.5);
+  ctx.restore();
+}
 
 const GRAVITY = 0.45;
 const LIFT = 0.9;
@@ -152,6 +398,22 @@ function togglePause() {
 }
 
 // ===== BACKGROUND =====
+const bgLayers = {};
+function bgLayer(kind) {
+  if (bgLayers[kind]) return bgLayers[kind];
+  return (bgLayers[kind] = makeSprite(W, H, () => {
+    ctx.translate(0, 0);
+    if (kind === 'vignette') {
+      const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.32, W / 2, H / 2, H * 0.78);
+      v.addColorStop(0, 'rgba(0,0,24,0)'); v.addColorStop(1, 'rgba(0,0,24,0.38)');
+      ctx.fillStyle = v; ctx.fillRect(0, 0, W, H); return;
+    }
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    if (kind === 'sky') { g.addColorStop(0, '#51b8f5'); g.addColorStop(0.65, '#9addff'); g.addColorStop(1, '#d7f3ff'); }
+    else { g.addColorStop(0, '#050817'); g.addColorStop(0.55, '#111936'); g.addColorStop(1, '#080d20'); }
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }));
+}
 function drawBackground() {
   const moving = (gameState === 'playing' || gameState === 'dead') && !isPaused;
   const spaceStage = getSpaceStage(score);
@@ -163,25 +425,17 @@ function drawBackground() {
   if (moving && stageTransitionFrame < STAGE_TRANSITION_DURATION) stageTransitionFrame++;
 
   if (spaceStage === 0) {
-    const sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#51b8f5');
-    sky.addColorStop(0.65, '#9addff');
-    sky.addColorStop(1, '#d7f3ff');
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(bgLayer('sky'), 0, 0, W, H);
     drawCloudscape(moving);
     drawStageTransition();
     return;
   }
 
-  const space = ctx.createLinearGradient(0, 0, 0, H);
-  space.addColorStop(0, '#050817');
-  space.addColorStop(0.55, '#111936');
-  space.addColorStop(1, '#080d20');
-  ctx.fillStyle = space;
-  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(bgLayer('space'), 0, 0, W, H);
 
+  drawNebula(spaceStage, moving);
   drawStarfield(moving);
+  drawShootingStar(moving);
   if (spaceStage < 7) drawSpaceLandmark(spaceStage, moving);
   drawStageTransition();
 }
@@ -240,14 +494,21 @@ function drawSpaceLandmark(stage, moving) {
   if (moving && landmarkX > -radius) landmarkX -= 0.7;
   const y = H * 0.38;
   const cx = landmarkX;
-
-  if (stage === 1) drawMoon(cx, y, radius);
-  else if (stage === 2) drawPlanet(cx, y, radius, '#d89b58', '#fff0bd', 'rgba(248,220,151,0.38)');
-  else if (stage === 3) drawPlanet(cx, y, radius, '#b74732', '#f28c63', 'rgba(255,196,145,0.42)');
-  else if (stage === 4) drawJupiter(cx, y, radius);
-  else if (stage === 5) drawSun(cx, y, radius);
-  else drawBlackHole(cx, y, radius);
+  const pad = radius * 2.5;
+  let sprite = landmarkSprites[stage];
+  if (!sprite) {
+    sprite = landmarkSprites[stage] = makeSprite(pad * 2, pad * 2, () => {
+      if (stage === 1) drawMoon(pad, pad, radius);
+      else if (stage === 2) drawPlanet(pad, pad, radius, '#d89b58', '#fff0bd', 'rgba(248,220,151,0.38)');
+      else if (stage === 3) drawPlanet(pad, pad, radius, '#b74732', '#f28c63', 'rgba(255,196,145,0.42)');
+      else if (stage === 4) drawJupiter(pad, pad, radius);
+      else if (stage === 5) drawSun(pad, pad, radius);
+      else drawBlackHole(pad, pad, radius);
+    });
+  }
+  ctx.drawImage(sprite, cx - pad, y - pad, pad * 2, pad * 2);
 }
+const landmarkSprites = {};
 
 function getLandmarkRadius(stage) {
   if (stage === 5) return 112;
@@ -346,23 +607,46 @@ function drawBlackHole(x, y, radius) {
 }
 
 // ===== PIPES =====
+const pipeGlow = {};
 function drawPipe(pipe) {
   drawBookStack(pipe.x, 0, pipe.w, pipe.topH, true);
   const botY = pipe.topH + PIPE_GAP;
   drawBookStack(pipe.x, botY, pipe.w, H - botY, false);
 
   const gapMid = pipe.topH + PIPE_GAP/2;
-  const grd = ctx.createRadialGradient(pipe.x + pipe.w/2, gapMid, 0, pipe.x + pipe.w/2, gapMid, 80);
-  grd.addColorStop(0, pipe.moving ? 'rgba(255,180,0,0.07)' : 'rgba(0,200,100,0.08)');
-  grd.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grd;
-  ctx.fillRect(pipe.x - 20, pipe.topH, pipe.w + 40, PIPE_GAP);
+  const glowKey = pipe.moving ? 'm' : 'n';
+  let glow = pipeGlow[glowKey];
+  if (!glow) {
+    glow = pipeGlow[glowKey] = makeSprite(160, 160, () => {
+      const grd = ctx.createRadialGradient(80, 80, 0, 80, 80, 80);
+      grd.addColorStop(0, pipe.moving ? 'rgba(255,180,0,0.07)' : 'rgba(0,200,100,0.08)');
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grd; ctx.fillRect(0, 0, 160, 160);
+    });
+  }
+  ctx.save();
+  ctx.beginPath(); ctx.rect(pipe.x - 20, pipe.topH, pipe.w + 40, PIPE_GAP); ctx.clip();
+  ctx.drawImage(glow, pipe.x + pipe.w / 2 - 80, gapMid - 80, 160, 160);
+  ctx.restore();
 
 
 }
 
+const stackCache = new Map();
+const STACK_OX = 12;
 function drawBookStack(x, y, w, h, isTop) {
   if (h <= 0) return;
+  if (!(Number.isInteger(h) && Number.isInteger(w))) return drawBookStackRaw(x, y, w, h, isTop);
+  const key = (isTop ? 't' : 'b') + w + 'x' + h;
+  let sprite = stackCache.get(key);
+  if (!sprite) {
+    if (stackCache.size > 60) stackCache.clear();
+    sprite = makeSprite(w + STACK_OX * 2, h + 4, () => drawBookStackRaw(STACK_OX, 0, w, h, isTop));
+    stackCache.set(key, sprite);
+  }
+  ctx.drawImage(sprite, x - STACK_OX, y, w + STACK_OX * 2, h + 4);
+}
+function drawBookStackRaw(x, y, w, h, isTop) {
   const bookColors = ['#ef4444', '#2563eb', '#f59e0b', '#16a34a', '#9333ea', '#0891b2'];
   const layers = Math.max(1, Math.ceil(h / 23));
   const bookH = h / layers;
@@ -425,6 +709,7 @@ function drawShield() {
     const dy = shield.y - (player.y + player.h/2);
     if (Math.sqrt(dx*dx + dy*dy) < 22) {
       playerHasShield = true;
+      spawnFx('burst', player.x + player.w / 2, player.y + player.h / 2, 120);
       shield = null;
       floatingTexts.push({
         x: player.x + 20, y: player.y - 15,
@@ -464,6 +749,7 @@ function drawCoin() {
     const dy = y - (player.y + player.h/2);
     if (Math.sqrt(dx*dx + dy*dy) < r + player.w/2) {
       coinOnScreen = null;
+      spawnFx('burst', player.x + player.w / 2, player.y + player.h / 2, 110);
       totalCoins++;
       sessionCoins++;
       updateSkyQuestBalance(1);
@@ -502,11 +788,10 @@ function drawStar(x, y, radius) {
 
 // ===== PLAYER =====
 function drawNeutralPlayer(size) {
-  if (rocketImage.complete && rocketImage.naturalWidth > 0) {
-    const width = size * 1.45;
-    const height = width * rocketImage.naturalHeight / rocketImage.naturalWidth;
-    ctx.drawImage(rocketImage, -width / 2, -height / 2, width, height);
-  }
+  const width = size * 1.7;
+  const height = width * RK_ASPECT;
+  drawRocketFlame(width / RK_W);
+  if (rocketSprite) ctx.drawImage(rocketSprite, -width / 2, -height / 2, width, height);
 }
 
 function drawPlayer() {
@@ -743,16 +1028,22 @@ function addScorePopup(x, y) {
   });
 }
 
+// Touch the DOM only when something actually changed.
+const hudEls = {};
+function hudSet(id, text, textOnly) {
+  const el = hudEls[id] || (hudEls[id] = document.getElementById(id));
+  if (!textOnly && el.style.display !== 'block') el.style.display = 'block';
+  if (text !== undefined) { const t = String(text); if (el.textContent !== t) el.textContent = t; }
+}
+
 // Функция `drawHUD` реализует локальную часть бизнес-логики модуля.
 function drawHUD() {
   if (gameState !== 'playing') return;
 
-  document.getElementById('score').style.display = 'block';
-  document.getElementById('score').textContent = score;
-  document.getElementById('queueStatus').style.display = 'block';
-  document.getElementById('queueStatus').textContent = `Пройдено: ${score}`;
-  document.getElementById('coinDisplay').style.display = 'block';
-  document.getElementById('coinCount').textContent = totalCoins;
+  hudSet('score', score);
+  hudSet('queueStatus', `Пройдено: ${score}`);
+  hudSet('coinDisplay');
+  hudSet('coinCount', totalCoins, true);
 
   if (playerHasShield) {
     ctx.fillStyle = 'rgba(0,200,255,0.7)';
@@ -820,7 +1111,7 @@ function spawnPipe() {
 
 // Функция `updatePipes` реализует локальную часть бизнес-логики модуля.
 function updatePipes() {
-  const now = Date.now();
+  const now = simNow();
   if (now - lastPipe > PIPE_INTERVAL) {
     spawnPipe();
     lastPipe = now;
@@ -840,6 +1131,10 @@ function updatePipes() {
     if (!p.passed && p.x + p.w < player.x) {
       p.passed = true;
       score++;
+      if (!loginDemo && player.alive && p.minClear !== undefined && p.minClear < 7) {
+        spawnFx('burst', player.x + player.w / 2 + 8, player.y + player.h / 2, 84);
+        floatingTexts.push({ x: player.x + 40, y: player.y - 26, text: 'Впритык!', color: '#7dd3fc', size: 13, life: 42, maxLife: 42 });
+      }
       if (loginDemo && score % 5 === 0) {
         demoStars++;
         document.getElementById('coinCount').textContent = String(demoStars);
@@ -882,11 +1177,16 @@ function updatePipes() {
 
     const px = player.x + 4, py = player.y + 4;
     const pw = player.w - 8, ph = player.h - 8;
+    if (!loginDemo && player.alive && px < p.x + p.w && px + pw > p.x) {
+      const clear = Math.min(py - p.topH, p.topH + PIPE_GAP - (py + ph));
+      if (clear >= 0 && (p.minClear === undefined || clear < p.minClear)) p.minClear = clear;
+    }
     if (!loginDemo && px < p.x + p.w && px + pw > p.x) {
       if (py < p.topH || py + ph > p.topH + PIPE_GAP) {
         if (playerHasShield) {
           playerHasShield = false;
           shieldGlow = 40;
+          spawnFx('boom', player.x + player.w / 2, player.y + player.h / 2, 130);
           p.x = -999; // удаляем столб с которым столкнулись
           particles.push({
             x: player.x + player.w/2, y: player.y + player.h/2,
@@ -918,6 +1218,7 @@ function die() {
   if (invincible > 0) return;
 
   flightHeld = false;
+  spawnFx('boom', player.x + player.w / 2, player.y + player.h / 2, 190);
   addParticles(player.x + player.w/2, player.y + player.h/2);
   player.alive = false;
   gameState = 'dead';
@@ -994,7 +1295,7 @@ function startGame() {
   document.getElementById('pauseScreen').style.display = 'none';
   document.getElementById('topControls').style.display = 'none';
 
-  pipes = []; particles = []; floatingTexts = [];
+  pipes = []; particles = []; floatingTexts = []; fxList = []; trail = [];
   shield = null; playerHasShield = false; shieldGlow = 0; deathFlash = 0; deathTimer = 0; isDying = false;
   coinOnScreen = null; sessionCoins = 0; invincible = 0;
   score = 0; frame = 0;
@@ -1050,7 +1351,7 @@ function continueByCoin() {
 
   pipes = [];
   coinOnScreen = null;
-  lastPipe = Date.now() + 2500;
+  lastPipe = simNow() + 2500;
   deathFlash = 0; deathTimer = 0; isDying = false;
 
   player.y = H/2;
@@ -1075,7 +1376,7 @@ function startFlight() {
 
   if (gameState === 'ready') {
     gameState = 'playing';
-    lastPipe = Date.now() + 1000;
+    lastPipe = simNow() + 1000;
     document.getElementById('topControls').style.display = 'flex';
   }
 
@@ -1090,7 +1391,7 @@ function stopFlight() {
 function updateDrawStartScreen() {
   const PREVIEW_SPEED = PIPE_SPEED / 3;
 
-  const now = Date.now();
+  const now = simNow();
   if (now - previewLastPipe > 2200) {
     const minTop = 80, maxTop = H - PIPE_GAP - 120;
     previewPipes.push({
@@ -1117,7 +1418,8 @@ function updateDrawStartScreen() {
 }
 
 // ===== GAME LOOP =====
-function gameLoop() {
+let shaking = false;
+function tick() {
   try {
   ctx.clearRect(0, 0, W, H);
   if (!isPaused) frame++;
@@ -1192,6 +1494,7 @@ function gameLoop() {
       updatePipes();
     }
 
+    drawTrail();
     if (player.alive) {
       if (invincible > 0) {
         invincible--;
@@ -1205,8 +1508,10 @@ function gameLoop() {
       ctx.fillRect(0, 0, W, H);
     }
     drawParticles();
+    drawFx();
     drawFloatingTexts();
     drawConfetti();
+    ctx.drawImage(bgLayer('vignette'), 0, 0, W, H);
     drawHUD();
   }
 
@@ -1221,6 +1526,14 @@ function gameLoop() {
     updateDrawStartScreen();
   }
 
+  if (ctx === realCtx) {
+    if (isDying && deathTimer < 14) {
+      const m = (14 - deathTimer) * 0.5;
+      canvas.style.transform = `translate(${((Math.random() - 0.5) * m).toFixed(2)}px,${((Math.random() - 0.5) * m).toFixed(2)}px)`;
+      shaking = true;
+    } else if (shaking) { canvas.style.transform = ''; shaking = false; }
+  }
+
   if (isDying) {
     deathTimer++;
     if (deathTimer >= 55) {
@@ -1229,7 +1542,36 @@ function gameLoop() {
     }
   }
   } catch(e) {}
+}
+
+// Fixed-timestep loop: 60 logic ticks per second regardless of display refresh rate.
+// If the device falls behind, extra ticks run with a no-op context (logic only, no drawing).
+let lastTs = 0, acc = 0, onScreen = true;
+function gameLoop(ts) {
   animFrame = requestAnimationFrame(gameLoop);
+  ts = ts || performance.now();
+  let dt = lastTs ? ts - lastTs : STEP_MS;
+  lastTs = ts;
+  if (dt > 250) dt = STEP_MS; // coming back from a background tab
+  if (!onScreen && gameState !== 'playing') { acc = 0; return; }
+  acc += dt;
+  let n = Math.floor((acc + 1.5) / STEP_MS);
+  if (n < 1) return;
+  acc -= n * STEP_MS;
+  if (n > 5) { n = 5; acc = 0; }
+  for (let i = 0; i < n; i++) {
+    ctx = i === n - 1 ? realCtx : NOOP;
+    simTicks++;
+    tick();
+  }
+  ctx = realCtx;
+}
+
+// Pause automatically when the player can't see the game.
+function autoPause() { if (gameState === 'playing' && !isPaused && !loginDemo) togglePause(); }
+document.addEventListener('visibilitychange', () => { if (document.hidden) autoPause(); });
+if ('IntersectionObserver' in window) {
+  new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; if (!onScreen) autoPause(); }, { threshold: 0.05 }).observe(canvas);
 }
 
 // ===== EVENTS =====
@@ -1289,7 +1631,7 @@ if (loginDemo) {
 function startLoginDemo() {
   startGame();
   gameState = 'playing';
-  lastPipe = Date.now();
+  lastPipe = simNow();
   document.getElementById('coinDisplay').style.display = 'block';
   document.getElementById('coinCount').textContent = String(demoStars);
 }

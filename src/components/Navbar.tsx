@@ -65,8 +65,8 @@ export default function Navbar({
         <div
           className={`pointer-events-auto relative mx-auto max-w-6xl rounded-[1.75rem] lg:rounded-full border transition-all duration-300 ${
             scrolled
-              ? 'bg-white/85 border-blue-100 shadow-[0_14px_40px_rgba(23,37,84,0.14)] backdrop-blur-xl'
-              : 'bg-white/92 border-white/70 shadow-[0_10px_30px_rgba(2,6,40,0.3)] backdrop-blur-xl'
+              ? 'bg-white/95 lg:bg-white/85 border-blue-100 shadow-[0_14px_40px_rgba(23,37,84,0.14)] lg:backdrop-blur-xl'
+              : 'bg-white/92 border-white/70 shadow-[0_10px_30px_rgba(2,6,40,0.3)] lg:backdrop-blur-xl'
           }`}
         >
           <div className="flex justify-between items-center pl-3 pr-2.5 py-2">

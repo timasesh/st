@@ -43,9 +43,9 @@ function Headline() {
     { t: 'на игру', shine: true },
   ];
   return (
-    <h1 className="font-display font-extrabold tracking-[-0.035em] leading-[1.04] text-[clamp(2.4rem,1.2rem+4.6vw,4.4rem)] [perspective:800px]">
-      <span className="mb-3 flex items-center justify-center lg:justify-start gap-2 text-base sm:text-lg font-bold tracking-normal text-sky-300">
-        <Sparkles className="w-4 h-4 text-amber-300" />
+    <h1 className="font-display font-extrabold tracking-[-0.035em] leading-[1.04] text-[clamp(3rem,1.4rem+6.4vw,5.6rem)] [perspective:800px]">
+      <span className="mb-3 flex items-center justify-center lg:justify-start gap-2.5 text-xl sm:text-2xl font-extrabold tracking-normal text-sky-300">
+        <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-amber-300" />
         StudyTask:
       </span>
       <motion.span
@@ -90,6 +90,15 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
   };
   const onLeave = () => { mx.set(0); my.set(0); };
 
+  // pause decorative CSS loops once the hero leaves the viewport
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([e]) => el.classList.toggle('fx-paused', !e.isIntersecting), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   return (
     <section
       id="home"
@@ -105,7 +114,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               initial={reduce ? false : { opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="eyebrow eyebrow-dark glass !px-4 !py-2"
+              className="eyebrow eyebrow-dark glass !px-5 !py-2.5 !text-[0.95rem] sm:!text-base"
             >
               <span className="relative flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 animate-ping" />
@@ -120,7 +129,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               initial={reduce ? false : { opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.5 }}
-              className="text-blue-100/85 text-lg sm:text-xl leading-relaxed max-w-xl mx-auto lg:mx-0"
+              className="text-blue-50/95 text-xl sm:text-2xl leading-[1.55] max-w-2xl mx-auto lg:mx-0"
             >
               Живые уроки математики для 5–9 классов онлайн. После каждого занятия квиз,
               за него звёзды, а звёзды меняются на призы. Первый пробный урок бесплатно.
@@ -135,7 +144,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               <button
                 type="button"
                 onClick={onBookTrial}
-                className="cta-primary group px-7 py-4 rounded-2xl font-display font-extrabold text-base sm:text-lg whitespace-nowrap w-full sm:w-auto cursor-pointer inline-flex items-center justify-center gap-2 min-h-14"
+                className="cta-primary group px-7 py-4 rounded-2xl font-display font-extrabold text-lg sm:text-xl whitespace-nowrap w-full sm:w-auto cursor-pointer inline-flex items-center justify-center gap-2 min-h-14"
               >
                 Записаться на пробный
                 <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
@@ -145,7 +154,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
                 href={whatsappUrl('Здравствуйте! Хочу записаться на пробный урок математики.')}
                 target="_blank"
                 rel="noreferrer"
-                className="glass px-7 py-4 rounded-2xl font-bold text-base sm:text-lg whitespace-nowrap text-white hover:bg-white/15 transition-colors w-full sm:w-auto cursor-pointer flex items-center justify-center gap-2 min-h-14"
+                className="glass px-7 py-4 rounded-2xl font-bold text-lg sm:text-xl whitespace-nowrap text-white hover:bg-white/15 transition-colors w-full sm:w-auto cursor-pointer flex items-center justify-center gap-2 min-h-14"
               >
                 <MessageCircle className="w-5 h-5 text-emerald-400" />
                 Написать в WhatsApp
@@ -158,7 +167,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               transition={{ duration: 0.7, delay: 0.8 }}
               className="space-y-4 pt-1"
             >
-              <p className="text-sm text-blue-100/70 max-w-lg mx-auto lg:mx-0">
+              <p className="text-base sm:text-lg text-blue-100/85 max-w-xl mx-auto lg:mx-0">
                 Занятия ведут опытные преподаватели, которые умеют объяснять просто и интересно.
               </p>
               <dl className="grid grid-cols-3 sm:flex sm:flex-wrap items-stretch justify-center lg:justify-start gap-2 sm:gap-3">
@@ -169,8 +178,8 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
                 ].map((stat) => (
                   <div key={stat.label} className="glass rounded-2xl px-3 sm:px-5 py-3 text-left">
                     <dt className="sr-only">{stat.label}</dt>
-                    <dd className="font-display font-extrabold text-xl sm:text-2xl leading-none tabular-nums">{stat.value}</dd>
-                    <div className="text-xs text-blue-200/75 mt-1.5" aria-hidden>{stat.label}</div>
+                    <dd className="font-display font-extrabold text-2xl sm:text-3xl leading-none tabular-nums">{stat.value}</dd>
+                    <div className="text-sm text-blue-100/85 mt-1.5" aria-hidden>{stat.label}</div>
                   </div>
                 ))}
               </dl>
@@ -188,7 +197,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
                 style={{ rotateX: rx, rotateY: ry, transformPerspective: 1000 }}
                 className="relative rounded-[2.25rem] p-2.5 sm:p-3 glass"
               >
-                <div className="absolute -inset-6 -z-10 rounded-[3rem] bg-gradient-to-tr from-blue-500/30 via-sky-400/20 to-amber-300/20 blur-3xl" aria-hidden />
+                <div className="absolute -inset-10 -z-10 hero-glow" aria-hidden />
                 <LoopVideo
                   name="hero-loop"
                   alt="Как проходит обучение в StudyTask: урок, квиз, звёзды и приз"
