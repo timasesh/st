@@ -224,20 +224,6 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
         </div>
       </div>
 
-      <div className="marquee absolute bottom-6 inset-x-0 overflow-hidden opacity-80 [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]" aria-hidden>
-        <div className="marquee-track gap-10 text-blue-200/55 font-display font-extrabold text-sm sm:text-base uppercase tracking-[0.18em]">
-          {Array.from({ length: 2 }).map((_, k) => (
-            <div key={k} className="flex shrink-0 items-center gap-10 pr-10">
-              {['Урок', 'Квиз', 'Звёзды', 'Приз', 'Урок', 'Квиз', 'Звёзды', 'Приз'].map((w, i) => (
-                <span key={i} className="flex items-center gap-10">
-                  {w}
-                  <Star className="w-3.5 h-3.5 text-amber-300/70 fill-amber-300/70" />
-                </span>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
     </section>
   );
 }
