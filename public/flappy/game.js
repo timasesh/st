@@ -393,7 +393,177 @@ function togglePause() {
   if (isPaused) flightHeld = false;
   document.getElementById('pauseScreen').style.display = isPaused ? 'flex' : 'none';
   document.getElementById('pauseBtn').innerHTML = isPaused ? SVG_PLAY : SVG_PAUSE;
+  audio.setPaused(isPaused);
 }
+
+
+// ===== AUDIO: процедурные звуки и фоновая музыка (WebAudio, без файлов) =====
+// Звук включается только после первого касания/клика (требование браузеров).
+const audio = (() => {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const load = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v === '1'; } catch { return d; } };
+  const save = (k, v) => { try { localStorage.setItem(k, v ? '1' : '0'); } catch { /* настройка не сохранится */ } };
+  let ac = null, master, musicBus, sfxBus, echo, noiseBuf;
+  let musicOn = load('studyTaskSkyQuestMusic', true);
+  let sfxOn = load('studyTaskSkyQuestSfx', true);
+  let timer = null, nextTime = 0, step = 0, running = false, level = 0.55;
+  const BPM = 84, EIGHTH = 60 / BPM / 2;
+  const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  // Am9 → Fmaj7 → Cmaj7 → G6: мягкая «космическая» последовательность
+  const CHORDS = [
+    { root: 45, tones: [57, 60, 64, 67, 71] },
+    { root: 41, tones: [53, 57, 60, 64] },
+    { root: 48, tones: [55, 59, 64, 67] },
+    { root: 43, tones: [55, 59, 62, 64] },
+  ];
+  const ARP = [0, 2, 1, 3, 2, 4, 3, 1];
+
+  function build() {
+    ac = new AC();
+    master = ac.createGain(); master.gain.value = 0.9;
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.2;
+    master.connect(comp); comp.connect(ac.destination);
+    musicBus = ac.createGain(); musicBus.gain.value = 0; musicBus.connect(master);
+    sfxBus = ac.createGain(); sfxBus.gain.value = 0.9; sfxBus.connect(master);
+    // эхо для арпеджио
+    echo = ac.createGain(); echo.gain.value = 0.28;
+    const dl = ac.createDelay(1); dl.delayTime.value = EIGHTH * 1.5;
+    const fb = ac.createGain(); fb.gain.value = 0.36;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    echo.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(musicBus);
+    noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+
+  // Один тон с плавной огибающей (без щелчков)
+  function tone(freq, t, dur, o = {}) {
+    const osc = ac.createOscillator(); osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+    if (o.slideTo) osc.frequency.exponentialRampToValueAtTime(o.slideTo, t + dur);
+    if (o.detune) osc.detune.value = o.detune;
+    const g = ac.createGain(), a = o.attack ?? 0.008, peak = o.gain ?? 0.1;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node = osc;
+    if (o.lp) { const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; osc.connect(f); node = f; }
+    node.connect(g); g.connect(o.dest || sfxBus);
+    if (o.send) { const s2 = ac.createGain(); s2.gain.value = o.send; g.connect(s2); s2.connect(echo); }
+    osc.start(t); osc.stop(t + dur + 0.05);
+  }
+  function noise(t, dur, o = {}) {
+    const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const f = ac.createBiquadFilter(); f.type = o.type || 'bandpass';
+    f.frequency.setValueAtTime(o.f0 || 1000, t);
+    if (o.f1) f.frequency.exponentialRampToValueAtTime(o.f1, t + dur);
+    f.Q.value = o.q ?? 0.8;
+    const g = ac.createGain(), a = o.attack ?? 0.004;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(o.gain ?? 0.1, t + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(o.dest || sfxBus);
+    src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.05);
+  }
+
+  // ---- музыка ----
+  function scheduleStep(n, t) {
+    const bar = Math.floor(n / 8) % CHORDS.length, inBar = n % 8, ch = CHORDS[bar];
+    if (inBar === 0) {
+      const len = EIGHTH * 8;
+      ch.tones.slice(0, 4).forEach((m, i) => {
+        [-7, 7].forEach((dt) => tone(mtof(m), t, len + 0.5, { type: 'triangle', gain: 0.026, attack: 0.9, detune: dt + i, lp: 1300, dest: musicBus }));
+      });
+      tone(mtof(ch.root), t, len * 0.9, { type: 'sine', gain: 0.13, attack: 0.03, dest: musicBus });
+    } else if (inBar === 4) {
+      tone(mtof(ch.root), t, EIGHTH * 3, { type: 'sine', gain: 0.07, attack: 0.03, dest: musicBus });
+    }
+    const skip = (inBar === 1 || inBar === 5) && Math.random() < 0.4;
+    if (!skip) {
+      const m = ch.tones[ARP[inBar] % ch.tones.length] + 12;
+      tone(mtof(m), t, 0.42, { type: 'triangle', gain: 0.042, attack: 0.006, dest: musicBus, send: 0.55 });
+    }
+    if (inBar % 2 === 1) noise(t, 0.03, { type: 'highpass', f0: 7000, q: 0.5, gain: 0.011, dest: musicBus });
+  }
+  function pump() {
+    if (!ac) return;
+    while (nextTime < ac.currentTime + 0.5) { scheduleStep(step, nextTime); nextTime += EIGHTH; step++; }
+  }
+  function startMusic() {
+    if (!ac || running || !musicOn) return;
+    running = true; nextTime = ac.currentTime + 0.12; step = 0;
+    musicBus.gain.cancelScheduledValues(ac.currentTime);
+    musicBus.gain.setValueAtTime(musicBus.gain.value, ac.currentTime);
+    musicBus.gain.linearRampToValueAtTime(level, ac.currentTime + 1.4);
+    timer = setInterval(pump, 120);
+  }
+  function stopMusic() {
+    if (!running) return;
+    running = false; clearInterval(timer); timer = null;
+    if (ac) { musicBus.gain.cancelScheduledValues(ac.currentTime); musicBus.gain.setTargetAtTime(0, ac.currentTime, 0.15); }
+  }
+
+  // ---- эффекты ----
+  const ready = () => ac && sfxOn && ac.state === 'running';
+  const fx = {
+    star() { if (!ready()) return; const t = ac.currentTime;
+      tone(1318.5, t, 0.28, { type: 'sine', gain: 0.13 }); tone(1975.5, t + 0.07, 0.4, { type: 'sine', gain: 0.12 });
+      tone(2637, t + 0.07, 0.3, { type: 'triangle', gain: 0.035 });
+      noise(t, 0.12, { type: 'highpass', f0: 6500, gain: 0.025 }); },
+    shieldUp() { if (!ready()) return; const t = ac.currentTime;
+      tone(320, t, 0.45, { type: 'triangle', gain: 0.1, slideTo: 960, lp: 3000 });
+      tone(640, t + 0.04, 0.45, { type: 'sine', gain: 0.06, slideTo: 1920 });
+      tone(1760, t + 0.30, 0.35, { type: 'sine', gain: 0.07 });
+      noise(t, 0.4, { f0: 1200, f1: 4200, q: 1.4, gain: 0.03 }); },
+    shieldBreak() { if (!ready()) return; const t = ac.currentTime;
+      noise(t, 0.09, { type: 'bandpass', f0: 3200, f1: 1200, q: 0.9, gain: 0.2 });
+      tone(620, t, 0.3, { type: 'sawtooth', gain: 0.07, slideTo: 110, lp: 1500 });
+      [2400, 3100, 3900].forEach((f, i) => tone(f, t + i * 0.018, 0.34, { type: 'sine', gain: 0.045 }));
+      tone(90, t, 0.25, { type: 'sine', gain: 0.18, slideTo: 45 }); },
+    boom() { if (!ready()) return; const t = ac.currentTime;
+      noise(t, 0.85, { type: 'lowpass', f0: 2200, f1: 90, q: 0.7, gain: 0.34, attack: 0.006 });
+      noise(t, 0.12, { type: 'bandpass', f0: 1800, q: 0.6, gain: 0.14 });
+      tone(110, t, 0.7, { type: 'sine', gain: 0.32, slideTo: 36 });
+      tone(220, t, 0.35, { type: 'triangle', gain: 0.08, slideTo: 60 }); },
+    whoosh() { if (!ready()) return; const t = ac.currentTime;
+      noise(t, 0.26, { type: 'bandpass', f0: 500, f1: 2400, q: 1.1, gain: 0.07, attack: 0.07 }); },
+    tick() { if (!ready()) return; const t = ac.currentTime;
+      tone(880, t, 0.07, { type: 'sine', gain: 0.045 }); },
+    record() { if (!ready()) return; const t = ac.currentTime;
+      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, t + i * 0.09, 0.45, { type: 'triangle', gain: 0.09, send: 0.3 })); },
+  };
+
+  return {
+    ...fx,
+    unlock() {
+      if (loginDemo || !AC) return;
+      if (!ac) build();
+      if (ac.state === 'suspended') ac.resume().catch(() => {});
+      startMusic();
+    },
+    setPaused(p) {
+      if (!ac) return;
+      if (p) ac.suspend().catch(() => {}); else ac.resume().catch(() => {});
+    },
+    mood(kind) {
+      level = kind === 'dead' ? 0.2 : kind === 'menu' ? 0.45 : 0.55;
+      if (ac && running) musicBus.gain.setTargetAtTime(level, ac.currentTime, 0.4);
+    },
+    toggleMusic() { musicOn = !musicOn; save('studyTaskSkyQuestMusic', musicOn); if (musicOn) { this.unlock(); startMusic(); } else stopMusic(); return musicOn; },
+    toggleSfx() { sfxOn = !sfxOn; save('studyTaskSkyQuestSfx', sfxOn); if (sfxOn) this.unlock(); return sfxOn; },
+    get musicOn() { return musicOn; },
+    get sfxOn() { return sfxOn; },
+  };
+})();
+function syncAudioButtons() {
+  const m = document.getElementById('musicBtn'), f = document.getElementById('sfxBtn');
+  if (m) { m.classList.toggle('off', !audio.musicOn); m.setAttribute('aria-pressed', String(audio.musicOn)); m.title = audio.musicOn ? 'Выключить музыку' : 'Включить музыку'; }
+  if (f) { f.classList.toggle('off', !audio.sfxOn); f.setAttribute('aria-pressed', String(audio.sfxOn)); f.title = audio.sfxOn ? 'Выключить звуки' : 'Включить звуки'; }
+}
+['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, () => audio.unlock(), { passive: true }));
+document.addEventListener('visibilitychange', () => audio.setPaused(document.hidden || isPaused));
+syncAudioButtons();
 
 // ===== BACKGROUND =====
 const bgLayers = {};
@@ -802,6 +972,7 @@ function drawShield() {
     const dy = shield.y - (player.y + player.h/2);
     if (Math.sqrt(dx*dx + dy*dy) < 22) {
       playerHasShield = true;
+      audio.shieldUp();
       spawnFx('burst', player.x + player.w / 2, player.y + player.h / 2, 120);
       shield = null;
       floatingTexts.push({
@@ -844,6 +1015,7 @@ function drawCoin() {
     if (Math.sqrt(dx*dx + dy*dy) < r + player.w/2) {
       coinOnScreen = null;
       spawnFx('burst', player.x + player.w / 2, player.y + player.h / 2, 110);
+      audio.star();
       totalCoins++;
       sessionCoins++;
       updateSkyQuestBalance(1);
@@ -1250,8 +1422,10 @@ function updatePipes() {
     if (!p.passed && p.x + p.w < player.x) {
       p.passed = true;
       score++;
+      if (!loginDemo) audio.tick();
       if (!loginDemo && player.alive && p.minClear !== undefined && p.minClear < 7) {
         spawnFx('burst', player.x + player.w / 2 + 8, player.y + player.h / 2, 84);
+        audio.whoosh();
         floatingTexts.push({ x: player.x + 40, y: player.y - 26, text: 'Впритык!', color: '#7dd3fc', size: 13, life: 42, maxLife: 42 });
       }
       if (loginDemo && score % 5 === 0) {
@@ -1273,6 +1447,7 @@ function updatePipes() {
         bestScore = score;
         if (!newRecordConfetti) {
           newRecordConfetti = true;
+          audio.record();
           spawnConfetti();
           floatingTexts.push({
             x: W/2, y: H/2 - 60,
@@ -1304,6 +1479,7 @@ function updatePipes() {
       if (py < p.topH || py + ph > p.topH + PIPE_GAP) {
         if (playerHasShield) {
           playerHasShield = false;
+          audio.shieldBreak();
           shieldGlow = 40;
           spawnFx('boom', player.x + player.w / 2, player.y + player.h / 2, 130);
           p.x = -999; // удаляем столб с которым столкнулись
@@ -1337,6 +1513,7 @@ function die() {
   if (invincible > 0) return;
 
   flightHeld = false;
+  audio.boom(); audio.mood('dead');
   spawnFx('boom', player.x + player.w / 2, player.y + player.h / 2, 190);
   addParticles(player.x + player.w/2, player.y + player.h/2);
   player.alive = false;
@@ -1407,6 +1584,7 @@ function notifyParentGameOver() {
 
 // Функция `startGame` реализует локальную часть бизнес-логики модуля.
 function startGame() {
+  audio.unlock(); audio.mood('play');
   document.getElementById('startScreen').style.display = 'none';
   document.getElementById('gameOverScreen').style.display = 'none';
   document.getElementById('score').style.display = 'none';
@@ -1435,6 +1613,7 @@ function startGame() {
 
 // Функция `goToMainMenu` реализует локальную часть бизнес-логики модуля.
 function goToMainMenu() {
+  audio.mood('menu');
   document.getElementById('gameOverScreen').style.display = 'none';
   document.getElementById('pauseScreen').style.display = 'none';
   document.getElementById('startScreen').style.display = 'flex';
@@ -1458,6 +1637,7 @@ function goToMainMenu() {
 // Функция `continueByCoin` реализует локальную часть бизнес-логики модуля.
 function continueByCoin() {
   if (totalCoins < 5) return;
+  audio.mood('play');
   totalCoins -= 5;
   lifeUsedThisRound = true;
   updateSkyQuestBalance(-5);
