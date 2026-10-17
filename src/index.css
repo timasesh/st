@@ -603,3 +603,60 @@ body {
   .landing-site .bento-card { box-shadow: 0 10px 28px rgba(30, 64, 175, 0.08); }
   .landing-site .bento-card:hover { transform: none; }
 }
+
+/* ---------- Login pages (shared split layout) ---------- */
+.login-panel-bg {
+  background:
+    radial-gradient(60% 50% at 18% 8%, color-mix(in srgb, var(--login-accent, #38bdf8) 38%, transparent), transparent 70%),
+    radial-gradient(50% 50% at 92% 92%, rgba(99, 102, 241, 0.45), transparent 70%),
+    linear-gradient(150deg, #0a1a45 0%, #12308a 55%, #1d4ed8 100%);
+}
+.login-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 78%);
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 78%);
+}
+@keyframes login-spin { to { transform: rotate(360deg); } }
+@keyframes login-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes login-drift { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(40px, -30px); } }
+@keyframes login-twinkle { 0%, 100% { opacity: 0.15; transform: scale(0.7); } 50% { opacity: 0.95; transform: scale(1.25); } }
+@keyframes login-pulse { 0% { transform: scale(0.7); opacity: 0.55; } 100% { transform: scale(2.1); opacity: 0; } }
+@keyframes login-fill { from { width: 0; } to { width: 100%; } }
+@keyframes login-flicker { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.28); } }
+@keyframes login-live { 0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); } 70% { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); } }
+@keyframes login-rocket {
+  0% { left: -10%; top: 96%; opacity: 0; transform: rotate(50deg) scale(0.8); }
+  8% { opacity: 1; }
+  56% { left: 108%; top: -16%; opacity: 1; transform: rotate(50deg) scale(1); }
+  100% { left: 108%; top: -16%; opacity: 0; transform: rotate(50deg) scale(1); }
+}
+@keyframes login-shine { 0% { transform: translateX(-120%) skewX(-20deg); } 55%, 100% { transform: translateX(260%) skewX(-20deg); } }
+
+.login-ring { animation: login-spin var(--d, 40s) linear infinite; }
+.login-ring.rev { animation-direction: reverse; }
+.login-ring .login-counter { animation: login-spin var(--d, 40s) linear infinite reverse; }
+.login-ring.rev .login-counter { animation-direction: normal; }
+.login-float { animation: login-float 7s ease-in-out infinite; }
+.login-drift { animation: login-drift 16s ease-in-out infinite; }
+.login-twinkle { animation: login-twinkle 3s ease-in-out infinite; }
+.login-pulse { animation: login-pulse 3.6s ease-out infinite; }
+.login-fill { animation: login-fill 4.2s linear forwards; }
+.login-flame { animation: login-flicker 0.28s ease-in-out infinite; }
+.login-live { animation: login-live 2s ease-out infinite; }
+.login-rocket { animation: login-rocket 11s ease-in-out infinite; }
+.login-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  animation: login-shine 3.8s ease-in-out infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-ring, .login-ring .login-counter, .login-float, .login-drift, .login-twinkle, .login-pulse,
+  .login-flame, .login-live, .login-rocket, .login-shine::after { animation: none !important; }
+  .login-rocket { display: none; }
+  .login-fill { animation-duration: 0.01s; }
+}

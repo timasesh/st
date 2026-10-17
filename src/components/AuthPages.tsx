@@ -5,6 +5,7 @@ import StudentDashboard from './StudentDashboard';
 import PortalSettings from './PortalSettings';
 import { ParentChildrenView, ParentPrizesView } from './ParentPortalSections';
 import AdminDataCleanup from './AdminDataCleanup';
+import { LoginLayout, LoginField, LoginError, LoginSubmit } from './LoginLayout';
 
 type LoginPageProps = {
   onLoginSuccess: (name: string, studentClass: string, accountId: string, progress: Partial<LoginProgress> | null, role: 'student' | 'parent' | 'teacher') => void;
@@ -15,34 +16,6 @@ type LoginProgress = {
   stars: number; xp: number; level: number; claimedPrizes: string[]; unlockedAchievements: string[];
   userName: string; userClass: string;
 };
-
-function AuthShell({ children, eyebrow, compact = false }: { children: ReactNode; eyebrow: string; compact?: boolean }) {
-  return (
-    <main className={`relative flex min-h-dvh items-center justify-center overflow-hidden bg-primary-light px-4 ${compact ? 'py-2 sm:py-3' : 'py-10'}`}>
-      <div aria-hidden className="absolute -left-16 top-16 h-48 w-48 rounded-[3rem] border-2 border-blue-200 bg-blue-200/50" />
-      <div aria-hidden className="absolute right-8 top-32 h-32 w-32 rounded-full border-2 border-blue-200 bg-blue-200/40" />
-      <div aria-hidden className="absolute bottom-8 left-1/4 h-24 w-24 rotate-12 rounded-2xl border-2 border-amber-200 bg-amber-200/50" />
-
-      <div className="relative z-10 w-full max-w-md">
-        <a href="/" className={`flex items-center justify-center gap-3 rounded-xl text-foreground ${compact ? 'mb-3' : 'mb-7'}`}>
-          <img src="/static/ST.webp" alt="Study Task" className={`${compact ? 'h-10 w-10' : 'h-12 w-12'} rounded-xl object-contain`} />
-          <span className={`font-display font-extrabold ${compact ? 'text-xl' : 'text-2xl'}`}>StudyTask</span>
-        </a>
-        <section className="clay-card overflow-hidden bg-surface">
-          <div className={`bg-gradient-to-r from-primary to-accent-dark text-center text-white ${compact ? 'px-6 py-3' : 'px-7 py-6'}`}>
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-bold">
-              {eyebrow}
-            </span>
-            {children}
-          </div>
-        </section>
-        {!compact && <a href="/" className="mt-6 flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark">
-          <ArrowLeft className="h-4 w-4" /> На главную
-        </a>}
-      </div>
-    </main>
-  );
-}
 
 function getFriendlyError(reason: unknown, fallback: string) {
   if (reason instanceof Error) {
@@ -85,49 +58,30 @@ export function StudentLoginPage({ onLoginSuccess, expectedRole }: LoginPageProp
     }
   };
 
-  return (
-    <main className="relative flex min-h-dvh items-center justify-center overflow-x-hidden bg-[radial-gradient(ellipse_at_top_left,_#dceaff_0%,_#f4f8ff_42%,_#edf4ff_100%)] px-4 py-7 text-slate-900 sm:px-6 sm:py-10">
-      <div aria-hidden="true" className="pointer-events-none absolute -left-24 top-12 h-64 w-64 rounded-full bg-blue-200/45 blur-3xl sm:h-80 sm:w-80" />
-      <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-20 h-72 w-72 rounded-full bg-indigo-200/35 blur-3xl" />
-      <section className="relative z-10 w-full max-w-[440px]">
-          <a href="/" className="mb-7 inline-flex items-center gap-3 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 sm:mb-9">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-lg shadow-blue-900/10 ring-1 ring-blue-100"><img src="/static/ST.webp" alt="" className="h-10 w-10 rounded-xl object-contain" /></span>
-            <span><strong className="block font-display text-xl font-extrabold tracking-tight text-slate-900">StudyTask</strong><span className="text-sm text-slate-500">Учёба с интересом</span></span>
-          </a>
-          <div className="mb-6 sm:mb-7">
-            <p className="mb-2 text-[11px] font-extrabold uppercase tracking-[.18em] text-blue-600">{expectedRole ? 'Кабинет преподавателя' : 'Ваш учебный кабинет'}</p>
-            <h1 className="font-display text-[2rem] font-extrabold leading-tight tracking-tight text-slate-950 sm:text-4xl">С возвращением!</h1>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">{expectedRole ? 'Войдите по данным, выданным администратором.' : 'Занятия, задания и ваш прогресс — в одном месте.'}</p>
-          </div>
+  const tabClass = (active: boolean) => `flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${active ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-100' : 'text-slate-500 hover:text-slate-800'}`;
 
-          <form onSubmit={submit} className="space-y-5 rounded-[1.75rem] border border-white/90 bg-white p-5 shadow-[0_28px_90px_-42px_rgba(34,88,170,.42)] ring-1 ring-blue-100/70 sm:p-7">
-            {!expectedRole && <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-bold text-slate-700">Войти как</legend>
-              <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1.5">
-                <button type="button" aria-pressed={accountType === 'student'} onClick={() => { setAccountType('student'); setError(''); }} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${accountType === 'student' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><GraduationCap className="h-4 w-4" /> Ученик</button>
-                <button type="button" aria-pressed={accountType === 'parent'} onClick={() => { setAccountType('parent'); setError(''); }} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${accountType === 'parent' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><Users className="h-4 w-4" /> Родитель</button>
-              </div>
-            </fieldset>}
-            <label className="block space-y-2 text-sm font-bold text-slate-700" htmlFor="student-phone">
-              Номер телефона
-              <span className="relative block"><UserRound className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input id="student-phone" type="tel" autoComplete="username" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+7 700 000 00 00" className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" /></span>
-            </label>
-            <label className="block space-y-2 text-sm font-bold text-slate-700" htmlFor="student-password">
-              Пароль
-              <span className="relative block"><LockKeyhole className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input id="student-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Введите пароль" className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-12 font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-blue-700">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span>
-            </label>
-            {error && <p role="alert" className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2.5 text-sm font-semibold leading-5 text-rose-700">{error}</p>}
-            <button type="submit" disabled={loading} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 font-display text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:translate-y-0 disabled:opacity-65">
-              {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><LogIn className="h-4 w-4" /> Войти в кабинет</>}
-            </button>
-            <p className="text-center text-xs leading-5 text-slate-500">Данные для входа выдаёт администратор платформы.</p>
-          </form>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-semibold text-slate-500">
-            {expectedRole ? <><a href="/admin_login" className="transition hover:text-blue-700">Вход администратора</a><a href="/login" className="transition hover:text-blue-700">Ученику или родителю</a></> : <><a href="/teacher_login" className="transition hover:text-blue-700">Вход для преподавателя</a><a href="/admin_login" className="transition hover:text-blue-700">Администратор</a></>}
+  return (
+    <LoginLayout
+      role={expectedRole ? 'teacher' : 'student'}
+      eyebrow={expectedRole ? 'Кабинет преподавателя' : 'Ваш учебный кабинет'}
+      title={expectedRole ? 'Рады видеть вас!' : 'С возвращением!'}
+      subtitle={expectedRole ? 'Войдите по данным, выданным администратором, и откройте своё расписание.' : 'Занятия, задания и ваш прогресс — в одном месте.'}
+    >
+      <form onSubmit={submit} className="space-y-5">
+        {!expectedRole && <fieldset>
+          <legend className="mb-2 text-sm font-bold text-slate-700">Войти как</legend>
+          <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1.5">
+            <button type="button" aria-pressed={accountType === 'student'} onClick={() => { setAccountType('student'); setError(''); }} className={tabClass(accountType === 'student')}><GraduationCap className="h-4 w-4" /> Ученик</button>
+            <button type="button" aria-pressed={accountType === 'parent'} onClick={() => { setAccountType('parent'); setError(''); }} className={tabClass(accountType === 'parent')}><Users className="h-4 w-4" /> Родитель</button>
           </div>
-          <a href="/" className="mt-6 inline-flex min-h-10 items-center gap-1.5 rounded-lg text-xs font-semibold text-slate-400 transition hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"><ArrowLeft className="h-3.5 w-3.5" /> На главную</a>
-      </section>
-    </main>
+        </fieldset>}
+        <LoginField id="student-phone" label="Номер телефона" icon={UserRound} type="tel" autoComplete="username" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+7 700 000 00 00" />
+        <LoginField id="student-password" label="Пароль" icon={LockKeyhole} type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Введите пароль"
+          trailing={<button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'} className="grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-blue-600">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>} />
+        <LoginError message={error} />
+        <LoginSubmit loading={loading} icon={LogIn}>Войти в кабинет</LoginSubmit>
+      </form>
+    </LoginLayout>
   );
 }
 
@@ -193,61 +147,23 @@ export function AdminLoginPage() {
   };
 
   if (!session) {
-    return <AuthShell eyebrow="ПРОВЕРКА ДОСТУПА"><div className="p-8 text-sm text-foreground">Загрузка…</div></AuthShell>;
+    return (
+      <LoginLayout role="admin" eyebrow="Проверка доступа" title="Одну секунду…" subtitle="Проверяем, есть ли у вас активная сессия.">
+        <div className="flex items-center justify-center gap-3 py-6 text-sm font-semibold text-slate-600"><span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" /> Загрузка…</div>
+      </LoginLayout>
+    );
   }
 
   return (
-    <AuthShell eyebrow="ЗАЩИЩЁННЫЙ ДОСТУП">
-      <ShieldCheck className="mx-auto mb-2 mt-4 h-9 w-9 text-blue-100" />
-      <h1 className="font-display text-2xl font-extrabold">Вход администратора</h1>
-      <p className="mt-1 text-sm text-blue-100">Панель управления StudyTask</p>
-
-      <AnimatePresence mode="wait">
-          <motion.form key="admin-login" onSubmit={submitLogin} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 bg-surface p-6 text-left">
-            <label htmlFor="admin-login" className="block space-y-1.5 text-sm font-bold text-foreground">
-              Логин
-              <input id="admin-login" autoComplete="username" required value={login} onChange={(event) => setLogin(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light px-4 py-3 font-normal focus:border-primary focus:bg-white focus:outline-none" />
-            </label>
-            <PasswordField id="admin-password" label="Пароль" value={password} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword((value) => !value)} autoComplete="current-password" />
-            {error && <p role="alert" className="text-sm font-semibold text-rose-600">{error}</p>}
-            <button type="submit" disabled={loading} className="clay-btn flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 font-display text-sm font-bold text-white disabled:opacity-70">
-              {loading ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><LogIn className="h-4 w-4" /> Войти</>}
-            </button>
-          </motion.form>
-      </AnimatePresence>
-      {!session.authenticated && <a href="/login" className="block border-t border-border px-5 py-4 text-center text-xs font-semibold text-muted hover:text-primary">Вход ученика</a>}
-    </AuthShell>
-  );
-}
-
-function PasswordField({
-  id,
-  label,
-  value,
-  onChange,
-  show,
-  onToggle,
-  autoComplete,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  show: boolean;
-  onToggle: () => void;
-  autoComplete: string;
-}) {
-  return (
-    <label htmlFor={id} className="block space-y-1.5 text-sm font-bold text-foreground">
-      {label}
-      <span className="relative block">
-        <LockKeyhole className="absolute left-3.5 top-3.5 h-4 w-4 text-muted" />
-        <input id={id} type={show ? 'text' : 'password'} autoComplete={autoComplete} minLength={id === 'new-admin-password' || id === 'confirm-admin-password' ? 12 : undefined} required value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-xl border-2 border-border bg-primary-light py-3 pl-10 pr-12 font-normal focus:border-primary focus:bg-white focus:outline-none" />
-        <button type="button" onClick={onToggle} aria-label={show ? 'Скрыть пароль' : 'Показать пароль'} className="absolute right-3 top-3 rounded p-1 text-muted hover:text-primary">
-          {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
-      </span>
-    </label>
+    <LoginLayout role="admin" eyebrow="Защищённый доступ" title="Вход администратора" subtitle="Панель управления StudyTask: ученики, преподаватели и расписание.">
+      <form onSubmit={submitLogin} className="space-y-5">
+        <LoginField id="admin-login" label="Логин" icon={UserRound} autoComplete="username" required value={login} onChange={(event) => setLogin(event.target.value)} placeholder="Ваш логин" />
+        <LoginField id="admin-password" label="Пароль" icon={LockKeyhole} type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Введите пароль"
+          trailing={<button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'} className="grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-blue-600">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>} />
+        <LoginError message={error} />
+        <LoginSubmit loading={loading} icon={ShieldCheck}>Войти</LoginSubmit>
+      </form>
+    </LoginLayout>
   );
 }
 
