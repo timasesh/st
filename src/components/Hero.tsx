@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Sparkles, ArrowRight, Star, Zap } from 'lucide-react';
+import { MessageCircle, ArrowRight, Star, Zap } from 'lucide-react';
 import { motion, useInView, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react';
 import { whatsappUrl } from '../constants';
 import LoopVideo from './LoopVideo';
@@ -44,10 +44,6 @@ function Headline() {
   ];
   return (
     <h1 className="font-display font-extrabold tracking-[-0.035em] leading-[1.04] text-[clamp(3rem,1.4rem+6.4vw,5.6rem)] [perspective:800px]">
-      <span className="mb-3 flex items-center justify-center lg:justify-start gap-2.5 text-xl sm:text-2xl font-extrabold tracking-normal text-sky-300">
-        <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-amber-300" />
-        StudyTask:
-      </span>
       <motion.span
         className="block"
         initial={reduce ? false : 'hidden'}
@@ -103,13 +99,13 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
     <section
       id="home"
       ref={sectionRef}
-      className="hero-dark relative min-h-screen pt-32 pb-24 lg:pb-28 flex items-center overflow-hidden rounded-b-[2.25rem] sm:rounded-b-[4rem]"
+      className="hero-dark relative min-h-screen pt-28 lg:pt-24 pb-24 lg:pb-28 flex items-center overflow-hidden rounded-b-[2.25rem] sm:rounded-b-[4rem]"
     >
       <div className="grain" aria-hidden />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-14 lg:gap-10 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-14 lg:gap-10 items-center lg:items-start">
 
-          <div className="lg:col-span-6 space-y-8 text-center lg:text-left">
+          <div className="lg:col-span-6 space-y-8 text-center lg:text-left lg:pt-10">
             <motion.div
               initial={reduce ? false : { opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -186,7 +182,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
             </motion.div>
           </div>
 
-          <div className="lg:col-span-6 relative flex justify-center">
+          <div className="lg:col-span-6 relative flex justify-center lg:-mt-2">
             <motion.div style={{ y: yVideo }} className="relative w-full max-w-[34rem]">
               <motion.div
                 initial={reduce ? false : { opacity: 0, scale: 0.92, y: 30 }}
