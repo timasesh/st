@@ -135,7 +135,7 @@ export default function Features() {
           </motion.article>
 
           <motion.article {...reveal(2)} className="bento-card bento-dark md:col-span-6 p-7 sm:p-9">
-            <div className="absolute -right-24 -top-24 w-96 h-96 rounded-full bg-blue-500/30 blur-3xl" aria-hidden />
+            <div className="absolute -right-24 -top-24 w-96 h-96 rounded-full hero-glow" aria-hidden />
             <div className="relative grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
               <div className="md:col-span-7 space-y-4">
                 <span className="eyebrow eyebrow-dark">{FEATURE_ITEMS[2].tag}</span>

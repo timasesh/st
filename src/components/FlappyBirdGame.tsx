@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Star, Zap } from 'lucide-react';
 
 interface FlappyBirdGameProps {
@@ -7,6 +7,20 @@ interface FlappyBirdGameProps {
 
 export default function FlappyBirdGame({ onReward }: FlappyBirdGameProps) {
   const rewardedRef = useRef<number>(0);
+  const holderRef = useRef<HTMLDivElement>(null);
+  // the game iframe is heavy: mount it only when the block is about to be seen
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const el = holderRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') { setMounted(true); return; }
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { setMounted(true); io.disconnect(); }
+    }, { rootMargin: '200px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
@@ -43,13 +57,20 @@ export default function FlappyBirdGame({ onReward }: FlappyBirdGameProps) {
         </div>
       </div>
 
-      <div className="flex justify-center">
-        <iframe
-          src="/flappy/index.html?autostart=1"
-          title="Study Task Sky Quest"
-          className="w-full max-w-[400px] h-[min(650px,75vh)] rounded-2xl border-2 border-border shadow-lg bg-navy"
-          allow="autoplay"
-        />
+      <div className="flex justify-center" ref={holderRef}>
+        {mounted ? (
+          <iframe
+            src="/flappy/index.html?autostart=1"
+            title="Study Task Sky Quest"
+            className="w-full max-w-[400px] h-[min(650px,75vh)] rounded-2xl border-2 border-border shadow-lg bg-navy"
+            allow="autoplay"
+          />
+        ) : (
+          <div
+            className="w-full max-w-[400px] h-[min(650px,75vh)] rounded-2xl border-2 border-border bg-navy"
+            aria-hidden
+          />
+        )}
       </div>
     </div>
   );
