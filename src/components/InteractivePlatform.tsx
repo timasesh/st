@@ -34,8 +34,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { SUBJECTS } from '../data';
 import { Subject } from '../types';
-import { KIT_1 } from './GiftKit';
-import { GRADE_OPTIONS } from '../constants';
+import { KIT_1, KIT_PRICE } from './GiftKit';
+import { GRADE_OPTIONS, whatsappUrl } from '../constants';
 import FlappyBirdGame from './FlappyBirdGame';
 
 type KitItem = (typeof KIT_1)[number];
@@ -223,7 +223,7 @@ export default function InteractivePlatform({
             Попробуй геймификацию в действии
           </h2>
           <p className="text-muted">
-            Пройди демо-квиз по математике для 5–9 классов, заработай звёзды и посмотри, на какие призы их можно обменять.
+            Пройди демо-квиз по математике для 5–9 классов, заработай звёзды и посмотри, как растёт твоё место в рейтинге.
           </p>
         </div>
 
@@ -342,9 +342,9 @@ export default function InteractivePlatform({
                   }`}
                 >
                   <ShoppingBag className="w-4.5 h-4.5" />
-                  <span>Магазин призов</span>
+                  <span>Мерч</span>
                   <span className="ml-auto bg-amber-500/20 text-amber-400 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30">
-                    МЕРЧ
+                    24 990 ₸
                   </span>
                 </button>
               </div>
@@ -698,7 +698,7 @@ export default function InteractivePlatform({
 
                     {/* Fun note */}
                     <p className="text-xs text-muted/80 italic">
-                      Ты можешь сразу перейти в <strong className="text-primary">"Магазин призов"</strong> и потратить звезды на классный мерч!
+                      Звёзды повышают твоё место в рейтинге. А фирменный мерч можно купить отдельным набором во вкладке <strong className="text-primary">"Мерч"</strong>.
                     </p>
                   </div>
 
@@ -712,7 +712,7 @@ export default function InteractivePlatform({
                       className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm transition-all flex items-center space-x-2 cursor-pointer shadow-md shadow-amber-100"
                     >
                       <ShoppingBag className="w-4 h-4" />
-                      <span>Потратить звезды в магазине</span>
+                      <span>Посмотреть мерч</span>
                     </button>
 
                     <button
@@ -741,28 +741,26 @@ export default function InteractivePlatform({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                       <span className="inline-block text-[10px] font-bold text-primary bg-primary-light px-2.5 py-0.5 rounded-full border-2 border-border mb-1">Набор 1</span>
-                      <h3 className="text-xl font-bold text-foreground font-display">Магазин призов Study Task</h3>
-                      <p className="text-xs text-muted">Копи звёзды за тесты и домашку и обменивай их на призы!</p>
+                      <h3 className="text-xl font-bold text-foreground font-display">Фирменный мерч Study Task</h3>
+                      <p className="text-xs text-muted">Мерч покупается отдельно. Звёзды за тесты и домашку дают место в рейтинге.</p>
                     </div>
                     <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-2 text-center shadow-[0_3px_0_#FCD34D]">
                       <div className="text-[10px] font-bold text-amber-700">Весь набор</div>
                       <div className="font-display font-extrabold text-amber-700 text-xl leading-tight">
-                        {KIT_1.reduce((sum, g) => sum + g.stars, 0)} ★
+                        {KIT_PRICE.toLocaleString('ru-RU')} ₸
                       </div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {KIT_1.map((prize) => {
-                      const isClaimed = claimedPrizes.includes(prize.id);
-                      const canAfford = stars >= prize.stars;
                       const variants = prize.images.length ? prize.images : [undefined];
 
                       return (
                         <div
                           key={prize.id}
                           className={`bg-white border-2 rounded-2xl p-4 flex flex-col gap-3 transition-all ${
-                            isClaimed ? 'border-emerald-200' : 'border-border hover:border-blue-200 hover:shadow-md'
+                            'border-border hover:border-blue-200 hover:shadow-md'
                           }`}
                         >
                           <div className={`grid gap-2 ${variants.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
@@ -787,33 +785,18 @@ export default function InteractivePlatform({
 
                           <h4 className="font-bold text-foreground text-sm">{prize.name}</h4>
 
-                          <div className="border-t border-border pt-3 mt-auto flex items-center justify-between">
-                            <div className="flex items-center space-x-1">
-                              <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
-                              <span className="font-black text-foreground text-base font-mono">{prize.stars}</span>
-                            </div>
-
-                            {isClaimed ? (
-                              <button disabled className="px-3.5 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl cursor-not-allowed">
-                                В профиле
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleBuyItem(prize)}
-                                disabled={!canAfford}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                                  canAfford
-                                    ? 'bg-amber-500 hover:bg-amber-600 text-white cursor-pointer shadow-md shadow-amber-100'
-                                    : 'bg-primary-light text-muted/80 cursor-not-allowed'
-                                }`}
-                              >
-                                {canAfford ? 'Заказать' : 'Не хватает звёзд'}
-                              </button>
-                            )}
-                          </div>
                         </div>
                       );
                     })}
+                  </div>
+                  <div className="flex justify-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => window.open(whatsappUrl(`Здравствуйте! Хочу заказать фирменный набор StudyTask — ${KIT_PRICE.toLocaleString('ru-RU')} ₸.`), '_blank')}
+                      className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm transition-all cursor-pointer shadow-md shadow-amber-100"
+                    >
+                      Заказать набор в WhatsApp
+                    </button>
                   </div>
                 </motion.div>
               )}

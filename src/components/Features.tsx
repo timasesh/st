@@ -18,9 +18,9 @@ const FEATURE_ITEMS = [
   },
   {
     id: 'gamification',
-    title: 'Звёзды → призы',
-    description: 'За уроки и квизы — звёзды. Стикерпак за 5★, блокнот за 7★, футболка за 10★, рюкзак за 12★.',
-    tag: 'реальные награды',
+    title: 'Звёзды → рейтинг',
+    description: 'За уроки и квизы — звёзды. Чем больше звёзд, тем выше твоё место в рейтинге учеников.',
+    tag: 'рейтинг',
   },
 ];
 
@@ -107,7 +107,7 @@ export default function Features() {
           <span className="eyebrow">Чем мы отличаемся</span>
           <h2 className="section-title">Не просто репетитор — целая экосистема</h2>
           <p className="text-muted text-base sm:text-lg">
-            Программа математического образовательного центра с механиками из любимых игр: уровни, звёзды и награды, за которые хочется стараться.
+            Программа математического образовательного центра с механиками из любимых игр: уровни, звёзды и место в рейтинге, ради которого хочется стараться.
           </p>
         </div>
 
@@ -155,7 +155,7 @@ export default function Features() {
               </div>
               <div className="md:col-span-5">
                 <div className="rounded-[1.75rem] overflow-hidden border border-white/15 shadow-[0_30px_70px_rgba(2,6,40,0.5)] max-w-sm mx-auto">
-                  <LoopVideo name="gifts-reveal" alt="Призы, которые можно получить за звёзды: стикерпак, блокнот, футболка и рюкзак" />
+                  <LoopVideo name="gifts-reveal" alt="Фирменный набор StudyTask: стикерпак, блокнот, футболка и рюкзак" />
                 </div>
               </div>
             </div>
@@ -174,7 +174,7 @@ export default function Features() {
                 Большинство учеников замечают прогресс уже в первый месяц
               </h3>
               <p className="opacity-90 text-sm sm:text-base max-w-2xl">
-                Когда ребёнок видит свой уровень, звёзды и реальные призы — учёба перестаёт быть «надо» и становится «хочу».
+                Когда ребёнок видит свой уровень, звёзды и своё место в рейтинге — учёба перестаёт быть «надо» и становится «хочу».
               </p>
             </div>
             <div className="lg:col-span-4 flex lg:justify-end">

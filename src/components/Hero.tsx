@@ -128,7 +128,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               className="text-blue-50/95 text-xl sm:text-2xl leading-[1.55] max-w-2xl mx-auto lg:mx-0"
             >
               Живые уроки математики для 5–9 классов онлайн. После каждого занятия квиз,
-              за него звёзды, а звёзды меняются на призы. Первый пробный урок бесплатно.
+              за него звёзды, а звёзды поднимают в рейтинге. Первый пробный урок бесплатно.
             </motion.p>
 
             <motion.div

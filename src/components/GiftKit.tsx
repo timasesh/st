@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
-import { Star, Gift } from 'lucide-react';
+import { Gift, PhoneCall } from 'lucide-react';
+import { whatsappUrl } from '../constants';
 
 type GiftItem = { id: string; name: string; stars: number; images: string[] };
 
@@ -23,16 +24,7 @@ export const KIT_1: GiftItem[] = [
 ];
 // ▲▲▲ ▲▲▲
 
-const KIT_TOTAL = KIT_1.reduce((sum, g) => sum + g.stars, 0); // 34
-
-function Stars({ n }: { n: number }) {
-  return (
-    <span className="shrink-0 inline-flex items-center gap-1 text-sm font-extrabold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">
-      <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-      {n}
-    </span>
-  );
-}
+export const KIT_PRICE = 24990; // тенге за весь набор
 
 function Picture({ src, alt }: { src?: string; alt: string; key?: React.Key }) {
   return (
@@ -74,44 +66,27 @@ function TiltCard({ children, index }: { children: React.ReactNode; index: numbe
 }
 
 export default function GiftKit() {
+  const orderKit = () => {
+    window.open(
+      whatsappUrl(`Здравствуйте! Хочу заказать фирменный набор StudyTask (стикерпак, блокнот, футболка, рюкзак) — ${KIT_PRICE.toLocaleString('ru-RU')} ₸.`),
+      '_blank',
+    );
+  };
   return (
     <div className="mt-16 bento-card !rounded-[2.25rem] p-6 sm:p-9">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 mb-8">
         <div className="space-y-2">
-          <span className="eyebrow">Набор 1</span>
+          <span className="eyebrow">Фирменный набор</span>
           <h3 className="font-display font-extrabold text-foreground text-2xl sm:text-3xl tracking-tight">
-            Что можно получить за звёзды
+            Мерч StudyTask
           </h3>
-          <p className="text-muted text-sm">Звёзды копятся за уроки и квизы. Призы уже включены в тариф.</p>
+          <p className="text-muted text-sm">
+            Набор покупается отдельно. Звёзды за уроки и квизы дают место в рейтинге учеников.
+          </p>
         </div>
         <div className="rounded-3xl bg-gradient-to-br from-amber-300 to-amber-500 px-6 py-4 text-center shadow-[0_16px_36px_rgba(245,158,11,0.35)]">
-          <div className="text-xs font-extrabold text-amber-950/80">Чтобы получить весь набор</div>
-          <div className="font-display font-extrabold text-amber-950 text-4xl leading-tight">{KIT_TOTAL} ★</div>
-        </div>
-      </div>
-
-      <div className="mb-8" aria-hidden>
-        <div className="relative h-3 rounded-full bg-blue-100">
-          <motion.div
-            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary via-sky-400 to-amber-400 origin-left"
-            initial={{ scaleX: 0 }}
-            whileInView={{ scaleX: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
-            style={{ width: '100%' }}
-          />
-          {KIT_1.map((g, i) => {
-            const cum = KIT_1.slice(0, i + 1).reduce((s, x) => s + x.stars, 0);
-            return (
-              <span
-                key={g.id}
-                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 grid place-items-center w-6 h-6 rounded-full bg-white border-2 border-amber-400 shadow"
-                style={{ left: `${(cum / KIT_TOTAL) * 100}%` }}
-              >
-                <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-              </span>
-            );
-          })}
+          <div className="text-xs font-extrabold text-amber-950/80">Весь набор</div>
+          <div className="font-display font-extrabold text-amber-950 text-4xl leading-tight">{KIT_PRICE.toLocaleString('ru-RU')} ₸</div>
         </div>
       </div>
 
@@ -125,14 +100,24 @@ export default function GiftKit() {
                   <Picture key={v} src={src} alt={`${item.name}${variants.length > 1 ? `, вариант ${v + 1}` : ''}`} />
                 ))}
               </div>
-              <div className="flex items-center justify-between gap-2 mt-auto">
+              <div className="mt-auto">
                 <span className="font-display font-extrabold text-foreground text-sm leading-snug">{item.name}</span>
-                <Stars n={item.stars} />
               </div>
             </TiltCard>
           );
         })}
       </ul>
+
+      <div className="mt-8 flex justify-center">
+        <button
+          type="button"
+          onClick={orderKit}
+          className="px-8 py-3.5 rounded-[1.25rem] bg-primary hover:bg-primary-dark text-white font-display font-bold text-sm clay-btn flex items-center justify-center gap-2 cursor-pointer min-h-12"
+        >
+          <PhoneCall className="w-4.5 h-4.5" />
+          <span>Заказать набор в WhatsApp</span>
+        </button>
+      </div>
     </div>
   );
 }
