@@ -22,8 +22,22 @@ export default function Footer() {
             <p className="text-sm text-blue-200/70 max-w-sm leading-relaxed">
               Математический образовательный центр для 5–9 классов: живые уроки, квизы и система звёзд с реальными призами.
             </p>
+            <div className="flex items-center gap-3 pt-1">
+              <img
+                src="/static/founder.jpg"
+                alt="Тлеужанов Тимур, основатель StudyTask"
+                width={400}
+                height={400}
+                loading="lazy"
+                className="w-16 h-16 rounded-full object-cover border-2 border-blue-700 shrink-0"
+              />
+              <div className="text-sm leading-tight space-y-1">
+                <p className="text-white font-bold">Тлеужанов Тимур</p>
+                <p className="text-blue-200/70">Основатель StudyTask</p>
+                <a href="https://www.instagram.com/timurtleuzhanov1/" target="_blank" rel="noreferrer" className="text-white/90 underline underline-offset-4 hover:text-white transition-colors">@timurtleuzhanov1</a>
+              </div>
+            </div>
             <div className="space-y-1 text-sm">
-              <p className="text-blue-200/70">Основатель: <span className="text-white/90">Тлеужанов Тимур</span></p>
               <p className="text-blue-200/70">Instagram: <a href="https://www.instagram.com/studytask.kz/" target="_blank" rel="noreferrer" className="text-white/90 underline underline-offset-4 hover:text-white transition-colors">@studytask.kz</a></p>
               <p className="text-blue-200/70">Telegram: <a href="https://t.me/studytaskkz" target="_blank" rel="noreferrer" className="text-white/90 underline underline-offset-4 hover:text-white transition-colors">@studytaskkz</a></p>
             </div>
