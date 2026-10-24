@@ -105,7 +105,7 @@ export default function Features() {
 
         <div className="text-center max-w-3xl mx-auto mb-14 space-y-4">
           <span className="eyebrow">Чем мы отличаемся</span>
-          <h2 className="section-title">Не просто репетитор — целая экосистема</h2>
+          <h2 className="section-title">Не просто репетитор — <span className="hl">целая экосистема</span></h2>
           <p className="text-muted text-base sm:text-lg">
             Программа математического образовательного центра с механиками из любимых игр: уровни, звёзды и место в рейтинге, ради которого хочется стараться.
           </p>

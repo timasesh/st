@@ -3,6 +3,7 @@ import { MessageCircle, ArrowRight, Star, Zap } from 'lucide-react';
 import { motion, useInView, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react';
 import { whatsappUrl } from '../constants';
 import LoopVideo from './LoopVideo';
+import Doodles from './Doodles';
 
 interface HeroProps {
   onBookTrial: () => void;
@@ -43,7 +44,7 @@ function Headline() {
     { t: 'на игру', shine: true },
   ];
   return (
-    <h1 className="font-display font-extrabold tracking-[-0.035em] leading-[1.04] text-[clamp(3rem,1.4rem+6.4vw,5.6rem)] [perspective:800px]">
+    <h1 className="font-hand text-navy leading-[0.98] text-[clamp(3.4rem,1.6rem+7vw,6.6rem)] [perspective:800px]">
       <motion.span
         className="block"
         initial={reduce ? false : 'hidden'}
@@ -99,9 +100,10 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
     <section
       id="home"
       ref={sectionRef}
-      className="hero-dark relative min-h-screen pt-28 lg:pt-24 pb-24 lg:pb-28 flex items-center overflow-hidden rounded-b-[2.25rem] sm:rounded-b-[4rem]"
+      className="hero-dark relative min-h-screen pt-28 lg:pt-24 pb-24 lg:pb-28 flex items-center overflow-hidden"
     >
       <div className="grain" aria-hidden />
+      <Doodles />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-14 lg:gap-10 items-center lg:items-start">
 
@@ -110,7 +112,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               initial={reduce ? false : { opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="eyebrow eyebrow-dark glass !px-5 !py-2.5 !text-[0.95rem] sm:!text-base"
+              className="eyebrow !px-5 !py-1.5 !text-[1.5rem] sm:!text-[1.7rem]"
             >
               <span className="relative flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 animate-ping" />
@@ -125,7 +127,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               initial={reduce ? false : { opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.5 }}
-              className="text-blue-50/95 text-xl sm:text-2xl leading-[1.55] max-w-2xl mx-auto lg:mx-0"
+              className="text-navy text-xl sm:text-2xl leading-[1.5] max-w-2xl mx-auto lg:mx-0"
             >
               Живые уроки математики для 5–9 классов онлайн. После каждого занятия квиз,
               за него звёзды, а звёзды поднимают в рейтинге. Первый пробный урок бесплатно.
@@ -150,7 +152,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
                 href={whatsappUrl('Здравствуйте! Хочу записаться на пробный урок математики.')}
                 target="_blank"
                 rel="noreferrer"
-                className="glass px-7 py-4 rounded-2xl font-bold text-lg sm:text-xl whitespace-nowrap text-white hover:bg-white/15 transition-colors w-full sm:w-auto cursor-pointer flex items-center justify-center gap-2 min-h-14"
+                className="glass px-7 py-4 rounded-2xl font-bold text-lg sm:text-xl whitespace-nowrap text-navy hover:bg-[#fff6d6] transition-colors w-full sm:w-auto cursor-pointer flex items-center justify-center gap-2 min-h-14"
               >
                 <MessageCircle className="w-5 h-5 text-emerald-400" />
                 Написать в WhatsApp
@@ -163,7 +165,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               transition={{ duration: 0.7, delay: 0.8 }}
               className="space-y-4 pt-1"
             >
-              <p className="text-base sm:text-lg text-blue-100/85 max-w-xl mx-auto lg:mx-0">
+              <p className="text-base sm:text-lg text-muted max-w-xl mx-auto lg:mx-0">
                 Занятия ведут опытные преподаватели, которые умеют объяснять просто и интересно.
               </p>
               <dl className="grid grid-cols-3 sm:flex sm:flex-wrap items-stretch justify-center lg:justify-start gap-2 sm:gap-3">
@@ -174,8 +176,8 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
                 ].map((stat) => (
                   <div key={stat.label} className="glass rounded-2xl px-3 sm:px-5 py-3 text-left">
                     <dt className="sr-only">{stat.label}</dt>
-                    <dd className="font-display font-extrabold text-2xl sm:text-3xl leading-none tabular-nums">{stat.value}</dd>
-                    <div className="text-sm text-blue-100/85 mt-1.5" aria-hidden>{stat.label}</div>
+                    <dd className="font-display font-extrabold text-2xl sm:text-3xl leading-none tabular-nums text-navy">{stat.value}</dd>
+                    <div className="text-sm text-muted mt-1.5" aria-hidden>{stat.label}</div>
                   </div>
                 ))}
               </dl>
@@ -191,31 +193,31 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
                 onPointerMove={onMove}
                 onPointerLeave={onLeave}
                 style={{ rotateX: rx, rotateY: ry, transformPerspective: 1000 }}
-                className="relative rounded-[2.25rem] p-2.5 sm:p-3 glass"
+                className="relative p-2.5 sm:p-3 glass"
               >
                 <div className="absolute -inset-10 -z-10 hero-glow" aria-hidden />
                 <LoopVideo
                   name="hero-loop"
                   alt="Как проходит обучение в StudyTask: урок, квиз, звёзды и приз"
-                  className="rounded-[1.7rem]"
+                  className="rounded-[1.2rem]"
                 />
               </motion.div>
 
               <motion.div style={{ y: yChipA }} className="absolute left-4 sm:left-8 -bottom-9 z-20">
-                <div className="animate-chip-float rounded-2xl px-4 py-3 flex items-center gap-3 bg-[#0f1b4d]/95 border border-white/15 shadow-[0_18px_40px_rgba(2,6,40,0.55)]">
-                  <span className="grid place-items-center w-10 h-10 rounded-xl bg-amber-400/20">
+                <div className="animate-chip-float rounded-2xl px-4 py-3 flex items-center gap-3 bg-white border-[3px] border-primary shadow-[4px_4px_0_#FFD34F]">
+                  <span className="grid place-items-center w-10 h-10 rounded-xl bg-[#FFF1B8]">
                     <Star className="w-5 h-5 text-amber-300 fill-amber-300" />
                   </span>
                   <div className="leading-tight">
                     <div className="font-display font-extrabold text-xl tabular-nums">{stars + 15}</div>
-                    <div className="text-[11px] text-blue-200/80">звёзд у Ивана</div>
+                    <div className="text-[13px] text-muted">звёзд у Ивана</div>
                   </div>
                 </div>
               </motion.div>
 
               <motion.div style={{ y: yChipB }} className="absolute right-4 sm:right-8 -top-4 z-20">
-                <div className="animate-chip-float-2 rounded-2xl px-4 py-3 flex items-center gap-2.5 bg-emerald-500 text-white shadow-[0_18px_40px_rgba(16,185,129,0.35)]">
-                  <Zap className="w-4 h-4 fill-white" />
+                <div className="animate-chip-float-2 rounded-2xl px-4 py-3 flex items-center gap-2.5 bg-[#FFD34F] text-navy border-[3px] border-navy shadow-[4px_4px_0_#12266F]">
+                  <Zap className="w-4 h-4 fill-navy" />
                   <span className="text-sm font-extrabold">+50 XP за урок</span>
                 </div>
               </motion.div>

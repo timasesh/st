@@ -660,3 +660,234 @@ body {
   .login-rocket { display: none; }
   .login-fill { animation-duration: 0.01s; }
 }
+
+/* =====================================================================
+   WHITEBOARD THEME (2026-10): landing page in the StudyTask video style.
+   Board #FBFCFE with dot grid, ink blue #1649E8, navy #12266F,
+   gold #FFD34F highlights, hand-drawn Caveat headings + Neucha body.
+   Scoped to .landing-site so the portals keep their own look.
+   ===================================================================== */
+.landing-site {
+  --st-ink: #1649e8;
+  --st-navy: #12266f;
+  --st-sky: #38bdf8;
+  --st-gold: #ffd34f;
+  --st-red: #e5484d;
+  --st-board: #fbfcfe;
+  --font-sans: "Neucha", "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Neucha", "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --font-hand: "Caveat", "Neucha", cursive;
+  --color-primary: #1649e8;
+  --color-primary-light: #f1f5ff;
+  --color-primary-dark: #0f3bc0;
+  --color-accent: #1649e8;
+  --color-accent-light: #fff1b8;
+  --color-accent-dark: #12266f;
+  --color-surface: #fbfcfe;
+  --color-foreground: #12266f;
+  --color-muted: #435a99;
+  --color-border: #9fb5f2;
+  --color-navy: #12266f;
+  --st-hand-radius: 28px 20px 30px 18px / 20px 30px 18px 28px;
+  --st-hand-radius-sm: 18px 14px 20px 12px / 14px 20px 12px 18px;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  font-synthesis: weight;
+  color: var(--st-navy);
+  background-color: var(--st-board);
+  background-image: radial-gradient(circle, #dbe4f6 1.6px, transparent 2px);
+  background-size: 32px 32px;
+}
+.landing-site h1, .landing-site h2, .landing-site h3, .landing-site .hand {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  letter-spacing: 0;
+  zoom: 1.2;
+}
+.landing-site h1 { zoom: 1.1; }
+.landing-site .selection, .landing-site ::selection { background: var(--st-gold); color: var(--st-navy); }
+
+/* sections: transparent so the dot grid shows; soft ones get a pale wash */
+.landing-site section.bg-surface,
+.landing-site #pricing, .landing-site #free-trial, .landing-site .section-soft { background: transparent; }
+.landing-site section.bg-primary-light { background: rgba(241, 245, 255, 0.72); border-color: var(--st-ink); border-top-width: 3px; border-bottom-width: 3px; border-style: dashed; }
+.landing-site #contact { border-top: 3px dashed var(--st-ink); }
+
+/* cards: marker outline, hand-drawn corners, offset gold shadow */
+.landing-site .clay-card,
+.landing-site .bento-card {
+  background: #fff;
+  border: 3px solid var(--st-ink);
+  border-radius: var(--st-hand-radius);
+  box-shadow: 6px 7px 0 var(--st-gold);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.landing-site .clay-card-sm {
+  background: #fff;
+  border: 2.5px solid var(--st-ink);
+  border-radius: var(--st-hand-radius-sm);
+  box-shadow: 4px 4px 0 rgba(22, 73, 232, 0.18);
+}
+.landing-site .bento-card:hover,
+.landing-site .clay-card:hover { transform: translate(-2px, -2px); box-shadow: 9px 10px 0 var(--st-gold); border-color: var(--st-ink); }
+.landing-site .bento-dark {
+  color: #fff;
+  background-color: var(--st-ink);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.6px, transparent 2px);
+  background-size: 28px 28px;
+  border-color: var(--st-navy);
+  box-shadow: 6px 7px 0 var(--st-navy);
+}
+.landing-site #pricing .clay-card { border-radius: var(--st-hand-radius); }
+.landing-site #pricing .clay-card.border-primary {
+  border: 3px solid var(--st-ink);
+  background: #fff;
+  box-shadow: 8px 9px 0 var(--st-gold);
+}
+
+/* buttons */
+.landing-site .clay-btn {
+  border: 3px solid var(--st-navy);
+  border-radius: var(--st-hand-radius-sm);
+  box-shadow: 4px 4px 0 var(--st-gold);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.landing-site .clay-btn:hover { transform: translate(-1px, -1px); box-shadow: 6px 6px 0 var(--st-gold); }
+.landing-site .clay-btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--st-gold); }
+.landing-site .cta-primary {
+  color: var(--st-navy);
+  background: var(--st-gold);
+  border: 3px solid var(--st-navy);
+  border-radius: var(--st-hand-radius-sm);
+  box-shadow: 5px 5px 0 var(--st-navy);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.landing-site .cta-primary::after { display: none; }
+.landing-site .cta-primary:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--st-navy); }
+.landing-site .cta-primary:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--st-navy); }
+
+/* labels, titles, marker highlight */
+.landing-site .eyebrow {
+  color: var(--st-navy);
+  background: var(--st-gold);
+  border: 2.5px solid var(--st-navy);
+  border-radius: 12px 8px 14px 8px;
+  font-family: var(--font-hand);
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.1;
+  padding: 0.3rem 0.95rem 0.4rem;
+  transform: rotate(-1.5deg);
+  box-shadow: 3px 3px 0 var(--st-navy);
+}
+.landing-site .eyebrow-dark { color: var(--st-navy); background: var(--st-gold); border-color: var(--st-navy); }
+.landing-site .section-title {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  font-size: clamp(2.7rem, 1.7rem + 3.6vw, 4.6rem);
+  color: var(--st-navy);
+  zoom: 1;
+}
+.landing-site .hl {
+  background: linear-gradient(transparent 44%, var(--st-gold) 44% 84%, transparent 84%);
+  padding: 0 0.12em;
+  margin: 0 -0.05em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.landing-site .ink-blue { color: var(--st-ink); }
+
+/* hero: light board instead of the dark aurora */
+.landing-site .hero-dark {
+  color: var(--st-navy);
+  background: transparent;
+  border-radius: 0 !important;
+  isolation: isolate;
+}
+.landing-site .hero-dark::before, .landing-site .hero-dark::after, .landing-site .grain, .landing-site .hero-glow { display: none; }
+.landing-site .glass {
+  background: #fff;
+  border: 3px solid var(--st-ink);
+  border-radius: var(--st-hand-radius);
+  box-shadow: 6px 7px 0 var(--st-gold);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.landing-site .text-shine {
+  color: var(--st-ink);
+  background: linear-gradient(transparent 44%, var(--st-gold) 44% 84%, transparent 84%);
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  animation: none;
+  padding: 0 0.1em;
+}
+
+/* navbar: flat marker pill */
+.landing-site #navbar > div {
+  background: #fff !important;
+  border: 3px solid var(--st-ink) !important;
+  border-radius: 1.6rem !important;
+  box-shadow: 4px 4px 0 var(--st-gold) !important;
+  backdrop-filter: none !important;
+}
+.landing-site #navbar .bg-primary\/10 { background: var(--st-gold) !important; border-radius: 999px; }
+.landing-site #navbar .text-primary { color: var(--st-navy); }
+.landing-site #navbar a.bg-primary, .landing-site #navbar a[class*="bg-primary"] { border: 2.5px solid var(--st-navy); box-shadow: 3px 3px 0 var(--st-gold); }
+
+/* solid blue panels (trial, features CTA) become flat ink blocks */
+.landing-site [class*="from-primary"][class*="to-accent-dark"] {
+  background: var(--st-ink) !important;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.15) 1.6px, transparent 2px) !important;
+  background-size: 28px 28px !important;
+  border: 3px solid var(--st-navy) !important;
+  border-radius: var(--st-hand-radius) !important;
+  box-shadow: 7px 8px 0 var(--st-gold) !important;
+}
+
+/* form fields */
+.landing-site :is(input, select, textarea) {
+  font-family: var(--font-sans);
+  border-width: 2.5px;
+  border-color: var(--st-ink);
+  border-radius: var(--st-hand-radius-sm);
+  background-color: #fff;
+}
+.landing-site :is(input, select, textarea):focus { outline: none; border-color: var(--st-navy); box-shadow: 3px 3px 0 var(--st-gold); }
+.landing-site :is(button, a, input, select, textarea):focus-visible { outline: 3px solid var(--st-navy); outline-offset: 3px; box-shadow: 0 0 0 6px var(--st-gold); }
+
+/* footer: navy board with a gold marker rule */
+.landing-site footer {
+  background-color: var(--st-navy);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1.5px, transparent 2px);
+  background-size: 28px 28px;
+  border-top: 6px solid var(--st-gold);
+}
+
+/* doodles used in the hero */
+.landing-site .doodle { position: absolute; pointer-events: none; }
+@keyframes doodle-wiggle { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+.landing-site .doodle-wiggle { animation: doodle-wiggle 3.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .landing-site .doodle-wiggle { animation: none; } }
+@media (max-width: 640px) { .landing-site h1 { zoom: 1; } .landing-site h2, .landing-site h3 { zoom: 1.12; } }
+
+/* self-hosted hand-drawn fonts (same as the StudyTask videos) */
+@font-face { font-family: "Caveat"; font-weight: 700; font-style: normal; font-display: swap; src: url("/static/fonts/caveat-cyrillic-700-normal.woff2") format("woff2"); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: "Caveat"; font-weight: 700; font-style: normal; font-display: swap; src: url("/static/fonts/caveat-latin-700-normal.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Neucha"; font-weight: 400; font-style: normal; font-display: swap; src: url("/static/fonts/neucha-cyrillic-400-normal.woff2") format("woff2"); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: "Neucha"; font-weight: 400; font-style: normal; font-display: swap; src: url("/static/fonts/neucha-latin-400-normal.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+/* readability: Neucha runs small, so lift the tiny utility sizes */
+.landing-site .text-xs { font-size: 0.95rem; line-height: 1.35; }
+.landing-site .text-sm { font-size: 1.05rem; line-height: 1.5; }
+.landing-site .text-base { font-size: 1.15rem; }
+.landing-site .text-\[10px\], .landing-site .text-\[11px\] { font-size: 0.85rem; }
+.landing-site .text-\[12px\], .landing-site .text-\[13px\], .landing-site .text-\[14px\], .landing-site .text-\[15px\] { font-size: 1rem; }
+.landing-site h3 { zoom: 1.4; }
+.landing-site h4 { font-family: var(--font-hand); font-weight: 700; zoom: 1.3; }
+.landing-site h1 { font-size: clamp(3rem, 1.5rem + 4.6vw, 5.4rem) !important; }
+/* orange accents become gold */
+.landing-site [class*="to-orange-500"] { background: var(--st-gold) !important; border: 3px solid var(--st-navy); border-radius: var(--st-hand-radius-sm) !important; box-shadow: 4px 4px 0 var(--st-navy) !important; }
+.landing-site [class*="to-orange-500"], .landing-site [class*="to-orange-500"] * { color: var(--st-navy) !important; }
+@media (max-width: 640px) { .landing-site h1 { zoom: 1; } .landing-site h3 { zoom: 1.25; } }

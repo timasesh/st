@@ -56,7 +56,7 @@ export default function Pricing() {
             Тарифы
           </span>
           <h2 className="section-title">
-            Цены и форматы
+            Цены и <span className="hl">форматы</span>
           </h2>
           <p className="text-muted">
             Математика, 5–9 классы. Урок — 60 минут. Пробный урок — один, бесплатно.

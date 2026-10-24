@@ -40,7 +40,7 @@ export default function HowItWorks() {
 
         <div className="text-center max-w-3xl mx-auto mb-14 space-y-4">
           <span className="eyebrow">Три простых шага</span>
-          <h2 className="section-title">Как проходит неделя с Study Task</h2>
+          <h2 className="section-title">Как проходит неделя с <span className="hl">Study Task</span></h2>
           <p className="text-muted text-base sm:text-lg">
             Урок → квиз → награда. Цикл повторяется, и каждый раз ребёнок чуть ближе к следующему уровню.
           </p>
