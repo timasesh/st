@@ -1,17 +1,34 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
-import InteractivePlatform from './components/InteractivePlatform';
-import Features from './components/Features';
-import HowItWorks from './components/HowItWorks';
-import Pricing from './components/Pricing';
-import FreeTrial from './components/FreeTrial';
-import ContactForm from './components/ContactForm';
-import Footer from './components/Footer';
+const InteractivePlatform = lazy(() => import('./components/InteractivePlatform'));
+const Features = lazy(() => import('./components/Features'));
+const HowItWorks = lazy(() => import('./components/HowItWorks'));
+const Pricing = lazy(() => import('./components/Pricing'));
+const FreeTrial = lazy(() => import('./components/FreeTrial'));
+const ContactForm = lazy(() => import('./components/ContactForm'));
+const Footer = lazy(() => import('./components/Footer'));
 const StudentLoginPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.StudentLoginPage })));
 const AdminLoginPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.AdminLoginPage })));
 const UserPortalPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.UserPortalPage })));
 const AdminDashboardPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.AdminDashboardPage })));
+
+// Секции ниже первого экрана подгружаются после первой отрисовки, чтобы Hero появлялся сразу.
+function useDeferredMount() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const go = () => setReady(true);
+    const w = window as any;
+    const t = w.requestIdleCallback ? w.requestIdleCallback(go, { timeout: 1500 }) : window.setTimeout(go, 600);
+    const events = ['scroll', 'pointerdown', 'keydown', 'touchstart', 'hashchange'];
+    events.forEach((e) => window.addEventListener(e, go, { once: true, passive: true }));
+    return () => {
+      if (w.cancelIdleCallback && w.requestIdleCallback) w.cancelIdleCallback(t); else clearTimeout(t);
+      events.forEach((e) => window.removeEventListener(e, go));
+    };
+  }, []);
+  return ready;
+}
 
 function PageLoading() {
   return <main className="grid min-h-[60vh] place-items-center bg-surface p-6 text-center text-sm font-semibold text-muted" role="status">Загружаем страницу…</main>;
@@ -60,6 +77,7 @@ function loadStoredProgress(): StoredProgress {
 
 export default function App() {
   const initialProgress = loadStoredProgress();
+  const belowFoldReady = useDeferredMount();
 
   // Global gamified state
   const [stars, setStars] = useState<number>(initialProgress.stars);
@@ -252,6 +270,8 @@ export default function App() {
         {/* Hero Banner Section */}
         <Hero onBookTrial={handleBookTrial} stars={stars} />
 
+        {belowFoldReady ? (
+        <Suspense fallback={<div className="min-h-[100vh]" aria-hidden="true" />}>
         {/* Live Interactive Gamification Cockpit */}
         <InteractivePlatform
           stars={stars}
@@ -285,10 +305,18 @@ export default function App() {
 
         {/* Quick Contacts details */}
         <ContactForm />
+        </Suspense>
+        ) : (
+          <div className="min-h-[300vh]" aria-hidden="true" />
+        )}
       </main>
 
       {/* Modern footer details */}
-      <Footer />
+      {belowFoldReady && (
+        <Suspense fallback={null}>
+          <Footer />
+        </Suspense>
+      )}
 
       {/* LEVEL UP POPUP OVERLAY */}
       <AnimatePresence>

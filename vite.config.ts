@@ -11,6 +11,16 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom'],
+            motion: ['motion/react'],
+          },
+        },
+      },
+    },
     preview: {
       host: '0.0.0.0',
       allowedHosts: true as const,

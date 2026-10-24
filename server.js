@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import compression from 'compression';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { validateHomeworkUpload, writeJsonAtomically } from './server/homework-files.js';
@@ -2164,8 +2165,20 @@ async function start() {
 
   if (isProduction) {
     const distDir = path.join(ROOT, 'dist');
-    app.use(express.static(distDir));
-    app.get('*', (_req, res) => res.sendFile(path.join(distDir, 'index.html')));
+    // gzip/brotli for text assets; hashed bundles cached for a year, media for a week, HTML never
+    app.use(compression());
+    app.use(express.static(distDir, {
+      index: false,
+      setHeaders(res, filePath) {
+        if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        else if (/\.html?$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
+        else res.setHeader('Cache-Control', 'public, max-age=604800');
+      },
+    }));
+    app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(path.join(distDir, 'index.html'));
+    });
   } else {
     const { createServer } = await import('vite');
     const vite = await createServer({

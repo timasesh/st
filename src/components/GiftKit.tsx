@@ -10,16 +10,16 @@ type GiftItem = { id: string; name: string; stars: number; images: string[] };
 // Несколько вариантов (например, блокноты) — просто несколько путей в images.
 export const KIT_1: GiftItem[] = [
   { id: 'stickers', name: 'Стикерпак', stars: 5, images:  [
-    '/static/gifts/набор-наклеек-1.png',
+    '/static/gifts/stickers.webp',
   ] },
   { id: 'notebook', name: 'Блокнот', stars: 7, images: [
-    '/static/gifts/блокнот-1(3-штуки-на-выбор).png',
+    '/static/gifts/notebook.webp',
   ] },
   { id: 'tshirt', name: 'Фирменная футболка', stars: 10, images: [
-    '/static/gifts/футболка.png',
+    '/static/gifts/tshirt.webp',
   ] },
   { id: 'backpack', name: 'Фирменный рюкзак', stars: 12, images: [
-    '/static/gifts/рюкзак-(3-штуки-на-выбор).png',
+    '/static/gifts/backpack.webp',
   ] },
 ];
 // ▲▲▲ ▲▲▲
@@ -84,9 +84,9 @@ export default function GiftKit() {
             Набор покупается отдельно. Звёзды за уроки и квизы дают место в рейтинге учеников.
           </p>
         </div>
-        <div className="rounded-3xl bg-[#FFD34F] border-[3px] border-navy px-6 py-4 text-center shadow-[4px_4px_0_#12266F]">
-          <div className="text-xs font-extrabold text-navy">Весь набор</div>
-          <div className="font-display font-extrabold text-navy text-4xl leading-tight">{KIT_PRICE.toLocaleString('ru-RU')} ₸</div>
+        <div className="rounded-3xl bg-gradient-to-br from-amber-300 to-amber-500 px-6 py-4 text-center shadow-[0_16px_36px_rgba(245,158,11,0.35)]">
+          <div className="text-xs font-extrabold text-amber-950/80">Весь набор</div>
+          <div className="font-display font-extrabold text-amber-950 text-4xl leading-tight">{KIT_PRICE.toLocaleString('ru-RU')} ₸</div>
         </div>
       </div>
 
