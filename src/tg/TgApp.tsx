@@ -1,0 +1,508 @@
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ArrowRight, BookOpen, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, Clock3, FileQuestion, Gift, Lock, LogOut, MessageCircle,
+  Paperclip, Play, RefreshCw, Rocket, Settings, Sparkles, Star, Trophy, X,
+} from 'lucide-react';
+
+/* ───────── Telegram ───────── */
+type TgWebApp = {
+  ready: () => void; expand: () => void; close: () => void; disableVerticalSwipes?: () => void;
+  setHeaderColor?: (c: string) => void; setBackgroundColor?: (c: string) => void; enableClosingConfirmation?: () => void; disableClosingConfirmation?: () => void;
+  openLink: (url: string) => void;
+  BackButton: { show: () => void; hide: () => void; onClick: (cb: () => void) => void; offClick: (cb: () => void) => void };
+  HapticFeedback?: { impactOccurred: (s: string) => void; notificationOccurred: (s: string) => void; selectionChanged: () => void };
+  initDataUnsafe?: { user?: { first_name?: string } };
+};
+const tg: TgWebApp | undefined = (window as unknown as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
+const tap = (kind: 'light' | 'medium' = 'light') => { try { tg?.HapticFeedback?.impactOccurred(kind); } catch { /* ignore */ } };
+const notify = (kind: 'success' | 'error' | 'warning') => { try { tg?.HapticFeedback?.notificationOccurred(kind); } catch { /* ignore */ } };
+const openExternal = (url: string) => { if (tg) tg.openLink(url); else window.open(url, '_blank', 'noopener'); };
+
+/* ───────── Типы ───────── */
+type Tab = 'home' | 'plan' | 'tests' | 'hw' | 'prizes' | 'sky';
+type Lesson = { id: string; day: number; hour: number; title: string; lessonLink?: string; lessonDescription?: string; attendance?: boolean };
+type Question = { question: string; choices: string[] };
+type Test = { id: string; title: string; studentClass: string; lessonHour?: number; deadlineAt?: string; durationMinutes: number; questions: Question[]; status: 'assigned' | 'completed' | 'expired'; score?: number };
+type Homework = { id: string; date: string; time: string; topic: string; nextHomework: string; attachment?: { filename: string; mimeType?: string } | null };
+type Message = { id: string; at: string; sender: string; body: string; read: boolean };
+type Portal = {
+  account: { firstName: string; lastName: string; studentClass?: string; trialAccount?: boolean; role: string; teacher?: { firstName: string; lastName: string } | null };
+  progress: { stars?: number; xp?: number; level?: number } | null;
+  lessons: Lesson[]; studentTests?: Test[]; studentHomework?: Homework[]; messages: Message[];
+};
+
+/* ───────── Утилиты ───────── */
+const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+const KIT = [
+  { id: 'stickers', name: 'Стикерпак', stars: 5, img: '/static/gifts/stickers.webp' },
+  { id: 'notebook', name: 'Блокнот', stars: 7, img: '/static/gifts/notebook.webp' },
+  { id: 'tshirt', name: 'Фирменная футболка', stars: 10, img: '/static/gifts/tshirt.webp' },
+  { id: 'backpack', name: 'Фирменный рюкзак', stars: 12, img: '/static/gifts/backpack.webp' },
+];
+const KIT_COST = KIT.reduce((s, i) => s + i.stars, 0);
+const pad = (n: number) => String(n).padStart(2, '0');
+const hh = (h: number) => `${pad(h)}:00–${pad(h + 1)}:00`;
+
+function clockOf(now: Date) {
+  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Almaty', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+  return { day: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(get('weekday')), hour: Number(get('hour')), minute: Number(get('minute')) };
+}
+function offsetOf(l: Lesson, now: Date) {
+  const c = clockOf(now);
+  let d = (l.day - c.day + 7) % 7;
+  if (d === 0 && (l.hour + 1) * 60 <= c.hour * 60 + c.minute) d = 7;
+  return d;
+}
+function dateOf(now: Date, days: number) {
+  return new Intl.DateTimeFormat('ru-KZ', { timeZone: 'Asia/Almaty', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(now.getTime() + days * 86400000));
+}
+function greeting(now: Date) { const h = clockOf(now).hour; return h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер'; }
+const timeOf = (iso?: string) => iso ? new Date(iso).toLocaleTimeString('ru-KZ', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' }) : '—';
+const plural = (n: number, a: string, b: string, c: string) => { const m = n % 100, k = n % 10; return m > 10 && m < 20 ? c : k === 1 ? a : k > 1 && k < 5 ? b : c; };
+
+async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, { credentials: 'same-origin', ...init, headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(init?.headers || {}) } });
+  const text = await res.text();
+  let data: any = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { /* not json */ }
+  if (!res.ok) { const e: Error & { status?: number } = new Error(data.error || 'Что-то пошло не так. Попробуйте ещё раз.'); e.status = res.status; throw e; }
+  return data as T;
+}
+const errText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
+
+/* сжимаем фото с телефона, чтобы влезть в лимит 5 МБ */
+async function prepareFile(file: File): Promise<{ filename: string; mimeType: string; data: string }> {
+  const toB64 = (blob: Blob) => new Promise<string>((ok, no) => { const r = new FileReader(); r.onerror = () => no(new Error('Не удалось прочитать файл.')); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
+  if (file.type === 'application/pdf') {
+    if (file.size > 5 * 1024 * 1024) throw new Error('PDF должен быть не больше 5 МБ.');
+    return { filename: file.name.replace(/\.[^.]+$/, '') + '.pdf', mimeType: 'application/pdf', data: await toB64(file) };
+  }
+  if (!file.type.startsWith('image/')) throw new Error('Выберите фото или PDF.');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('Не удалось открыть изображение. Попробуйте JPG или PNG.')); i.src = url; });
+    const scale = Math.min(1, 1800 / Math.max(img.width, img.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
+    const ctx = canvas.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    let blob: Blob | null = null;
+    for (const q of [0.85, 0.7, 0.55]) { blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', q)); if (blob && blob.size < 4.5 * 1024 * 1024) break; }
+    if (!blob || blob.size >= 5 * 1024 * 1024) throw new Error('Фото слишком большое. Сделайте снимок поменьше.');
+    return { filename: (file.name.replace(/\.[^.]+$/, '') || 'homework') + '.jpg', mimeType: 'image/jpeg', data: await toB64(blob) };
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/* ───────── Мелкие компоненты ───────── */
+function Empty({ icon: Icon, title, text }: { icon: typeof BookOpen; title: string; text: string }) {
+  return <div className="card flat empty"><Icon size={34} /><h3>{title}</h3><p className="muted small" style={{ marginTop: 6 }}>{text}</p></div>;
+}
+function Head({ kicker, title, sub }: { kicker: string; title: string; sub?: string }) {
+  return <div style={{ margin: '4px 2px 14px' }}><p className="tiny muted" style={{ textTransform: 'uppercase', letterSpacing: 1.4 }}>{kicker}</p><h2><span className="hl">{title}</span></h2>{sub && <p className="muted small" style={{ marginTop: 6 }}>{sub}</p>}</div>;
+}
+function Sheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  useEffect(() => { tg?.BackButton.show(); tg?.BackButton.onClick(onClose); return () => { tg?.BackButton.offClick(onClose); tg?.BackButton.hide(); }; }, [onClose]);
+  return <div className="sheet-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}><div className="sheet" role="dialog" aria-modal="true">{children}</div></div>;
+}
+function Toast({ text, kind, onDone }: { text: string; kind: 'ok' | 'bad'; onDone: () => void }) {
+  useEffect(() => { const t = setTimeout(onDone, 3600); return () => clearTimeout(t); }, [text, onDone]);
+  return <div className="toast"><div className={`card ${kind}`} role="status" onClick={onDone}><span className="small">{text}</span></div></div>;
+}
+
+/* ───────── Вход ───────── */
+function Login({ onDone }: { onDone: () => void }) {
+  const [phone, setPhone] = useState('+7 ');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const submit = async (e: FormEvent) => {
+    e.preventDefault(); setBusy(true); setError('');
+    try { await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ phone, password, audience: 'student' }) }); notify('success'); onDone(); }
+    catch (x) { notify('error'); setError(errText(x, 'Не удалось войти.')); }
+    finally { setBusy(false); }
+  };
+  return <div className="login">
+    <div className="row" style={{ marginBottom: 18 }}><img src="/static/ST.webp" alt="" className="logo" /><div><h3 style={{ lineHeight: 1 }}>StudyTask</h3><p className="muted small">Кабинет ученика</p></div></div>
+    <h1>Привет! <span className="hl">Заходи</span> учиться</h1>
+    <p className="muted" style={{ margin: '10px 0 18px' }}>Телефон и пароль — те же, что на сайте. Если пароля нет, напиши преподавателю.</p>
+    <form onSubmit={submit} className="stack card">
+      <label className="field"><span>Номер телефона</span><input className="input" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required /></label>
+      <label className="field"><span>Пароль</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+      {error && <p className="err" role="alert">{error}</p>}
+      <button className="btn block gold" disabled={busy || password.length < 1}>{busy ? 'Входим…' : 'Войти'}</button>
+    </form>
+  </div>;
+}
+
+/* ───────── Главная ───────── */
+function Home({ portal, now, go, openHw, startTest }: { portal: Portal; now: Date; go: (t: Tab) => void; openHw: (h: Homework) => void; startTest: (t: Test) => void }) {
+  const lessons = useMemo(() => portal.lessons.map((l) => ({ ...l, d: offsetOf(l, now) })).sort((a, b) => a.d - b.d || a.hour - b.hour), [portal.lessons, now]);
+  const c = clockOf(now);
+  const next = lessons[0];
+  const live = Boolean(next && next.d === 0 && c.hour * 60 + c.minute >= next.hour * 60 && c.hour * 60 + c.minute < (next.hour + 1) * 60 + 10);
+  const tests = (portal.studentTests || []).filter((t) => t.status === 'assigned');
+  const hw = (portal.studentHomework || []).filter((h) => !h.attachment);
+  const stars = portal.progress?.stars ?? 0, level = portal.progress?.level ?? 1, xp = portal.progress?.xp ?? 0;
+  const target = level * 100, pct = target ? Math.min(100, Math.max(0, xp) / target * 100) : 0;
+  return <div className="stack">
+    <div><p className="muted small">{greeting(now)},</p><h1><span className="hl">{portal.account.firstName}</span>!</h1></div>
+
+    <div className="card">
+      <div className="row between"><span className="hand" style={{ fontSize: 26 }}>Уровень {level}</span><span className="pill gold"><Star size={15} fill="currentColor" /> {stars}</span></div>
+      <div className="xp" style={{ margin: '8px 0 4px' }}><i style={{ width: `${pct}%` }} /></div>
+      <p className="tiny muted">{Math.min(xp, target)} / {target} XP · до следующего уровня {Math.max(0, target - xp)}</p>
+    </div>
+
+    {next ? <div className="card blue">
+      <p className="small" style={{ opacity: .85 }}>{live ? 'Занятие идёт прямо сейчас' : next.d === 0 ? 'Сегодня' : 'Следующее занятие'}</p>
+      <h2 style={{ margin: '4px 0 6px' }}>{next.title}</h2>
+      <p className="row small" style={{ gap: 6 }}><Clock3 size={16} /> {next.d === 0 ? 'Сегодня' : dateOf(now, next.d)} · {hh(next.hour)}</p>
+      {next.lessonDescription && <p className="small muted" style={{ marginTop: 6 }}>{next.lessonDescription}</p>}
+      {next.lessonLink && <button className="btn gold block" style={{ marginTop: 12 }} onClick={() => { tap('medium'); openExternal(next.lessonLink!); }}><Play size={18} fill="currentColor" /> {live ? 'Подключиться' : 'Открыть ссылку на занятие'}</button>}
+    </div> : <Empty icon={CalendarDays} title="Занятий пока нет" text={portal.account.trialAccount ? 'После пробного урока появится расписание.' : 'Когда преподаватель добавит занятие, оно появится здесь.'} />}
+
+    {(tests.length > 0 || hw.length > 0) && <div className="stack">
+      {tests[0] && <button className="card warn tap" onClick={() => startTest(tests[0])}><div className="row"><FileQuestion size={26} /><div className="grow"><h3>Новый тест</h3><p className="small muted">{tests[0].title} · {tests[0].questions.length} {plural(tests[0].questions.length, 'вопрос', 'вопроса', 'вопросов')}</p></div><ArrowRight size={20} /></div></button>}
+      {hw[0] && <button className="card tap" onClick={() => openHw(hw[0])}><div className="row"><Paperclip size={26} /><div className="grow"><h3>Домашнее задание</h3><p className="small muted">{hw[0].topic || 'Задание от преподавателя'} — ждёт выполнения</p></div><ArrowRight size={20} /></div></button>}
+    </div>}
+
+    {lessons.length > 1 && <>
+      <h3 style={{ marginTop: 6 }}>Ближайшие занятия</h3>
+      {lessons.slice(1, 4).map((l) => <div key={l.id} className="slot"><span className="time">{pad(l.hour)}:00</span><div className="grow"><p>{l.title}</p><p className="tiny muted">{l.d === 0 ? 'Сегодня' : dateOf(now, l.d)}</p></div>{l.lessonLink && <button className="iconbtn" style={{ width: 40, height: 40 }} aria-label="Открыть занятие" onClick={() => openExternal(l.lessonLink!)}><Play size={16} fill="currentColor" /></button>}</div>)}
+      <button className="btn ghost block small" onClick={() => go('plan')}>Всё расписание</button>
+    </>}
+  </div>;
+}
+
+/* ───────── Расписание ───────── */
+function Plan({ portal, now }: { portal: Portal; now: Date }) {
+  const c = clockOf(now);
+  const any = portal.lessons.length > 0;
+  return <div>
+    <Head kicker="План на неделю" title="Расписание" sub="Время указано по Алматы." />
+    {!any ? <Empty icon={CalendarDays} title="Расписание пока пустое" text="Как только появятся занятия, они распределятся по дням недели." /> :
+      DAYS.map((name, di) => {
+        const list = portal.lessons.filter((l) => l.day === di).sort((a, b) => a.hour - b.hour);
+        if (!list.length) return null;
+        return <section key={name}>
+          <div className="day-title"><h3>{name}</h3>{c.day === di && <span className="pill blue">сегодня</span>}</div>
+          <div className="stack">{list.map((l) => {
+            const isLive = c.day === di && l.hour === c.hour; const abs = l.attendance === false;
+            return <div key={l.id} className={`slot ${isLive ? 'live' : abs ? 'abs' : ''}`}>
+              <span className="time">{pad(l.hour)}:00</span>
+              <div className="grow"><p>{l.title}</p><p className="tiny muted">{hh(l.hour)}{abs ? ' · не посещено' : isLive ? ' · идёт сейчас' : ''}</p></div>
+              {l.lessonLink && <button className="btn small" onClick={() => { tap(); openExternal(l.lessonLink!); }}><Play size={14} fill="currentColor" /></button>}
+            </div>;
+          })}</div>
+        </section>;
+      })}
+  </div>;
+}
+
+/* ───────── Тесты ───────── */
+function Tests({ portal, start }: { portal: Portal; start: (t: Test) => void }) {
+  const tests = [...(portal.studentTests || [])].sort((a, b) => (a.status === b.status ? 0 : a.status === 'assigned' ? -1 : 1));
+  const waiting = tests.filter((t) => t.status === 'assigned').length;
+  return <div>
+    <Head kicker="Проверка знаний" title="Тесты" sub={waiting ? `${waiting} ${plural(waiting, 'тест ждёт', 'теста ждут', 'тестов ждут')} выполнения` : 'Сначала новые, потом результаты.'} />
+    {!tests.length ? <Empty icon={FileQuestion} title="Пока нет тестов" text="После занятия преподаватель может добавить тест — он появится здесь." /> :
+      <div className="stack">{tests.map((t) => <div key={t.id} className={`card ${t.status === 'assigned' ? 'warn' : t.status === 'completed' ? 'ok' : 'flat'}`}>
+        <div className="row" style={{ alignItems: 'flex-start' }}>
+          {t.status === 'expired' ? <Lock size={24} /> : t.status === 'completed' ? <CheckCircle2 size={24} /> : <FileQuestion size={24} />}
+          <div className="grow"><h3>{t.title}</h3><p className="small muted">{t.studentClass} · {t.questions.length} {plural(t.questions.length, 'вопрос', 'вопроса', 'вопросов')} · ≈{t.durationMinutes} мин</p>
+            {t.status === 'assigned' && <p className="small" style={{ marginTop: 4 }}>{t.deadlineAt ? `Сдать до ${timeOf(t.deadlineAt)}` : t.lessonHour !== undefined ? `Открывается в ${pad(t.lessonHour)}:50` : 'Время уточнит преподаватель'}</p>}
+            {t.status === 'expired' && <p className="small" style={{ marginTop: 4 }}>Тест закрылся в {timeOf(t.deadlineAt)}</p>}
+            {t.status === 'completed' && <p className="small" style={{ marginTop: 4 }}>Результат: <b>{t.score ?? 0} из {t.questions.length}</b></p>}
+          </div></div>
+        {t.status === 'assigned' && <button className="btn gold block" style={{ marginTop: 12 }} onClick={() => { tap('medium'); start(t); }}>Начать тест <ArrowRight size={18} /></button>}
+      </div>)}</div>}
+  </div>;
+}
+
+function TestRunner({ test, onExit, onDone }: { test: Test; onExit: () => void; onDone: (score: number, total: number) => void }) {
+  const [i, setI] = useState(0);
+  const [answers, setAnswers] = useState<number[]>(() => test.questions.map(() => -1));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const total = test.questions.length;
+  const q = test.questions[i];
+  const confirmExit = useCallback(() => { if (answers.some((a) => a >= 0) && !window.confirm('Выйти из теста? Ответы не сохранятся.')) return; onExit(); }, [answers, onExit]);
+  useEffect(() => { tg?.BackButton.show(); tg?.BackButton.onClick(confirmExit); tg?.enableClosingConfirmation?.(); return () => { tg?.BackButton.offClick(confirmExit); tg?.BackButton.hide(); tg?.disableClosingConfirmation?.(); }; }, [confirmExit]);
+  const pick = (k: number) => { tap(); setAnswers((a) => a.map((v, idx) => (idx === i ? k : v))); };
+  const finish = async () => {
+    setBusy(true); setError('');
+    try { const r = await api<{ score: number; total: number }>(`/api/student/tests/${test.id}/submit`, { method: 'POST', body: JSON.stringify({ answers }) }); notify('success'); onDone(r.score, r.total); }
+    catch (x) { notify('error'); setError(errText(x, 'Не удалось отправить ответы.')); setBusy(false); }
+  };
+  return <div className="stack">
+    <div className="row"><button className="iconbtn" onClick={confirmExit} aria-label="Выйти"><X size={20} /></button><div className="grow"><div className="q-progress"><i style={{ width: `${((i + (answers[i] >= 0 ? 1 : 0)) / total) * 100}%` }} /></div></div><span className="hand" style={{ fontSize: 24 }}>{i + 1}/{total}</span></div>
+    <p className="tiny muted">{test.title}</p>
+    <div className="card" key={i}><h2 style={{ fontSize: 30, lineHeight: 1.1, whiteSpace: 'pre-wrap' }}>{q.question}</h2></div>
+    <div className="stack">{q.choices.map((c, k) => <button key={k} className={`choice ${answers[i] === k ? 'on' : ''}`} onClick={() => pick(k)}><span className="k">{'АБВГДЕ'[k]}</span><span style={{ whiteSpace: 'pre-wrap' }}>{c}</span></button>)}</div>
+    {error && <p className="err" role="alert">{error}</p>}
+    <div className="row">
+      <button className="btn ghost" disabled={i === 0} onClick={() => setI(i - 1)}><ChevronLeft size={18} /></button>
+      {i < total - 1
+        ? <button className="btn block gold" disabled={answers[i] < 0} onClick={() => { tap(); setI(i + 1); }}>Дальше <ArrowRight size={18} /></button>
+        : <button className="btn block" disabled={busy || answers.some((a) => a < 0)} onClick={() => void finish()}>{busy ? 'Отправляем…' : 'Завершить тест'}</button>}
+    </div>
+    {i === total - 1 && answers.some((a) => a < 0) && <p className="tiny muted" style={{ textAlign: 'center' }}>Ответь на все вопросы — вернись назад к пропущенным.</p>}
+  </div>;
+}
+
+/* ───────── Домашние задания ───────── */
+function HomeworkList({ portal, open }: { portal: Portal; open: (h: Homework) => void }) {
+  const list = [...(portal.studentHomework || [])].sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+  return <div>
+    <Head kicker="Задания от преподавателя" title="Домашка" sub="Открой задание, прочитай и прикрепи решение." />
+    {!list.length ? <Empty icon={Paperclip} title="Заданий пока нет" text="Новое задание появится после того, как преподаватель добавит его к занятию." /> :
+      <div className="stack">{list.map((h) => <button key={h.id} className="card tap" onClick={() => open(h)}>
+        <div className="row between" style={{ alignItems: 'flex-start' }}><span className="tiny muted">{h.date} · {h.time}</span><span className={`pill ${h.attachment ? 'green' : 'gold'}`}>{h.attachment ? 'файл отправлен' : 'ждёт решения'}</span></div>
+        <h3 style={{ marginTop: 6 }}>{h.topic || 'Домашнее задание'}</h3>
+        {h.nextHomework && <p className="small muted" style={{ marginTop: 4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', whiteSpace: 'pre-wrap' }}>{h.nextHomework}</p>}
+      </button>)}</div>}
+  </div>;
+}
+
+function HomeworkSheet({ hw, onClose, onSaved, say }: { hw: Homework; onClose: () => void; onSaved: () => Promise<void>; say: (t: string, k: 'ok' | 'bad') => void }) {
+  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<{ url: string; image: boolean } | null>(null);
+  const [pickedName, setPickedName] = useState('');
+  const [sent, setSent] = useState(hw.attachment || null);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview.url); }, [preview]);
+  const onFile = async (file?: File) => {
+    if (!file) return;
+    setBusy(true); setPickedName(file.name);
+    try {
+      const payload = await prepareFile(file);
+      await api(`/api/student/homework/${hw.id}/attachment`, { method: 'POST', body: JSON.stringify(payload) });
+      setSent({ filename: payload.filename, mimeType: payload.mimeType }); notify('success'); say('Решение отправлено преподавателю!', 'ok'); await onSaved();
+    } catch (x) { notify('error'); say(errText(x, 'Не удалось отправить файл.'), 'bad'); }
+    finally { setBusy(false); }
+  };
+  const view = async () => {
+    try {
+      const res = await fetch(`/api/student/homework/${hw.id}/attachment`, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('Не удалось открыть файл.');
+      const blob = await res.blob();
+      setPreview({ url: URL.createObjectURL(blob), image: blob.type.startsWith('image/') });
+    } catch (x) { say(errText(x, 'Не удалось открыть файл.'), 'bad'); }
+  };
+  return <Sheet onClose={onClose}>
+    <div className="row between" style={{ alignItems: 'flex-start' }}><div><p className="tiny muted">Занятие · {hw.date} {hw.time}</p><h2 style={{ fontSize: 30 }}>{hw.topic || 'Домашнее задание'}</h2></div><button className="iconbtn" onClick={onClose} aria-label="Закрыть"><X size={20} /></button></div>
+    <div className="hw-text" style={{ margin: '12px 0' }}>{hw.nextHomework || 'Текст задания не указан.'}</div>
+    {sent && <div className="card ok" style={{ marginBottom: 12 }}><div className="row"><CheckCircle2 size={22} /><div className="grow"><p className="small">Отправлено: <b>{sent.filename}</b></p></div><button className="btn small ghost" onClick={() => void view()}>Смотреть</button></div>
+      {preview && (preview.image ? <img src={preview.url} alt="Мой файл" className="preview" style={{ marginTop: 10 }} /> : <a className="btn small ghost block" style={{ marginTop: 10 }} href={preview.url} download={sent.filename}>Скачать PDF</a>)}</div>}
+    <label className="btn gold block" style={{ cursor: 'pointer', opacity: busy ? .6 : 1 }}>
+      <Camera size={20} /> {busy ? 'Отправляем…' : sent ? 'Заменить решение' : 'Прикрепить решение'}
+      <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} disabled={busy} onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ''; }} />
+    </label>
+    <p className="tiny muted" style={{ textAlign: 'center', marginTop: 8 }}>Сфотографируй тетрадь или выбери PDF. Фото сожмём сами. {pickedName && busy ? `(${pickedName})` : ''}</p>
+  </Sheet>;
+}
+
+/* ───────── Призы ───────── */
+function Prizes({ portal, refresh, say }: { portal: Portal; refresh: () => Promise<void>; say: (t: string, k: 'ok' | 'bad') => void }) {
+  const stars = portal.progress?.stars ?? 0;
+  const locked = Boolean(portal.account.trialAccount);
+  const [busy, setBusy] = useState(false);
+  const buy = async () => {
+    if (!window.confirm(`Оформить полный набор за ${KIT_COST} звёзд?`)) return;
+    setBusy(true);
+    try { await api('/api/student/prize-kit', { method: 'POST', body: JSON.stringify({ itemIds: KIT.map((i) => i.id) }) }); notify('success'); say(`Набор оформлен! Списано ${KIT_COST} звёзд.`, 'ok'); await refresh(); }
+    catch (x) { notify('error'); say(errText(x, 'Не удалось оформить набор.'), 'bad'); }
+    finally { setBusy(false); }
+  };
+  const enough = stars >= KIT_COST;
+  return <div>
+    <Head kicker="Магазин наград" title="Призы" sub="Призы выдаются только полным комплектом." />
+    <div className={locked ? 'locked' : ''}>
+      {locked && <div className="veil"><div><Lock size={34} /><h3>Призы пока закрыты</h3><p className="small muted" style={{ marginTop: 4 }}>Они откроются, когда ты запишешься на занятия после пробного урока.</p></div></div>}
+      <div className="stack" aria-hidden={locked || undefined}>
+        <div className="card"><div className="row between"><span>Твои звёзды</span><span className="pill gold"><Star size={15} fill="currentColor" /> {stars}</span></div>
+          <div className="xp" style={{ margin: '8px 0 4px' }}><i style={{ width: `${Math.min(100, stars / KIT_COST * 100)}%` }} /></div>
+          <p className="tiny muted">{enough ? 'Звёзд хватает на полный набор!' : `Для набора нужно ${KIT_COST}, не хватает ${KIT_COST - stars}.`}</p></div>
+        <div className="gifts">{KIT.map((g) => <div key={g.id} className="gift"><div className="pic"><img src={g.img} alt={g.name} loading="lazy" /></div><p className="small" style={{ margin: '6px 0 2px' }}>{g.name}</p><span className="pill gold"><Star size={13} fill="currentColor" /> {g.stars}</span></div>)}</div>
+        <div className="card flat row between"><span>Полный набор</span><b className="hand" style={{ fontSize: 28 }}>{KIT_COST} <Star size={18} fill="currentColor" style={{ verticalAlign: -2 }} /></b></div>
+        <button className="btn block" disabled={locked || !enough || busy} onClick={() => void buy()}><Gift size={20} /> {busy ? 'Оформляем…' : 'Получить набор'}</button>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ───────── Sky Quest ───────── */
+type SkyData = { stars: number; bestScore: number; leaderboard: { id: string; name: string; stars: number }[]; scoreLeaderboard: { id: string; name: string; score: number }[] };
+function SkyQuest() {
+  const [section, setSection] = useState<'game' | 'rating'>('game');
+  const [mode, setMode] = useState<'stars' | 'score'>('stars');
+  const [data, setData] = useState<SkyData>({ stars: 0, bestScore: 0, leaderboard: [], scoreLeaderboard: [] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const load = useCallback(async () => {
+    try { const r = await api<SkyData>('/api/student/skyquest'); setData({ stars: Number(r.stars) || 0, bestScore: Number(r.bestScore) || 0, leaderboard: r.leaderboard || [], scoreLeaderboard: r.scoreLeaderboard || [] }); setError(''); }
+    catch (x) { setError(errText(x, 'Не удалось загрузить Sky Quest.')); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const onMsg = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      if (ev.data?.type === 'SKYQUEST_BALANCE_CHANGED') void load();
+      if (ev.data?.type === 'FLAPPY_GAME_OVER') {
+        const score = Number(ev.data.score);
+        if (!Number.isSafeInteger(score) || score < 0) return;
+        api('/api/student/skyquest/score', { method: 'POST', body: JSON.stringify({ score }) }).then(() => load()).catch(() => {});
+      }
+    };
+    window.addEventListener('message', onMsg); return () => window.removeEventListener('message', onMsg);
+  }, [load]);
+  const players = mode === 'stars' ? data.leaderboard : data.scoreLeaderboard;
+  return <div className="stack">
+    <div className="row between"><Head kicker="Космическое приключение" title="Sky Quest" /><span className="pill gold" style={{ alignSelf: 'flex-start', marginTop: 6 }}><Star size={14} fill="currentColor" /> {loading ? '…' : data.stars}</span></div>
+    <div className="seg"><button className={section === 'game' ? 'on' : ''} onClick={() => setSection('game')}>Играть</button><button className={section === 'rating' ? 'on' : ''} onClick={() => { setSection('rating'); void load(); }}>Рейтинг</button></div>
+    {error && <p className="err" role="alert">{error}</p>}
+    {section === 'game'
+      ? <iframe className="game" src="/flappy/index.html?autostart=1" title="Sky Quest" allow="autoplay" />
+      : <div className="stack">
+        <div className="row between"><p className="small muted">Мой рекорд: <b>{data.bestScore}</b> очков</p><button className="iconbtn" style={{ width: 40, height: 40 }} aria-label="Обновить" onClick={() => void load()}><RefreshCw size={16} /></button></div>
+        <div className="seg"><button className={mode === 'stars' ? 'on' : ''} onClick={() => setMode('stars')}>По звёздам</button><button className={mode === 'score' ? 'on' : ''} onClick={() => setMode('score')}>По очкам</button></div>
+        {loading ? <div className="spin" /> : players.length ? players.map((p, idx) => <div key={p.id} className={`rank ${idx < 3 ? 'top3' : ''}`}><span className="n">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}</span><span className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span><b>{'stars' in p ? <>{(p as any).stars} <Star size={14} fill="currentColor" style={{ verticalAlign: -2 }} /></> : `${(p as any).score} очк.`}</b></div>)
+          : <Empty icon={Trophy} title="Пока пусто" text="Рейтинг появится, когда ученики наберут первые звёзды и очки." />}
+      </div>}
+  </div>;
+}
+
+/* ───────── Сообщения и настройки ───────── */
+function Messages({ portal, onClose, onRead }: { portal: Portal; onClose: () => void; onRead: (id: string) => void }) {
+  const [busy, setBusy] = useState('');
+  const mark = async (m: Message) => { setBusy(m.id); try { await api(`/api/auth/messages/${m.id}/read`, { method: 'POST' }); onRead(m.id); } catch { /* ignore */ } finally { setBusy(''); } };
+  const unread = portal.messages.filter((m) => !m.read).length;
+  return <Sheet onClose={onClose}>
+    <div className="row between"><div><h2>Сообщения</h2><p className="small muted">{unread ? `${unread} непрочитанных` : 'Всё прочитано'}</p></div><button className="iconbtn" onClick={onClose} aria-label="Закрыть"><X size={20} /></button></div>
+    <div className="stack" style={{ marginTop: 12 }}>{portal.messages.length ? portal.messages.map((m) => <div key={m.id} className={`card ${m.read ? 'flat' : 'warn'}`}>
+      <p className="tiny muted">{m.sender} · {new Date(m.at).toLocaleString('ru-KZ', { timeZone: 'Asia/Almaty', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+      <p style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{m.body}</p>
+      {!m.read && <button className="btn small ghost" style={{ marginTop: 10 }} disabled={busy === m.id} onClick={() => void mark(m)}><Check size={16} /> Прочитано</button>}
+    </div>) : <Empty icon={MessageCircle} title="Сообщений нет" text="Здесь появятся сообщения от преподавателя." />}</div>
+  </Sheet>;
+}
+
+function SettingsSheet({ portal, onClose, onLogout }: { portal: Portal; onClose: () => void; onLogout: () => void }) {
+  const [cur, setCur] = useState(''); const [pw, setPw] = useState(''); const [pw2, setPw2] = useState('');
+  const [busy, setBusy] = useState(false); const [note, setNote] = useState<{ t: string; ok: boolean } | null>(null);
+  const change = async (e: FormEvent) => {
+    e.preventDefault(); setNote(null);
+    if (pw !== pw2) { setNote({ t: 'Новые пароли не совпадают.', ok: false }); return; }
+    setBusy(true);
+    try { await api('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: cur, newPassword: pw }) }); setCur(''); setPw(''); setPw2(''); notify('success'); setNote({ t: 'Пароль изменён.', ok: true }); }
+    catch (x) { notify('error'); setNote({ t: errText(x, 'Не удалось сменить пароль.'), ok: false }); }
+    finally { setBusy(false); }
+  };
+  return <Sheet onClose={onClose}>
+    <div className="row between"><h2>Настройки</h2><button className="iconbtn" onClick={onClose} aria-label="Закрыть"><X size={20} /></button></div>
+    <div className="card flat" style={{ margin: '12px 0' }}><p><b>{portal.account.firstName} {portal.account.lastName}</b></p><p className="small muted">{portal.account.studentClass || 'Класс не указан'}{portal.account.teacher ? ` · преподаватель: ${portal.account.teacher.firstName} ${portal.account.teacher.lastName}` : ''}</p></div>
+    <form onSubmit={change} className="stack card">
+      <h3>Сменить пароль</h3>
+      <label className="field"><span>Текущий пароль</span><input className="input" type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} required /></label>
+      <label className="field"><span>Новый пароль</span><input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} required minLength={8} /></label>
+      <label className="field"><span>Повтори новый пароль</span><input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required minLength={8} /></label>
+      {note && <p className={note.ok ? 'small' : 'err'} role="status" style={note.ok ? { color: 'var(--green)' } : undefined}>{note.t}</p>}
+      <button className="btn block" disabled={busy}>{busy ? 'Сохраняем…' : 'Сохранить пароль'}</button>
+    </form>
+    <div className="stack" style={{ marginTop: 14 }}>
+      <button className="btn ghost block" onClick={() => openExternal(`${location.origin}/student`)}>Открыть полную версию на сайте</button>
+      <button className="btn red block" onClick={onLogout}><LogOut size={18} /> Выйти</button>
+    </div>
+  </Sheet>;
+}
+
+/* ───────── Корень ───────── */
+export default function TgApp() {
+  const [portal, setPortal] = useState<Portal | null>(null);
+  const [state, setState] = useState<'loading' | 'login' | 'ready' | 'error'>('loading');
+  const [error, setError] = useState('');
+  const [tab, setTab] = useState<Tab>('home');
+  const [now, setNow] = useState(() => new Date());
+  const [testRun, setTestRun] = useState<Test | null>(null);
+  const [result, setResult] = useState<{ score: number; total: number } | null>(null);
+  const [hw, setHw] = useState<Homework | null>(null);
+  const [showMsg, setShowMsg] = useState(false);
+  const [showSet, setShowSet] = useState(false);
+  const [toast, setToast] = useState<{ t: string; k: 'ok' | 'bad' } | null>(null);
+  const say = useCallback((t: string, k: 'ok' | 'bad') => setToast({ t, k }), []);
+
+  useEffect(() => {
+    try { tg?.ready(); tg?.expand(); tg?.disableVerticalSwipes?.(); tg?.setHeaderColor?.('#FBFCFE'); tg?.setBackgroundColor?.('#FBFCFE'); } catch { /* вне Telegram */ }
+    const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t);
+  }, []);
+
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setState('loading');
+    try {
+      const p = await api<Portal>('/api/auth/portal');
+      if (p.account.role !== 'student') { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setState('login'); return; }
+      setPortal(p); setState('ready');
+    } catch (x) {
+      const e = x as Error & { status?: number };
+      if (e.status === 401 || e.status === 403) setState('login');
+      else if (quiet) say(errText(x, 'Не удалось обновить данные.'), 'bad');
+      else { setError(errText(x, 'Не удалось загрузить кабинет.')); setState('error'); }
+    }
+  }, [say]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const f = () => { if (document.visibilityState === 'visible' && state === 'ready') void load(true); }; document.addEventListener('visibilitychange', f); return () => document.removeEventListener('visibilitychange', f); }, [load, state]);
+
+  const logout = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setShowSet(false); setPortal(null); setTab('home'); setState('login'); };
+  const markRead = (id: string) => setPortal((p) => p ? { ...p, messages: p.messages.map((m) => m.id === id ? { ...m, read: true } : m) } : p);
+
+  if (state === 'loading') return <div className="app"><div className="spin" /></div>;
+  if (state === 'login') return <Login onDone={() => void load()} />;
+  if (state === 'error' || !portal) return <div className="app"><div className="card bad stack" style={{ marginTop: 40 }}><h3>Ой…</h3><p>{error}</p><button className="btn block" onClick={() => void load()}>Повторить</button></div></div>;
+
+  if (result) return <div className="app"><div className="login" style={{ minHeight: '80dvh', textAlign: 'center' }}>
+    <div className="card ok pop"><Sparkles size={40} /><h1 style={{ marginTop: 6 }}>Тест завершён!</h1>
+      <p className="hand" style={{ fontSize: 56, margin: '8px 0' }}>{result.score} <span className="muted">из {result.total}</span></p>
+      <p className="small muted">{result.score === result.total ? 'Отлично, без единой ошибки!' : result.score >= result.total / 2 ? 'Хороший результат, так держать!' : 'Не расстраивайся — разберите ошибки на следующем занятии.'}</p>
+      <button className="btn gold block" style={{ marginTop: 16 }} onClick={() => { setResult(null); setTab('tests'); }}>Готово</button></div></div></div>;
+
+  if (testRun) return <div className="app"><TestRunner test={testRun} onExit={() => setTestRun(null)} onDone={(score, total) => { setTestRun(null); setResult({ score, total }); void load(true); }} /></div>;
+
+  const stars = portal.progress?.stars ?? 0;
+  const unread = portal.messages.filter((m) => !m.read).length;
+  const pendingTests = (portal.studentTests || []).filter((t) => t.status === 'assigned').length;
+  const pendingHw = (portal.studentHomework || []).filter((h) => !h.attachment).length;
+  const NAV: { id: Tab; label: string; icon: typeof BookOpen; badge?: number }[] = [
+    { id: 'home', label: 'Занятия', icon: BookOpen }, { id: 'plan', label: 'План', icon: Clock3 },
+    { id: 'tests', label: 'Тесты', icon: FileQuestion, badge: pendingTests }, { id: 'hw', label: 'Д/з', icon: Paperclip, badge: pendingHw },
+    { id: 'prizes', label: 'Призы', icon: Gift }, { id: 'sky', label: 'Sky Quest', icon: Rocket },
+  ];
+  const startTest = (t: Test) => { setTestRun(t); };
+
+  return <>
+    <div className="app">
+      <header className="top">
+        <img src="/static/ST.webp" alt="StudyTask" className="logo" />
+        <div className="grow"><h3 style={{ lineHeight: 1 }}>StudyTask</h3><p className="tiny muted">Кабинет ученика</p></div>
+        <span className="pill gold"><Star size={14} fill="currentColor" /> {stars}</span>
+        <button className="iconbtn" aria-label="Сообщения" onClick={() => { tap(); setShowMsg(true); }}><MessageCircle size={21} />{unread > 0 && <span className="dot">{unread}</span>}</button>
+        <button className="iconbtn" aria-label="Настройки" onClick={() => { tap(); setShowSet(true); }}><Settings size={21} /></button>
+      </header>
+      <main key={tab}>
+        {tab === 'home' && <Home portal={portal} now={now} go={setTab} openHw={setHw} startTest={startTest} />}
+        {tab === 'plan' && <Plan portal={portal} now={now} />}
+        {tab === 'tests' && <Tests portal={portal} start={startTest} />}
+        {tab === 'hw' && <HomeworkList portal={portal} open={setHw} />}
+        {tab === 'prizes' && <Prizes portal={portal} refresh={() => load(true)} say={say} />}
+        {tab === 'sky' && <SkyQuest />}
+      </main>
+    </div>
+    <nav className="nav" aria-label="Разделы"><div className="nav-in">{NAV.map(({ id, label, icon: Icon, badge }) =>
+      <button key={id} className={tab === id ? 'on' : ''} aria-current={tab === id ? 'page' : undefined} onClick={() => { tap(); setTab(id); window.scrollTo({ top: 0 }); }}>
+        <Icon size={21} /><span>{label}</span>{!!badge && <i className="badge">{badge}</i>}
+      </button>)}</div></nav>
+    {hw && <HomeworkSheet hw={hw} onClose={() => setHw(null)} onSaved={() => load(true)} say={say} />}
+    {showMsg && <Messages portal={portal} onClose={() => setShowMsg(false)} onRead={markRead} />}
+    {showSet && <SettingsSheet portal={portal} onClose={() => setShowSet(false)} onLogout={() => void logout()} />}
+    {toast && <Toast text={toast.t} kind={toast.k} onDone={() => setToast(null)} />}
+  </>;
+}

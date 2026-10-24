@@ -13,6 +13,7 @@ export default defineConfig(() => {
     },
     build: {
       rollupOptions: {
+        input: { main: path.resolve(__dirname, 'index.html'), tg: path.resolve(__dirname, 'tg.html') },
         output: {
           manualChunks: {
             react: ['react', 'react-dom'],

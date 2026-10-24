@@ -2175,6 +2175,11 @@ async function start() {
         else res.setHeader('Cache-Control', 'public, max-age=604800');
       },
     }));
+    // Telegram Mini App
+    app.get(['/tg', '/tg/'], (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(path.join(distDir, 'tg.html'));
+    });
     app.get('*', (_req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distDir, 'index.html'));
@@ -2184,6 +2189,12 @@ async function start() {
     const vite = await createServer({
       configFile: path.join(ROOT, 'vite.config.ts'),
       server: { middlewareMode: true },
+    });
+    app.get(['/tg', '/tg/'], async (_req, res, next) => {
+      try {
+        const html = await fs.readFile(path.join(ROOT, 'tg.html'), 'utf-8');
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(await vite.transformIndexHtml('/tg', html));
+      } catch (error) { next(error); }
     });
     app.use(vite.middlewares);
   }
