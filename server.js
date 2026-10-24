@@ -236,12 +236,25 @@ async function initializeSupabaseStorage(secretKey) {
   }
 }
 
+// Если имя и фамилия совпадают (фамилия ученика неизвестна, имя вписано в оба поля) — фамилию очищаем.
+async function clearDuplicatedLastNames() {
+  const fixed = accounts.map((account) => {
+    const first = String(account.firstName || '').trim().toLowerCase();
+    return first && first === String(account.lastName || '').trim().toLowerCase() ? { ...account, lastName: '' } : account;
+  });
+  const changed = fixed.filter((account, index) => account !== accounts[index]).length;
+  if (!changed) return;
+  await writeAccounts(fixed);
+  console.log(`StudyTask: у ${changed} аккаунтов фамилия совпадала с именем и была очищена.`);
+}
+
 async function initializeAuth() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const secretKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (Boolean(supabaseUrl) !== Boolean(secretKey)) throw new Error('Set both SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) in the service environment.');
-  if (supabaseUrl && secretKey) return initializeSupabaseStorage(secretKey);
-  return initializeFileStorage();
+  if (supabaseUrl && secretKey) await initializeSupabaseStorage(secretKey);
+  else await initializeFileStorage();
+  try { await clearDuplicatedLastNames(); } catch (error) { console.warn('Could not clean duplicated last names:', error.message); }
 }
 
 async function writeCredentials(nextCredentials) {
@@ -1253,8 +1266,8 @@ app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
   if (!isValidLessonLink(lessonLink)) return res.status(400).json({ error: 'Укажите корректную ссылку на занятие (https://…).'});
   if (lessonDescription.length > 1000) return res.status(400).json({ error: 'Описание занятия должно быть не длиннее 1000 символов.' });
   const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
-  if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) {
-    return res.status(400).json({ error: 'Укажите имя, фамилию, класс ученика и корректный номер родителя.' });
+  if (!firstName || firstName.length > 80 || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) {
+    return res.status(400).json({ error: 'Укажите имя, класс ученика и корректный номер родителя (фамилия необязательна).' });
   }
   if (!teacher || !Number.isInteger(day) || day < 0 || day > 6 || !Number.isInteger(hour) || hour < 8 || hour > 21) {
     return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
@@ -1301,7 +1314,7 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
     const firstName = typeof req.body?.firstName === 'string' ? req.body.firstName.trim() : '';
     const lastName = typeof req.body?.lastName === 'string' ? req.body.lastName.trim() : '';
     const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
-    if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) return res.status(400).json({ error: 'Проверьте имя, фамилию, класс и контакт родителя.' });
+    if (!firstName || firstName.length > 80 || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) return res.status(400).json({ error: 'Проверьте имя, фамилию, класс и контакт родителя.' });
     if (planned.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour) || trials.some((lesson) => lesson.id !== req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)) return res.status(409).json({ error: 'Этот слот уже занят.' });
     trials[index] = { ...trials[index], firstName, lastName, studentClass, teacherId, day, hour, parentPhone, lessonLink, lessonDescription, scheduledAt: nextTrialSlotStart(day, hour), status: 'scheduled', attendance: undefined, attendanceAt: undefined, attendanceMarkedBy: undefined };
     const student = await ensureTrialStudentAccount(trials[index]);
@@ -1407,8 +1420,8 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   if (normalizedPhone.length < 10 || normalizedPhone.length > 16) return res.status(400).json({ error: 'Введите корректный номер телефона.' });
   if (accounts.some((account) => account.phone === normalizedPhone)) return res.status(409).json({ error: 'Аккаунт с таким номером телефона уже существует.' });
   if (typeof password !== 'string' || password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Пароль должен содержать от 8 до 128 символов.' });
-  if (typeof firstName !== 'string' || !firstName.trim() || firstName.trim().length > 80 || typeof lastName !== 'string' || !lastName.trim() || lastName.trim().length > 80) {
-    return res.status(400).json({ error: 'Укажите имя и фамилию (до 80 символов каждое).' });
+  if (typeof firstName !== 'string' || !firstName.trim() || firstName.trim().length > 80 || (lastName !== undefined && lastName !== null && (typeof lastName !== 'string' || lastName.trim().length > 80))) {
+    return res.status(400).json({ error: 'Укажите имя (фамилия необязательна, до 80 символов каждое).' });
   }
   if (role === 'student' && !/^([5-9]) класс$/.test(studentClass || '')) return res.status(400).json({ error: 'Выберите класс ученика с 5 по 9.' });
   if (role === 'student' && !accounts.some((account) => account.id === teacherId && account.role === 'teacher')) return res.status(400).json({ error: 'Выберите преподавателя для ученика.' });
@@ -1424,7 +1437,7 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   const salt = crypto.randomBytes(16);
   const passwordHash = await hashPassword(password, salt);
   const account = {
-    id: crypto.randomUUID(), role, phone: normalizedPhone, firstName: firstName.trim(), lastName: lastName.trim(), status: 'active',
+    id: crypto.randomUUID(), role, phone: normalizedPhone, firstName: firstName.trim(), lastName: (lastName || '').trim(), status: 'active',
     studentClass: role === 'student' ? studentClass : '', teacherId: role === 'student' ? teacherId : undefined, lessonLink: role === 'student' ? lessonLink : '', lessonDescription: role === 'student' ? lessonDescription : '', children: linkedChildren,
     salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString(),
   };
@@ -1444,8 +1457,8 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
   const normalizedPhone = normalizePhone(phone);
   if (normalizedPhone.length < 10 || normalizedPhone.length > 16) return res.status(400).json({ error: 'Введите корректный номер телефона.' });
   if (accounts.some((account) => account.id !== current.id && account.phone === normalizedPhone)) return res.status(409).json({ error: 'Аккаунт с таким номером телефона уже существует.' });
-  if (typeof firstName !== 'string' || !firstName.trim() || firstName.trim().length > 80 || typeof lastName !== 'string' || !lastName.trim() || lastName.trim().length > 80) {
-    return res.status(400).json({ error: 'Укажите имя и фамилию (до 80 символов каждое).' });
+  if (typeof firstName !== 'string' || !firstName.trim() || firstName.trim().length > 80 || (lastName !== undefined && lastName !== null && (typeof lastName !== 'string' || lastName.trim().length > 80))) {
+    return res.status(400).json({ error: 'Укажите имя (фамилия необязательна, до 80 символов каждое).' });
   }
   if (password !== undefined && password !== '' && (typeof password !== 'string' || password.length < 8 || password.length > 128)) return res.status(400).json({ error: 'Новый пароль должен содержать от 8 до 128 символов.' });
   let linkedChildren = current.children || [];
@@ -1464,7 +1477,7 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
   const parentId = current.role === 'student' ? (typeof req.body?.parentId === 'string' && req.body.parentId ? req.body.parentId : '') : '';
   if (current.role === 'student' && parentId && !accounts.some((account) => account.id === parentId && account.role === 'parent')) return res.status(400).json({ error: 'Выбранный родитель не найден.' });
   let updated = {
-    ...current, phone: normalizedPhone, firstName: firstName.trim(), lastName: lastName.trim(),
+    ...current, phone: normalizedPhone, firstName: firstName.trim(), lastName: (lastName || '').trim(),
     studentClass: current.role === 'student' ? studentClass : '',
     teacherId: current.role === 'student' ? teacherId : undefined,
     lessonLink: current.role === 'student' ? lessonLink : '', lessonDescription: current.role === 'student' ? lessonDescription : '',
