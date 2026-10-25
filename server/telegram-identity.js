@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const STID_LENGTH = 6; // сколько цифр в коде
 
@@ -105,6 +106,42 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
   const openButton = (text = 'Открыть кабинет') => ({ inline_keyboard: [[{ text, web_app: { url: webAppUrl } }]] });
   const say = (chatId, text, extra = {}) => tgCall('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra });
 
+
+  /* ───── приветственное видео для /start ───── */
+  const WELCOME_VIDEO = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bot_images', 'welcome.mp4');
+  const fileIdPath = path.join(dataDir, 'welcome-video-file-id.json');
+  let welcomeFileId = null;
+  let welcomeLoaded = false;
+  const welcomeCaption = `Привет! 👋 Это <b>StudyTask</b> — математический центр для 5–9 классов.\n\n📚 Живые уроки с учителем, тесты и домашка по фото\n⭐ Звёзды, рейтинг и призы\n\nЧтобы начать, отправьте сюда <b>код ученика</b> (${STID_LENGTH} цифр) — его выдаёт администратор. Мы привяжем кабинет к вашему Telegram, и входить заново не придётся.`;
+  async function sendWelcome(chatId) {
+    try {
+      if (!welcomeLoaded) {
+        welcomeLoaded = true;
+        try { welcomeFileId = JSON.parse(await fs.readFile(fileIdPath, 'utf8')).fileId || null; } catch { /* нет сохранённого file_id */ }
+      }
+      const base = { chat_id: chatId, caption: welcomeCaption, parse_mode: 'HTML', supports_streaming: true, width: 540, height: 960, duration: 27 };
+      let result;
+      if (welcomeFileId) {
+        try { result = await tgCall('sendVideo', { ...base, video: welcomeFileId }); } catch (error) { console.warn('welcome file_id:', error.message); welcomeFileId = null; }
+      }
+      if (!result) {
+        const form = new FormData();
+        for (const [k, v] of Object.entries(base)) form.append(k, String(v));
+        form.append('video', new Blob([await fs.readFile(WELCOME_VIDEO)], { type: 'video/mp4' }), 'welcome.mp4');
+        const response = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, { method: 'POST', body: form });
+        const data = await response.json().catch(() => ({}));
+        if (!data.ok) throw new Error(data.description || response.status);
+        result = data.result;
+        welcomeFileId = result?.video?.file_id || null;
+        if (welcomeFileId) { try { await fs.mkdir(dataDir, { recursive: true }); await fs.writeFile(fileIdPath, JSON.stringify({ fileId: welcomeFileId })); } catch { /* не критично */ } }
+      }
+      return true;
+    } catch (error) {
+      console.warn('welcome video:', error.message);
+      return false;
+    }
+  }
+
   /* ───── защита от подбора кода ───── */
   const failsByTg = new Map();
   let globalFails = [];
@@ -134,7 +171,8 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
       if (linkedAccount) {
         return say(chatId, text.startsWith('/start') ? `С возвращением, <b>${esc(linkedAccount.firstName)}</b>! 👋\nНажмите кнопку, чтобы открыть кабинет — входить заново не нужно.` : 'Кабинет ученика — по кнопке ниже 👇\nЕсли нужно привязать другого ученика, отправьте его код.', { reply_markup: openButton() });
       }
-      return say(chatId, `Привет! 👋 Это бот <b>StudyTask</b>.\n\nОтправьте <b>код ученика (STID)</b> — ${STID_LENGTH} цифр. Его выдал администратор.`);
+      if (text.startsWith('/start') && await sendWelcome(chatId)) return;
+      return say(chatId, `Привет! 👋 Это бот <b>StudyTask</b> — математический центр для 5–9 классов.\n\nОтправьте <b>код ученика (STID)</b> — ${STID_LENGTH} цифр. Его выдал администратор.`);
     }
     if (blocked(tgId)) return say(chatId, 'Слишком много неверных попыток. Попробуйте через 15 минут или напишите администратору.');
     const account = accountByStid(digits);
