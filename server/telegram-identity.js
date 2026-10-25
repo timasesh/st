@@ -189,6 +189,16 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     return say(chatId, `Готово, <b>${esc(account.firstName)}</b>! ✅\nАккаунт привязан к этому Telegram. Теперь кабинет открывается в один клик — повторно входить не нужно.`, { reply_markup: openButton() });
   }
 
+  /* отправка сообщения привязанному ученику (для напоминаний); true — доставлено */
+  async function sendToAccount(accountId, text, opt = {}) {
+    const tgId = store.accountTg[accountId];
+    if (!token || !tgId) return false;
+    try {
+      await say(tgId, text, opt.button ? { reply_markup: openButton(opt.button) } : {});
+      return true;
+    } catch (error) { console.warn(`Telegram notify failed (${accountId}):`, error.message); return false; }
+  }
+
   /* ───── проверка initData Mini App ───── */
   function verifyInitData(initData) {
     if (!token || typeof initData !== 'string' || initData.length > 4096) return null;
@@ -240,5 +250,5 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     } catch (error) { console.warn('Telegram setup failed:', error.message); }
   }
 
-  return { load, ensureStid, ensureAll, stidOf, isLinked, register, setupWebhook };
+  return { load, ensureStid, ensureAll, stidOf, isLinked, register, setupWebhook, sendToAccount };
 }

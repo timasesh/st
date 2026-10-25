@@ -11,6 +11,7 @@ import { mergeStudentProgress } from './server/student-progress.js';
 import { registerHomeworkRoutes } from './server/routes/homework.js';
 import { createTelegramIdentity } from './server/telegram-identity.js';
 import { createSchoolSprint } from './server/school-sprint.js';
+import { createTelegramNotifier } from './server/telegram-notify.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(ROOT, '.env.local') });
@@ -1709,6 +1710,7 @@ app.post('/api/teacher/students/:studentId/lesson-history', async (req, res) => 
     const entry = { id: crypto.randomUUID(), lessonId: typeof lessonId === 'string' ? lessonId : '', date, time, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, homeworkGrade: homeworkGrade.trim(), topic: topic.trim(), nextHomework: nextHomework.trim(), testGrade: testGrade.trim(), attendance, attendanceReason: attendance ? '' : attendanceReason, createdAt: new Date().toISOString() };
     const nextHistory = [entry, ...history].sort((left, right) => `${right.date}T${right.time}`.localeCompare(`${left.date}T${left.time}`));
     await writeStudentLessonHistory(subject.id, nextHistory);
+    void notifier.notifyHomework(subject.id, entry).catch(() => {});
     if (subject.trial) {
       const marked = await saveTrialAttendance(subject.id, attendance, `${getUserSession(req).account.firstName} ${getUserSession(req).account.lastName}`, attendanceReason);
       if (!marked) return res.status(409).json({ error: 'Посещение пробного занятия уже отмечено.' });
@@ -1833,6 +1835,7 @@ app.post('/api/teacher/students/:studentId/tests', async (req, res) => {
     const deadlineAt = new Date(lessonStart.getTime() + 65 * 60000).toISOString();
     const saved = { id: crypto.randomUUID(), studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, lessonId, lessonHour, title: quiz.title, durationMinutes, questions: quiz.questions, status: 'assigned', createdAt: new Date().toISOString(), availableAt, deadlineAt };
     await writeStudentTests(subject.id, [saved, ...tests]);
+    void notifier.notifyTest(subject.id, saved).catch(() => {});
     return res.status(201).json({ test: { ...saved, questions: saved.questions.map(({ correctIndex, ...question }) => question) } });
   } catch (error) { return res.status(400).json({ error: error.message || 'Не удалось сохранить тест.' }); }
 });
@@ -2196,6 +2199,28 @@ const identity = createTelegramIdentity({
   recordAudit: recordAdminAuditSafely,
 });
 identity.register(app);
+async function readScheduleData() {
+  let data = { lessons: [], targets: {} };
+  if (supabase) {
+    const result = await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle();
+    if (result.error) throw new Error(result.error.message);
+    if (result.data?.value) data = JSON.parse(result.data.value);
+  } else data = await readJsonFileOr(schedulePath, data);
+  return Array.isArray(data) ? { lessons: data, targets: {} } : data;
+}
+const notifier = createTelegramNotifier({
+  getSupabase: () => supabase,
+  dataDir,
+  getAccounts: () => accounts,
+  refreshAccounts,
+  sendToAccount: (accountId, text, opt) => identity.sendToAccount(accountId, text, opt),
+  readSchedule: readScheduleData,
+  readTrialLessons,
+  getTrialScheduledAt,
+  nextSlotStart: nextTrialSlotStart,
+  readHistory: readStudentLessonHistory,
+  listHomeworkFiles: listHomeworkAttachmentMetadata,
+});
 createSchoolSprint({ getSupabase: () => supabase, dataDir, getAccounts: () => accounts, refreshAccounts, getUserSession }).register(app);
 const adminAccount = (account) => account.role === 'student' ? { ...publicAccount(account), stid: identity.stidOf(account.id), telegramLinked: identity.isLinked(account.id) } : publicAccount(account);
 
@@ -2242,6 +2267,7 @@ async function start() {
   app.listen(port, '0.0.0.0', () => {
     console.log(`StudyTask server listening on http://localhost:${port}`);
     void identity.setupWebhook();
+    void notifier.start();
   });
 }
 
