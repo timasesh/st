@@ -6,7 +6,7 @@ import path from 'node:path';
 const GAME = 'school-sprint';
 const STORE_KEY = 'school_sprint';
 const ROUND_SEC = 60;
-const MAX_SPEED_UNITS = 520;      // макс. скорость игры, ед/с
+const MAX_SPEED_UNITS = 520 * Math.pow(1.2, 5);      // макс. скорость игры, ед/с
 const UNITS_PER_M = 10;
 const STAR_POINTS = 10;
 const MAX_SESSION_AGE_MS = 30 * 60 * 1000; // сессия живёт 30 минут (с учётом пауз)

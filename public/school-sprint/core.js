@@ -74,7 +74,7 @@
   function genStars(prevStates, gapStart, gapEnd, rnd) {
     rnd = rnd || Math.random;
     var len = gapEnd - gapStart - 160;
-    if (len < 100 || rnd() > 0.78 || !prevStates.length) return [];
+    if (len < 100 || rnd() > 0.078 || !prevStates.length) return [];
     var lane = prevStates[Math.floor(rnd() * prevStates.length)].lane;
     var n = Math.min(6, Math.floor(len / 52) + 1), out = [];
     var gold = rnd() < 0.1 ? Math.floor(n / 2) : -1;

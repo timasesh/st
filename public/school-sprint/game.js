@@ -131,15 +131,15 @@
   var ptr = null;
   cv.addEventListener('pointerdown', function (e) {
     e.preventDefault(); audioUnlock();
-    ptr = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    ptr = { id: e.pointerId, x: e.clientX, y: e.clientY, done: false };
     try { cv.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
   }, sig);
   cv.addEventListener('pointermove', function (e) {
-    if (!ptr || e.pointerId !== ptr.id) return;
+    if (!ptr || ptr.done || e.pointerId !== ptr.id) return;
     var dx = e.clientX - ptr.x, dy = e.clientY - ptr.y;
     if (Math.max(Math.abs(dx), Math.abs(dy)) < C.SWIPE_PX) return; // короткие касания игнорируются
     if (Math.abs(dx) > Math.abs(dy)) push(dx < 0 ? 'L' : 'R'); else push(dy < 0 ? 'U' : 'D');
-    ptr.x = e.clientX; ptr.y = e.clientY; // один жест — одно действие
+    ptr.done = true; // один жест — одно действие, до отпускания пальца
   }, sig);
   ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (n) { cv.addEventListener(n, function () { ptr = null; }, sig); });
   ['contextmenu', 'dragstart', 'selectstart', 'gesturestart', 'gesturechange'].forEach(function (n) { document.addEventListener(n, function (e) { e.preventDefault(); }, sig); });
@@ -330,29 +330,48 @@
     return [f1, f2];
   }
   function drawObstacle(o) {
-    var lx = (o.lane - 1) * C.LANE_W, s = S(o.z), T = K.TYPES[o.type], f, k;
+    var lx = (o.lane - 1) * C.LANE_W, s = S(o.z), T = K.TYPES[o.type], f, k, lw = Math.max(1, 2 * s);
     if (o.type === 'backpack') {
-      box(lx, 30, o.z, T.depth, 0, 30, '#E5484D', '#ff8a8e', '#7a1b20');
-      f = PX(lx, 22, o.z); ctx.fillStyle = '#FFD34F'; ctx.fillRect(f[0] - 16 * s, f[1], 32 * s, 12 * s);
+      // школьный рюкзак на полу: корпус, карман, лямки, молния
+      box(lx, 28, o.z, T.depth, 0, 32, '#d23b46', '#f0757c', '#7a1b20');
+      box(lx, 20, o.z - 2, 10, 2, 14, '#b02c36', '#d85a62', '#7a1b20');
+      f = PX(lx, 27, o.z); ctx.strokeStyle = '#3b0d12'; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(f[0] - 22 * s, f[1]); ctx.lineTo(f[0] + 22 * s, f[1]); ctx.stroke();
+      f = PX(lx - 30, 20, o.z); ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = Math.max(2, 5 * s); ctx.beginPath(); ctx.moveTo(f[0], f[1]); ctx.quadraticCurveTo(f[0] - 16 * s, f[1] + 8 * s, f[0] - 10 * s, f[1] + 18 * s); ctx.stroke();
+      f = PX(lx + 30, 20, o.z); ctx.beginPath(); ctx.moveTo(f[0], f[1]); ctx.quadraticCurveTo(f[0] + 16 * s, f[1] + 8 * s, f[0] + 10 * s, f[1] + 18 * s); ctx.stroke();
     } else if (o.type === 'books') {
-      var cols = ['#1649E8', '#38BDF8', '#FFD34F'];
-      for (k = 0; k < 3; k++) box(lx + (k === 1 ? 4 : -3), 30 - k * 3, o.z, T.depth, k * 20, k * 20 + 20, cols[k], '#f2f6ff', '#12266f');
+      // стопка учебников с закладками
+      var cols = ['#2f6b3a', '#1649E8', '#c8453b'], offs = [-3, 4, -2];
+      for (k = 0; k < 3; k++) {
+        box(lx + offs[k], 30 - k * 2, o.z, T.depth, k * 20, k * 20 + 20, cols[k], '#f5efe0', '#12266f');
+        f = PX(lx + offs[k], k * 20 + 10, o.z); ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(f[0] - 14 * s, f[1] - 3 * s, 28 * s, 6 * s);
+      }
+      f = PX(lx + 10, 60, o.z + 4); ctx.fillStyle = '#FFD34F'; ctx.fillRect(f[0] - 3 * s, f[1], 6 * s, 14 * s);
     } else if (o.type === 'desk') {
-      box(lx, 40, o.z, T.depth, 0, 150, '#9a6b43', '#d7a874', '#4a2f19');
-      f = PX(lx, 80, o.z); ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(f[0] - 26 * s, f[1] - 40 * s, 52 * s, 80 * s);
-      ctx.fillStyle = '#FFD34F'; ctx.font = 'bold ' + Math.max(8, 30 * s) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('ПАРТА', f[0], f[1] - 60 * s);
+      // школьная парта со стулом на крышке
+      var l1 = PX(lx - 36, 70, o.z), l2 = PX(lx - 36, 0, o.z), r1 = PX(lx + 36, 70, o.z), r2 = PX(lx + 36, 0, o.z);
+      ctx.strokeStyle = '#4b5563'; ctx.lineWidth = Math.max(2, 6 * s);
+      ctx.beginPath(); ctx.moveTo(l1[0], l1[1]); ctx.lineTo(l2[0], l2[1]); ctx.moveTo(r1[0], r1[1]); ctx.lineTo(r2[0], r2[1]); ctx.stroke();
+      box(lx, 42, o.z, T.depth, 70, 80, '#e3b980', '#f1d3a4', '#6b4a2b');
+      box(lx, 24, o.z + 10, 24, 80, 112, '#2f7fd8', '#5aa2ee', '#12266f'); // сиденье и спинка
+      box(lx, 24, o.z + 10, 4, 112, 150, '#2f7fd8', '#5aa2ee', '#12266f');
+      f = PX(lx, 40, o.z); ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(f[0] - 30 * s, f[1] - 4 * s, 60 * s, 8 * s);
     } else if (o.type === 'wet') {
-      var b1 = PX(lx - 30, 0, o.z), b2 = PX(lx + 30, 0, o.z), tp = PX(lx, 62, o.z);
-      poly([b1, b2, tp], '#FFD34F', '#12266f', Math.max(1, 3 * s));
-      f = PX(lx, 22, o.z); ctx.fillStyle = '#12266f'; ctx.font = 'bold ' + Math.max(8, 34 * s) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('!', f[0], f[1] + 4 * s);
-      var sp = PX(lx, 0, o.z + 30); ctx.fillStyle = 'rgba(56,189,248,.45)'; ctx.beginPath(); ctx.ellipse(sp[0], sp[1], 62 * s, 12 * s, 0, 0, 6.283); ctx.fill();
+      // жёлтая табличка «мокрый пол» и лужа
+      var sp = PX(lx, 0, o.z + 20); ctx.fillStyle = 'rgba(86,170,235,.55)'; ctx.beginPath(); ctx.ellipse(sp[0], sp[1], 64 * s, 13 * s, 0, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = lw; ctx.beginPath(); ctx.ellipse(sp[0] - 12 * s, sp[1], 20 * s, 4 * s, 0, 0, 6.283); ctx.stroke();
+      var b1 = PX(lx - 28, 0, o.z), b2 = PX(lx + 28, 0, o.z), tp = PX(lx, 64, o.z);
+      poly([b1, b2, tp], '#FFD34F', '#7a5a00', Math.max(1, 3 * s));
+      f = PX(lx, 24, o.z); ctx.fillStyle = '#12266f'; ctx.font = 'bold ' + Math.max(8, 26 * s) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('!', f[0], f[1] + 4 * s);
+      f = PX(lx, 4, o.z); ctx.fillStyle = '#12266f'; ctx.font = 'bold ' + Math.max(6, 9 * s) + 'px sans-serif'; ctx.fillText('МОКРО', f[0], f[1] - 2 * s);
     } else if (o.type === 'bar') {
-      var pl = box(lx - 44, 5, o.z, 8, 0, 150, '#4a5a8a', '#8a99c4', null), pr = box(lx + 44, 5, o.z, 8, 0, 150, '#4a5a8a', '#8a99c4', null);
+      // ремонтное ограждение в коридоре: две стойки, полосатая доска и лента
+      box(lx - 44, 5, o.z, 8, 0, 150, '#6b7280', '#9ca3af', null); box(lx + 44, 5, o.z, 8, 0, 150, '#6b7280', '#9ca3af', null);
       var a1 = PX(lx - 46, 150, o.z), a2 = PX(lx + 46, 56, o.z);
       ctx.fillStyle = '#fff'; ctx.fillRect(a1[0], a1[1], a2[0] - a1[0], a2[1] - a1[1]);
       ctx.save(); ctx.beginPath(); ctx.rect(a1[0], a1[1], a2[0] - a1[0], a2[1] - a1[1]); ctx.clip();
-      ctx.fillStyle = '#E5484D'; for (k = -2; k < 10; k++) { ctx.beginPath(); var sx = a1[0] + k * 22 * s; ctx.moveTo(sx, a2[1]); ctx.lineTo(sx + 12 * s, a2[1]); ctx.lineTo(sx + 12 * s + 40 * s, a1[1]); ctx.lineTo(sx + 40 * s, a1[1]); ctx.fill(); }
+      ctx.fillStyle = '#f59e0b'; for (k = -2; k < 10; k++) { ctx.beginPath(); var sx = a1[0] + k * 22 * s; ctx.moveTo(sx, a2[1]); ctx.lineTo(sx + 12 * s, a2[1]); ctx.lineTo(sx + 12 * s + 40 * s, a1[1]); ctx.lineTo(sx + 40 * s, a1[1]); ctx.fill(); }
       ctx.restore(); ctx.strokeStyle = '#12266f'; ctx.lineWidth = Math.max(1, 3 * s); ctx.strokeRect(a1[0], a1[1], a2[0] - a1[0], a2[1] - a1[1]);
+      f = PX(lx, 103, o.z); ctx.fillStyle = '#fff'; ctx.fillRect(f[0] - 30 * s, f[1] - 9 * s, 60 * s, 18 * s); ctx.fillStyle = '#12266f'; ctx.font = 'bold ' + Math.max(7, 13 * s) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('РЕМОНТ', f[0], f[1] + 4 * s);
     }
   }
   function drawStar(st) {
@@ -365,34 +384,53 @@
     if (st.gold) { ctx.fillStyle = 'rgba(255,211,79,.35)'; ctx.beginPath(); ctx.arc(p[0], p[1], r * 1.6, 0, 6.283); ctx.fill(); }
   }
   function drawPlayer() {
-    var p = G.p, px = cx + (p.x - 1) * C.LANE_W, base = gy - p.yOff, ph = G.runPhase;
-    // тень
-    ctx.fillStyle = 'rgba(18,38,111,.28)'; ctx.beginPath(); ctx.ellipse(px, gy + 5, 28 * (1 - Math.min(0.5, p.yOff / 250)), 7, 0, 0, 6.283); ctx.fill();
+    var p = G.p, px = cx + (p.x - 1) * C.LANE_W, base = gy - p.yOff, ph = G.runPhase, hit = state === 'hit';
+    var air = p.jumpT >= 0, rolling = p.slideT >= 0 && !hit;
+    ctx.fillStyle = 'rgba(18,38,111,.28)'; ctx.beginPath(); ctx.ellipse(px, gy + 5, (rolling ? 30 : 28) * (1 - Math.min(0.5, p.yOff / 250)), 7, 0, 0, 6.283); ctx.fill();
     ctx.save(); ctx.translate(px, base);
-    var hit = state === 'hit';
-    if (hit) { ctx.rotate(Math.min(1, G.hitT / 0.3) * -0.9); ctx.translate(0, -Math.min(1, G.hitT / 0.3) * 6); }
-    var skin = '#FFD9B3', shirt = hit ? '#E5484D' : '#1649E8', pants = '#12266F';
+    if (hit) { ctx.rotate(Math.min(1, G.hitT / 0.3) * -0.5); ctx.translate(0, -Math.min(1, G.hitT / 0.3) * 4); }
+    var skin = '#F3C9A0', hair = '#2b1d14', shirt = hit ? '#E5484D' : '#1649E8', shirtD = hit ? '#b83539' : '#0f36b0', pants = '#12266F', bag = '#FFD34F', line = '#12266f';
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    if (p.slideT >= 0 && !hit) {
-      ctx.fillStyle = '#FFD34F'; rrect(-40, -26, 18, 22, 5); ctx.fill(); ctx.strokeStyle = '#12266f'; ctx.lineWidth = 3; ctx.stroke();
-      ctx.fillStyle = shirt; rrect(-26, -28, 48, 24, 10); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = pants; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(-24, -10); ctx.lineTo(-52, -8); ctx.stroke();
-      ctx.fillStyle = skin; ctx.strokeStyle = '#12266f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(28, -26, 14, 0, 6.283); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#12266f'; ctx.beginPath(); ctx.arc(28, -31, 14, 3.4, 6.1); ctx.fill();
+    function circ(x, y, r, f) { ctx.fillStyle = f; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); ctx.strokeStyle = line; ctx.lineWidth = 2.5; ctx.stroke(); }
+    if (rolling) {
+      // кувырок вперёд: фигура свёрнута в клубок и вращается через голову (вид сзади)
+      var u = Math.min(1, p.slideT / C.SLIDE_SEC), ang = u * 6.283, R = 24, cy0 = -30 - Math.sin(u * 3.1416) * 4;
+      var parts = [
+        { a: ang, r: 12, c: hair, k: 'head' }, { a: ang - 1.5708, r: 18, c: shirt, k: 'back' },
+        { a: ang + 3.1416, r: 11, c: pants, k: 'feet' }, { a: ang + 1.5708, r: 16, c: shirtD, k: 'belly' }
+      ].map(function (q) { q.z = Math.sin(q.a) * R; q.y = cy0 - Math.cos(q.a) * R; return q; });
+      parts.sort(function (x, y) { return y.z - x.z; });
+      for (var m = 0; m < parts.length; m++) {
+        var q = parts[m]; circ(0, q.y, q.r, q.c);
+        if (q.k === 'back' && q.z < 0) { ctx.fillStyle = bag; rrect(-11, q.y - 11, 22, 22, 5); ctx.fill(); ctx.strokeStyle = line; ctx.lineWidth = 2; ctx.stroke(); }
+        if (q.k === 'head' && q.z < 0) { ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(0, q.y + 3, 8, 0, 3.1416); ctx.fill(); }
+      }
+      ctx.strokeStyle = 'rgba(18,38,111,.25)'; ctx.lineWidth = 3; for (var w = 0; w < 3; w++) { ctx.beginPath(); ctx.arc(0, cy0, 36 + w * 3, 3.6 + ang * 0.0 + w * 0.5, 4.6 + w * 0.5); ctx.stroke(); }
     } else {
-      var air = p.jumpT >= 0, sw = air ? 0.6 : Math.sin(ph) * 0.9;
-      ctx.strokeStyle = pants; ctx.lineWidth = 9;
-      ctx.beginPath(); ctx.moveTo(-5, -34); ctx.lineTo(-5 + Math.sin(sw) * 14, -2 - (air ? 14 : Math.max(0, Math.cos(ph)) * 6)); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(6, -34); ctx.lineTo(6 - Math.sin(sw) * 14, -2 - (air ? 6 : Math.max(0, -Math.cos(ph)) * 6)); ctx.stroke();
-      ctx.fillStyle = '#FFD34F'; rrect(-30, -74, 16, 30, 5); ctx.fill(); ctx.strokeStyle = '#12266f'; ctx.lineWidth = 3; ctx.stroke();
-      ctx.fillStyle = shirt; rrect(-15, -76, 30, 46, 10); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = skin; ctx.lineWidth = 7; var as = air ? -1.2 : Math.sin(ph + 3.14) * 0.8;
-      ctx.beginPath(); ctx.moveTo(0, -66); ctx.lineTo(Math.sin(as) * 16, -48 + Math.cos(as) * 2); ctx.stroke();
-      ctx.fillStyle = skin; ctx.strokeStyle = '#12266f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -84, 15, 0, 6.283); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#12266f'; ctx.beginPath(); ctx.arc(0, -88, 15, 3.3, 6.2); ctx.fill();
-      ctx.fillStyle = '#12266f'; ctx.beginPath(); ctx.arc(5, -83, 2, 0, 6.283); ctx.fill();
+      var sw = air ? 0.5 : Math.sin(ph), sw2 = -sw, lift1 = air ? 12 : Math.max(0, Math.cos(ph)) * 9, lift2 = air ? 4 : Math.max(0, -Math.cos(ph)) * 9;
+      // ноги (вид сзади: шаг виден как подъём пятки)
+      ctx.strokeStyle = pants; ctx.lineWidth = 11;
+      ctx.beginPath(); ctx.moveTo(-6, -36); ctx.lineTo(-7 + sw * 4, -7 - lift1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(6, -36); ctx.lineTo(7 + sw2 * 4, -7 - lift2); ctx.stroke();
+      ctx.fillStyle = '#f5f7ff'; ctx.strokeStyle = line; ctx.lineWidth = 2.5;
+      rrect(-14 + sw * 4, -11 - lift1, 14, 9, 4); ctx.fill(); ctx.stroke(); rrect(0 + sw2 * 4, -11 - lift2, 14, 9, 4); ctx.fill(); ctx.stroke();
+      // руки
+      var asw = air ? -1.0 : Math.sin(ph + 3.14) * 0.9;
+      ctx.strokeStyle = shirtD; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.moveTo(-17, -70); ctx.lineTo(-24 - Math.sin(asw) * 3, -50 + Math.sin(asw) * 12 + (air ? -16 : 0)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(17, -70); ctx.lineTo(24 + Math.sin(asw) * 3, -50 - Math.sin(asw) * 12 + (air ? -16 : 0)); ctx.stroke();
+      circ(-24 - Math.sin(asw) * 3, -49 + Math.sin(asw) * 12 + (air ? -16 : 0), 4.5, skin); circ(24 + Math.sin(asw) * 3, -49 - Math.sin(asw) * 12 + (air ? -16 : 0), 4.5, skin);
+      // торс + рюкзак на спине
+      ctx.fillStyle = shirt; rrect(-17, -76, 34, 44, 11); ctx.fill(); ctx.strokeStyle = line; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = bag; rrect(-13, -72, 26, 32, 8); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#e6b800'; rrect(-10, -52, 20, 11, 4); ctx.fill();
+      ctx.strokeStyle = line; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-10, -56); ctx.lineTo(10, -56); ctx.stroke();
+      // голова сзади: волосы, уши
+      circ(-14, -88, 4, skin); circ(14, -88, 4, skin);
+      circ(0, -90, 15, hair);
+      ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(0, -77, 7, 4, 0, 0, 6.283); ctx.fill();
     }
-    if (hit) { ctx.fillStyle = '#FFD34F'; for (var i = 0; i < 3; i++) { var an = G.hitT * 9 + i * 2.1; ctx.beginPath(); ctx.arc(Math.cos(an) * 22, -96 + Math.sin(an) * 8, 4, 0, 6.283); ctx.fill(); } }
+    if (hit) { ctx.fillStyle = '#FFD34F'; for (var i = 0; i < 3; i++) { var an = G.hitT * 9 + i * 2.1; ctx.beginPath(); ctx.arc(Math.cos(an) * 22, -104 + Math.sin(an) * 8, 4, 0, 6.283); ctx.fill(); } }
     ctx.restore();
   }
 
