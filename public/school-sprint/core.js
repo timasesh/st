@@ -2,9 +2,9 @@
 (function (root) {
   'use strict';
   var C = {
-    ROUND_SEC: 60, LANES: 3, LANE_W: 104, Z_FAR: 1500, FOCAL: 520, PLAYER_Z: 14,
+    ROUND_SEC: 60, LANES: 3, LANE_W: 104, Z_FAR: 3200, FOCAL: 520, PLAYER_Z: 14,
     LANE_MOVE_SEC: 0.15, JUMP_SEC: 0.6, SLIDE_SEC: 0.52, JUMP_APEX: 125, PLAYER_H: 92, SLIDE_H: 38,
-    SWIPE_PX: 32, STAR_POINTS: 10, START_SPEED: 300, MAX_SPEED: 520, HIT_ANIM_SEC: 0.7, UNITS_PER_M: 10,
+    SWIPE_PX: 32, STAR_POINTS: 10, START_SPEED: 300, MAX_SPEED: 520, HIT_ANIM_SEC: 0.7, UNITS_PER_M: 10, MAX_BOOSTS: 6,
   };
   var TYPES = {
     backpack: { need: 'jump', h0: 0, h1: 30, depth: 34 },
@@ -73,13 +73,9 @@
   /* Звёзды в промежутке между рядами: линия по дорожке из достижимых. */
   function genStars(prevStates, gapStart, gapEnd, rnd) {
     rnd = rnd || Math.random;
-    var len = gapEnd - gapStart - 160;
-    if (len < 100 || rnd() > 0.078 || !prevStates.length) return [];
+    if (gapEnd - gapStart < 240 || rnd() > 0.5 || !prevStates.length) return [];
     var lane = prevStates[Math.floor(rnd() * prevStates.length)].lane;
-    var n = Math.min(6, Math.floor(len / 52) + 1), out = [];
-    var gold = rnd() < 0.1 ? Math.floor(n / 2) : -1;
-    for (var i = 0; i < n; i++) out.push({ lane: lane, z: gapStart + 80 + i * 52, gold: i === gold });
-    return out;
+    return [{ lane: lane, z: (gapStart + gapEnd) / 2, gold: rnd() < 0.1 }]; // по одной звезде в промежутке
   }
 
   function jumpOffset(elapsed) {
@@ -93,10 +89,16 @@
     if (Math.abs(player.x - o.lane) > 0.52) return false;
     return player.yOff + player.h > tp.h0 && player.yOff < tp.h1;
   }
-  function starTouch(player, s) { return s.z <= C.PLAYER_Z + 10 && s.z >= -C.PLAYER_Z - 10 && Math.abs(player.x - s.lane) < 0.62; }
+  /* звезда висит на высоте ~28–68: подбирается только при касании по высоте (прыжок выше — пролетаешь над ней) */
+  function starTouch(player, s) {
+    if (s.z > C.PLAYER_Z + 10 || s.z < -C.PLAYER_Z - 10 || Math.abs(player.x - s.lane) >= 0.62) return false;
+    return player.yOff + player.h > 28 && player.yOff < 68;
+  }
+  /* каждые 1000 очков скорость ×1.4 (не более 6 раз) */
+  function speedMult(score) { return Math.pow(1.4, Math.min(C.MAX_BOOSTS, Math.floor(Math.max(0, score) / 1000))); }
 
   function scoreOf(distanceM, stars) { return Math.floor(distanceM) + Math.floor(stars) * C.STAR_POINTS; }
 
-  var core = { C: C, TYPES: TYPES, speedAt: speedAt, phaseOf: phaseOf, stepStates: stepStates, initialStates: initialStates, genRow: genRow, genStars: genStars, jumpOffset: jumpOffset, hit: hit, starTouch: starTouch, scoreOf: scoreOf };
+  var core = { C: C, TYPES: TYPES, speedAt: speedAt, phaseOf: phaseOf, stepStates: stepStates, initialStates: initialStates, genRow: genRow, genStars: genStars, jumpOffset: jumpOffset, hit: hit, starTouch: starTouch, speedMult: speedMult, scoreOf: scoreOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = core; else root.SprintCore = core;
 })(typeof window !== 'undefined' ? window : globalThis);

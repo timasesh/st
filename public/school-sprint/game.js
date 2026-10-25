@@ -90,7 +90,7 @@
   }
   function spawn() {
     while (G.nextZ < C.Z_FAR) {
-      var sp = Math.min(C.MAX_SPEED, K.speedAt(G.t) + 20);
+      var sp = K.speedAt(G.t) * (G.mult || 1) * 1.2 + 20;
       var row = K.genRow(G.t, sp, G.gen, Math.random);
       var z = G.nextZ + row.dz;
       var st = K.genStars(G.gen, G.nextZ, z, Math.random);
@@ -193,8 +193,8 @@
     G.endReason = reason; finished = true;
     $('hud').hidden = true; state = 'over'; sfx.end();
     var distM = Math.floor(G.distU / C.UNITS_PER_M), stars = G.stars;
-    lastResult = { distance: distM, stars: stars, score: K.scoreOf(distM, stars), playedMs: Math.round(Math.min(G.t, C.ROUND_SEC) * 1000) };
-    $('rTitle').textContent = reason === 'time' ? 'Время вышло!' : 'Столкновение!';
+    lastResult = { distance: distM, stars: stars, score: K.scoreOf(distM, stars), playedMs: Math.round(G.t * 1000) };
+    $('rTitle').textContent = 'Столкновение!';
     $('rScore').textContent = lastResult.score; $('rDist').textContent = distM + ' м'; $('rStars').textContent = stars; $('rBest').textContent = '…';
     $('retryBtn').hidden = true; show('result'); saveResult();
   }
@@ -221,8 +221,8 @@
     var p = G.p;
     if (state === 'hit') { G.hitT += dt; if (G.hitT >= C.HIT_ANIM_SEC) endRound('hit'); updateParticles(dt); return; }
     G.t += dt;
-    if (G.t >= C.ROUND_SEC) { G.t = C.ROUND_SEC; endRound('time'); return; }
-    G.speed = K.speedAt(G.t);
+    var tgt = K.speedMult(K.scoreOf(G.distU / C.UNITS_PER_M, G.stars)); G.mult = (G.mult || 1) + (tgt - (G.mult || 1)) * Math.min(1, dt * 3);
+    G.speed = K.speedAt(G.t) * G.mult;
     var d = G.speed * dt; G.distU += d; G.offset = (G.offset + d) % 480;
     processQueue();
     if (p.moveT < 1) { p.moveT = Math.min(1, p.moveT + dt / C.LANE_MOVE_SEC); p.x = p.from + (p.lane - p.from) * ease(p.moveT); } else p.x = p.lane;
@@ -257,9 +257,9 @@
   }
   function updateParticles(dt) { for (var i = particles.length - 1; i >= 0; i--) { var q = particles[i]; q.life -= dt; if (q.life <= 0) { particles.splice(i, 1); continue; } q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 260 * dt; } }
   function updateHud(force) {
-    var distM = Math.floor(G.distU / C.UNITS_PER_M), sc = K.scoreOf(distM, G.stars), tl = Math.max(0, Math.ceil(C.ROUND_SEC - G.t));
+    var distM = Math.floor(G.distU / C.UNITS_PER_M), sc = K.scoreOf(distM, G.stars), tl = Math.floor(G.t);
     if (force || uiCache.sc !== sc) { $('hScore').textContent = sc; uiCache.sc = sc; }
-    if (force || uiCache.tl !== tl) { $('hTime').textContent = tl; uiCache.tl = tl; }
+    if (force || uiCache.tl !== tl) { $('hTime').textContent = Math.floor(tl / 60) + ':' + ('0' + (tl % 60)).slice(-2); uiCache.tl = tl; }
     if (force || uiCache.st !== G.stars) { $('hStars').textContent = '⭐ ' + G.stars; uiCache.st = G.stars; }
   }
 
@@ -270,7 +270,7 @@
     if (shakeT > 0) ctx.translate((Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7);
     var g = ctx.createLinearGradient(0, 0, 0, LH); g.addColorStop(0, '#2a4fb8'); g.addColorStop(0.3, '#dbe8fb'); g.addColorStop(1, '#eaf1fd');
     ctx.fillStyle = g; ctx.fillRect(-10, -10, LW + 20, LH + 20);
-    var s0 = 0.05, zEnd = 1900, sEnd = S(zEnd), i, z, z2;
+    var s0 = 0.05, zEnd = 3800, sEnd = S(zEnd), i, z, z2;
     // потолок
     poly([PX(-E, HC, zEnd), PX(E, HC, zEnd), PX(E, HC, zMin - 60), PX(-E, HC, zMin - 60)], '#e9effa');
     // дальняя стена + дверь
@@ -280,7 +280,7 @@
     // боковые стены
     [-1, 1].forEach(function (side) {
       poly([PX(side * E, HC, zEnd), PX(side * E, HC, zMin - 60), PX(side * E, 0, zMin - 60), PX(side * E, 0, zEnd)], side < 0 ? '#c9d9f5' : '#bfd1f1');
-      for (var k = -1; k < 13; k++) {
+      for (var k = -1; k < 26; k++) {
         z = k * 160 - off % 160; z2 = z + 118; if (z2 < zMin - 60 || z > zEnd) continue;
         var zc = Math.max(z, zMin - 60);
         poly([PX(side * E, 175, zc), PX(side * E, 175, z2), PX(side * E, 0, z2), PX(side * E, 0, zc)], ((k + Math.floor(G ? G.distU / 160 : 0)) % 2 === 0) ? '#2f5dd8' : '#3a6be8', '#12266f', 1.2);
@@ -288,10 +288,10 @@
       }
     });
     // лампы на потолке
-    for (i = -1; i < 13; i++) { z = i * 160 - off % 160; z2 = z + 70; if (z2 < zMin) continue; poly([PX(-40, HC - 2, Math.max(z, zMin - 50)), PX(40, HC - 2, Math.max(z, zMin - 50)), PX(40, HC - 2, z2), PX(-40, HC - 2, z2)], '#fff8d6'); }
+    for (i = -1; i < 26; i++) { z = i * 160 - off % 160; z2 = z + 70; if (z2 < zMin) continue; poly([PX(-40, HC - 2, Math.max(z, zMin - 50)), PX(40, HC - 2, Math.max(z, zMin - 50)), PX(40, HC - 2, z2), PX(-40, HC - 2, z2)], '#fff8d6'); }
     // пол с полосами
     poly([PX(-E, 0, zEnd), PX(E, 0, zEnd), PX(E, 0, zMin - 60), PX(-E, 0, zMin - 60)], '#e3ecf9');
-    for (i = -1; i < 18; i++) {
+    for (i = -1; i < 34; i++) {
       z = i * 120 - off % 120; z2 = z + 60; if (z2 < zMin - 60 || z > zEnd) continue;
       poly([PX(-E, 0, Math.max(z, zMin - 60)), PX(E, 0, Math.max(z, zMin - 60)), PX(E, 0, z2), PX(-E, 0, z2)], '#d3e1f6');
     }

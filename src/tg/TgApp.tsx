@@ -363,13 +363,13 @@ function SkyQuest() {
   }, [load]);
   const players = mode === 'stars' ? data.leaderboard : data.scoreLeaderboard;
   return <div className="stack">
-    <div className="row between"><Head kicker="Космическое приключение" title="Sky Quest" /><span className="pill gold" style={{ alignSelf: 'flex-start', marginTop: 6 }}><Star size={14} fill="currentColor" /> {loading ? '…' : data.stars}</span></div>
-    <div className="seg"><button className={section === 'game' ? 'on' : ''} onClick={() => setSection('game')}>Играть</button><button className={section === 'rating' ? 'on' : ''} onClick={() => { setSection('rating'); void load(); }}>Рейтинг</button><button className={section === 'sprint' ? 'on' : ''} onClick={() => { setSection('sprint'); setSprintOpen(false); }}>Спринт</button></div>
+    <div className="row between"><Head kicker="Игры и рейтинг" title="Играть" /><span className="pill gold" style={{ alignSelf: 'flex-start', marginTop: 6 }}><Star size={14} fill="currentColor" /> {loading ? '…' : data.stars}</span></div>
+    <div className="seg"><button className={section === 'game' ? 'on' : ''} onClick={() => setSection('game')}>Sky Quest</button><button className={section === 'sprint' ? 'on' : ''} onClick={() => { setSection('sprint'); setSprintOpen(false); }}>School Sprint</button><button className={section === 'rating' ? 'on' : ''} onClick={() => { setSection('rating'); void load(); }}>Рейтинг</button></div>
     {error && <p className="err" role="alert">{error}</p>}
     {section === 'sprint'
       ? (sprintOpen
         ? <iframe className="game game-full" src="/school-sprint/index.html" title="Школьный спринт" allow="autoplay" />
-        : <div className="card stack" style={{ textAlign: 'center' }}><h3>Школьный спринт</h3><p className="small muted">Беги по коридору 60 секунд: свайпы меняют дорожки, вверх — прыжок, вниз — скольжение. Собирай звёзды и побивай рекорд.</p><button className="btn gold block" onClick={() => setSprintOpen(true)}>Играть</button></div>)
+        : <div className="card stack" style={{ textAlign: 'center' }}><h3>Школьный спринт</h3><p className="small muted">Беги по коридору как можно дольше: свайпы меняют дорожки, вверх — прыжок, вниз — кувырок. Собирай звёзды и побивай рекорд.</p><button className="btn gold block" onClick={() => setSprintOpen(true)}>Играть</button></div>)
       : section === 'game'
       ? <iframe className="game game-full" src="/flappy/index.html?autostart=1" title="Sky Quest" allow="autoplay" />
       : <div className="stack">
@@ -495,7 +495,7 @@ export default function TgApp() {
   const NAV: { id: Tab; label: string; icon: typeof BookOpen; badge?: number }[] = [
     { id: 'home', label: 'Занятия', icon: BookOpen }, { id: 'plan', label: 'План', icon: Clock3 },
     { id: 'tests', label: 'Тесты', icon: FileQuestion, badge: pendingTests }, { id: 'hw', label: 'Д/з', icon: Paperclip, badge: pendingHw },
-    { id: 'prizes', label: 'Призы', icon: Gift }, { id: 'sky', label: 'Sky Quest', icon: Rocket },
+    { id: 'prizes', label: 'Призы', icon: Gift }, { id: 'sky', label: 'Играть', icon: Rocket },
   ];
   const startTest = (t: Test) => { setTestRun(t); };
 

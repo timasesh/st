@@ -6,7 +6,7 @@ import path from 'node:path';
 const GAME = 'school-sprint';
 const STORE_KEY = 'school_sprint';
 const ROUND_SEC = 60;
-const MAX_SPEED_UNITS = 520 * Math.pow(1.2, 5);      // макс. скорость игры, ед/с
+const MAX_SPEED_UNITS = 520 * Math.pow(1.4, 6);      // макс. скорость игры, ед/с
 const UNITS_PER_M = 10;
 const STAR_POINTS = 10;
 const MAX_SESSION_AGE_MS = 30 * 60 * 1000; // сессия живёт 30 минут (с учётом пауз)
@@ -105,7 +105,7 @@ export function createSchoolSprint({ getSupabase, dataDir, getAccounts, refreshA
         const playedSec = playedMs / 1000;
         const maxDistance = (playedSec * MAX_SPEED_UNITS) / UNITS_PER_M * 1.05 + 10;
         const maxStars = playedSec * 12 + 20;
-        if (playedMs > (ROUND_SEC + 2) * 1000 || playedMs > elapsedMs + 1500 || distance > maxDistance || stars > maxStars)
+        if (playedMs > MAX_SESSION_AGE_MS || playedMs > elapsedMs + 1500 || distance > maxDistance || stars > maxStars)
           return res.status(422).json({ error: 'Результат не прошёл проверку.' });
         session.status = 'finished'; session.finishedAt = new Date().toISOString();
         session.distance = Math.floor(distance); session.collectedStars = Math.floor(stars);
