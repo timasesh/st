@@ -78,7 +78,7 @@ const TABS: Array<{ id: StudentTab; label: string; mobileLabel: string; icon: ty
   { id: 'tests', label: 'Тесты', mobileLabel: 'Тесты', icon: FileQuestion },
   { id: 'homework', label: 'Домашние задания', mobileLabel: 'Д/з', icon: Paperclip },
   { id: 'prizes', label: 'Призы', mobileLabel: 'Призы', icon: Gift },
-  { id: 'skyquest', label: 'Sky Quest', mobileLabel: 'Sky Quest', icon: Rocket },
+  { id: 'skyquest', label: 'Играть', mobileLabel: 'Играть', icon: Rocket },
 ];
 
 function StudentPrizesTab({ stars, trialAccount, onBalanceUpdate }: { stars: number; trialAccount?: boolean; onBalanceUpdate: (stars: number) => void }) {
