@@ -335,7 +335,8 @@ function Prizes({ portal, refresh, say }: { portal: Portal; refresh: () => Promi
 /* ───────── Sky Quest ───────── */
 type SkyData = { stars: number; bestScore: number; leaderboard: { id: string; name: string; stars: number }[]; scoreLeaderboard: { id: string; name: string; score: number }[] };
 function SkyQuest() {
-  const [section, setSection] = useState<'game' | 'rating'>('game');
+  const [section, setSection] = useState<'game' | 'rating' | 'sprint'>('game');
+  const [sprintOpen, setSprintOpen] = useState(false);
   const [mode, setMode] = useState<'stars' | 'score'>('stars');
   const [data, setData] = useState<SkyData>({ stars: 0, bestScore: 0, leaderboard: [], scoreLeaderboard: [] });
   const [loading, setLoading] = useState(true);
@@ -351,6 +352,7 @@ function SkyQuest() {
       if (ev.origin !== window.location.origin) return;
       if (ev.data?.type === 'SKYQUEST_BALANCE_CHANGED') void load();
       if (ev.data?.type === 'SKYQUEST_CLOSE') { setSection('rating'); void load(); }
+      if (ev.data?.type === 'SPRINT_CLOSE') setSprintOpen(false);
       if (ev.data?.type === 'FLAPPY_GAME_OVER') {
         const score = Number(ev.data.score);
         if (!Number.isSafeInteger(score) || score < 0) return;
@@ -362,9 +364,13 @@ function SkyQuest() {
   const players = mode === 'stars' ? data.leaderboard : data.scoreLeaderboard;
   return <div className="stack">
     <div className="row between"><Head kicker="Космическое приключение" title="Sky Quest" /><span className="pill gold" style={{ alignSelf: 'flex-start', marginTop: 6 }}><Star size={14} fill="currentColor" /> {loading ? '…' : data.stars}</span></div>
-    <div className="seg"><button className={section === 'game' ? 'on' : ''} onClick={() => setSection('game')}>Играть</button><button className={section === 'rating' ? 'on' : ''} onClick={() => { setSection('rating'); void load(); }}>Рейтинг</button></div>
+    <div className="seg"><button className={section === 'game' ? 'on' : ''} onClick={() => setSection('game')}>Играть</button><button className={section === 'rating' ? 'on' : ''} onClick={() => { setSection('rating'); void load(); }}>Рейтинг</button><button className={section === 'sprint' ? 'on' : ''} onClick={() => { setSection('sprint'); setSprintOpen(false); }}>Спринт</button></div>
     {error && <p className="err" role="alert">{error}</p>}
-    {section === 'game'
+    {section === 'sprint'
+      ? (sprintOpen
+        ? <iframe className="game game-full" src="/school-sprint/index.html" title="Школьный спринт" allow="autoplay" />
+        : <div className="card stack" style={{ textAlign: 'center' }}><h3>Школьный спринт</h3><p className="small muted">Беги по коридору 60 секунд: свайпы меняют дорожки, вверх — прыжок, вниз — скольжение. Собирай звёзды и побивай рекорд.</p><button className="btn gold block" onClick={() => setSprintOpen(true)}>Играть</button></div>)
+      : section === 'game'
       ? <iframe className="game game-full" src="/flappy/index.html?autostart=1" title="Sky Quest" allow="autoplay" />
       : <div className="stack">
         <div className="row between"><p className="small muted">Мой рекорд: <b>{data.bestScore}</b> очков</p><button className="iconbtn" style={{ width: 40, height: 40 }} aria-label="Обновить" onClick={() => void load()}><RefreshCw size={16} /></button></div>

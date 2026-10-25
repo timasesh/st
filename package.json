@@ -13,7 +13,7 @@
     "preview": "node server.js --production",
     "clean": "node scripts/clean.mjs",
     "migrate:homework": "node scripts/migrate-homework-attachments.mjs",
-    "lint": "tsc --noEmit && node --check server.js && node --check server/homework-files.js && node --check server/student-progress.js && node --check server/routes/homework.js && node --check scripts/clean.mjs && node --check scripts/migrate-homework-attachments.mjs",
+    "lint": "tsc --noEmit && node --check server.js && node --check server/homework-files.js && node --check server/student-progress.js && node --check server/routes/homework.js && node --check server/telegram-identity.js && node --check server/school-sprint.js && node --check public/school-sprint/game.js && node --check public/school-sprint/core.js && node --check scripts/clean.mjs && node --check scripts/migrate-homework-attachments.mjs",
     "test": "node --test"
   },
   "dependencies": {

@@ -10,6 +10,7 @@ import { validateHomeworkUpload, writeJsonAtomically } from './server/homework-f
 import { mergeStudentProgress } from './server/student-progress.js';
 import { registerHomeworkRoutes } from './server/routes/homework.js';
 import { createTelegramIdentity } from './server/telegram-identity.js';
+import { createSchoolSprint } from './server/school-sprint.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(ROOT, '.env.local') });
@@ -2195,6 +2196,7 @@ const identity = createTelegramIdentity({
   recordAudit: recordAdminAuditSafely,
 });
 identity.register(app);
+createSchoolSprint({ getSupabase: () => supabase, dataDir, getAccounts: () => accounts, refreshAccounts, getUserSession }).register(app);
 const adminAccount = (account) => account.role === 'student' ? { ...publicAccount(account), stid: identity.stidOf(account.id), telegramLinked: identity.isLinked(account.id) } : publicAccount(account);
 
 async function start() {
