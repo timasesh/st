@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { buildRanking, isRankable, shortName } from './game-ranking.js';
 
 const GAME = 'school-sprint';
 const STORE_KEY = 'school_sprint';
@@ -54,7 +55,7 @@ export function createSchoolSprint({ getSupabase, dataDir, getAccounts, refreshA
     return job;
   }
 
-  const emptyStats = () => ({ bestScore: 0, bestDistance: 0, rounds: 0, totalStars: 0, lastPlayedAt: null });
+  const emptyStats = () => ({ bestScore: 0, bestDistance: 0, bestStars: 0, bestScoreAt: 0, bestStarsAt: 0, rounds: 0, totalStars: 0, lastPlayedAt: null });
   const statsOf = (userId) => ({ ...emptyStats(), ...(store.stats[userId] || {}) });
   const scoreOf = (distance, stars) => Math.floor(distance) + Math.floor(stars) * STAR_POINTS;
 
@@ -66,7 +67,6 @@ export function createSchoolSprint({ getSupabase, dataDir, getAccounts, refreshA
     await load();
     return user.account;
   }
-  const shortName = (a) => `${a.firstName || ''} ${(a.lastName || '').trim().slice(0, 1) ? `${(a.lastName || '').trim().slice(0, 1)}.` : ''}`.trim();
 
   function register(app) {
     app.get(`/api/games/${GAME}/profile`, async (req, res) => {
@@ -104,7 +104,7 @@ export function createSchoolSprint({ getSupabase, dataDir, getAccounts, refreshA
           return res.status(400).json({ error: 'Некорректные данные результата.' });
         const playedSec = playedMs / 1000;
         const maxDistance = (playedSec * MAX_SPEED_UNITS) / UNITS_PER_M * 1.05 + 10;
-        const maxStars = playedSec * 12 + 20;
+        const maxStars = playedSec * 8 + 10; // не больше одной звезды (до 5 золотой) за промежуток ≥0,7 с
         if (playedMs > MAX_SESSION_AGE_MS || playedMs > elapsedMs + 1500 || distance > maxDistance || stars > maxStars)
           return res.status(422).json({ error: 'Результат не прошёл проверку.' });
         session.status = 'finished'; session.finishedAt = new Date().toISOString();
@@ -112,24 +112,28 @@ export function createSchoolSprint({ getSupabase, dataDir, getAccounts, refreshA
         session.score = scoreOf(session.distance, session.collectedStars);
         const st = statsOf(a.id);
         st.rounds += 1; st.totalStars += session.collectedStars;
-        st.bestScore = Math.max(st.bestScore, session.score); st.bestDistance = Math.max(st.bestDistance, session.distance);
+        const nowTs = Date.now();
+        const newScoreRecord = session.score > st.bestScore;
+        if (newScoreRecord) { st.bestScore = session.score; st.bestScoreAt = nowTs; }
+        if (session.collectedStars > st.bestStars) { st.bestStars = session.collectedStars; st.bestStarsAt = nowTs; }
+        if (session.distance > st.bestDistance) st.bestDistance = session.distance;
         st.lastPlayedAt = session.finishedAt;
         store.stats[a.id] = st;
         await save();
-        res.json({ ok: true, result: { score: session.score, distance: session.distance, collectedStars: session.collectedStars }, stats: st, newRecord: session.score >= st.bestScore });
+        res.json({ ok: true, result: { score: session.score, distance: session.distance, collectedStars: session.collectedStars }, stats: st, newRecord: newScoreRecord });
       } catch (e) { res.status(500).json({ error: 'Не удалось сохранить результат.' }); }
     });
 
     app.get(`/api/games/${GAME}/leaderboard`, async (req, res) => {
       try {
         const a = await student(req, res); if (!a) return;
-        const accounts = getAccounts();
-        const top = Object.entries(store.stats)
-          .filter(([, s]) => s.bestScore > 0)
-          .sort((x, y) => y[1].bestScore - x[1].bestScore).slice(0, 10)
-          .map(([id, s]) => { const acc = accounts.find((q) => q.id === id); return acc && acc.status !== 'withdrawn' ? { name: shortName(acc), bestScore: s.bestScore, bestDistance: s.bestDistance, me: id === a.id } : null; })
-          .filter(Boolean);
-        res.json({ leaderboard: top });
+        const accounts = getAccounts().filter(isRankable);
+        const statOf = (id) => store.stats[id] || {};
+        const byScore = buildRanking(accounts.map((q) => ({ id: q.id, name: shortName(q), value: Number(statOf(q.id).bestScore) || 0, at: statOf(q.id).bestScoreAt })), a.id);
+        const byStars = buildRanking(accounts.map((q) => ({ id: q.id, name: shortName(q), value: Number(statOf(q.id).bestStars) || 0, at: statOf(q.id).bestStarsAt })), a.id);
+        // leaderboard — для меню игры (совместимость): по очкам, топ-5
+        const leaderboard = byScore.top.slice(0, 5).map((e) => ({ name: e.name, bestScore: e.value, me: e.me }));
+        res.json({ leaderboard, byScore, byStars, stats: statsOf(a.id) });
       } catch (e) { res.status(500).json({ error: 'Не удалось загрузить рейтинг.' }); }
     });
   }

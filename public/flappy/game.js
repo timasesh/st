@@ -1569,6 +1569,17 @@ function showGameOver() {
   notifyParentGameOver();
 }
 
+// Подтверждение захода: сервер выдаёт подписанный токен со временем старта — без него рекорд не засчитывается.
+let runToken = null;
+function requestRunToken() {
+  runToken = null;
+  if (loginDemo) return;
+  fetch('/api/student/skyquest/run/start', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { if (j && typeof j.runToken === 'string') runToken = j.runToken; })
+    .catch(() => {});
+}
+
 function notifyParentGameOver() {
   try {
     if (window.parent && window.parent !== window) {
@@ -1576,7 +1587,8 @@ function notifyParentGameOver() {
         type: 'FLAPPY_GAME_OVER',
         score,
         sessionCoins,
-        bestScore
+        bestScore,
+        runToken
       }, '*');
     }
   } catch (e) {}
@@ -1675,6 +1687,7 @@ function startFlight() {
 
   if (gameState === 'ready') {
     gameState = 'playing';
+    requestRunToken();
     lastPipe = simNow() + 1000;
     document.getElementById('topControls').style.display = 'flex';
   }

@@ -332,52 +332,99 @@ function Prizes({ portal, refresh, say }: { portal: Portal; refresh: () => Promi
   </div>;
 }
 
-/* ───────── Sky Quest ───────── */
-type SkyData = { stars: number; bestScore: number; leaderboard: { id: string; name: string; stars: number }[]; scoreLeaderboard: { id: string; name: string; score: number }[] };
+/* ───────── Игры и рейтинг ───────── */
+type Row = { rank: number; name: string; value: number; me: boolean };
+type Ranking = { top: Row[]; me: { rank: number; value: number } | null };
+const NO_RANK: Ranking = { top: [], me: null };
+type SkyData = { stars: number; bestScore: number; bestStars: number; byStars: Ranking; byScore: Ranking };
+type SprintData = { stats: { bestScore: number; bestStars: number }; byStars: Ranking; byScore: Ranking };
+type StRating = { stars: number; top: Row[]; me: { rank: number; value: number } | null };
+type Sub = 'play' | 'stars' | 'score';
+
+function RankList({ rows, me, unit }: { rows: Row[]; me: { rank: number; value: number } | null; unit: ReactNode }) {
+  if (!rows.length) return <Empty icon={Trophy} title="Пока пусто" text="Стань первым в рейтинге!" />;
+  const medal = (n: number) => (n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : n);
+  const line = (r: Row, k: string) => <div key={k} className={`rank ${r.rank <= 3 ? 'top3' : ''}`} style={r.me ? { outline: '2px solid var(--ink, #1649E8)' } : undefined}>
+    <span className="n">{medal(r.rank)}</span><span className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}{r.me ? ' (ты)' : ''}</span><b>{r.value} {unit}</b></div>;
+  return <>{rows.map((r, i) => line(r, `${r.rank}-${i}`))}
+    {me && !rows.some((r) => r.me) && <><p className="tiny muted" style={{ textAlign: 'center' }}>⋯</p>{line({ rank: me.rank, name: 'Ты', value: me.value, me: true }, 'me')}</>}</>;
+}
+
+function SubTabs({ sub, setSub, onRefresh }: { sub: Sub; setSub: (s: Sub) => void; onRefresh: () => void }) {
+  return <div className="row" style={{ gap: 8 }}>
+    <div className="seg grow"><button className={sub === 'play' ? 'on' : ''} onClick={() => { tap(); setSub('play'); }}>Играть</button><button className={sub === 'stars' ? 'on' : ''} onClick={() => { tap(); setSub('stars'); onRefresh(); }}>По звёздам</button><button className={sub === 'score' ? 'on' : ''} onClick={() => { tap(); setSub('score'); onRefresh(); }}>По очкам</button></div>
+  </div>;
+}
+
+function GameIntro({ title, text, record, onPlay }: { title: string; text: string; record: string; onPlay: () => void }) {
+  return <div className="card stack" style={{ textAlign: 'center' }}><h3>{title}</h3><p className="small muted">{text}</p><p className="small"><b>{record}</b></p><button className="btn gold block" onClick={() => { tap('medium'); onPlay(); }}>Играть</button></div>;
+}
+
 function SkyQuest() {
-  const [section, setSection] = useState<'game' | 'rating' | 'sprint'>('game');
+  const [section, setSection] = useState<'sky' | 'sprint' | 'rating'>('sky');
+  const [skySub, setSkySub] = useState<Sub>('play');
+  const [sprintSub, setSprintSub] = useState<Sub>('play');
+  const [skyOpen, setSkyOpen] = useState(false);
   const [sprintOpen, setSprintOpen] = useState(false);
-  const [mode, setMode] = useState<'stars' | 'score'>('stars');
-  const [data, setData] = useState<SkyData>({ stars: 0, bestScore: 0, leaderboard: [], scoreLeaderboard: [] });
+  const [sky, setSky] = useState<SkyData>({ stars: 0, bestScore: 0, bestStars: 0, byStars: NO_RANK, byScore: NO_RANK });
+  const [sprint, setSprint] = useState<SprintData>({ stats: { bestScore: 0, bestStars: 0 }, byStars: NO_RANK, byScore: NO_RANK });
+  const [st, setSt] = useState<StRating>({ stars: 0, top: [], me: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const load = useCallback(async () => {
-    try { const r = await api<SkyData>('/api/student/skyquest'); setData({ stars: Number(r.stars) || 0, bestScore: Number(r.bestScore) || 0, leaderboard: r.leaderboard || [], scoreLeaderboard: r.scoreLeaderboard || [] }); setError(''); }
+  const loadSky = useCallback(async () => {
+    try { const r = await api<SkyData>('/api/student/skyquest'); setSky({ stars: Number(r.stars) || 0, bestScore: Number(r.bestScore) || 0, bestStars: Number(r.bestStars) || 0, byStars: r.byStars || NO_RANK, byScore: r.byScore || NO_RANK }); setError(''); }
     catch (x) { setError(errText(x, 'Не удалось загрузить Sky Quest.')); }
-    finally { setLoading(false); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  const loadSprint = useCallback(async () => {
+    try { const r = await api<SprintData>('/api/games/school-sprint/leaderboard'); setSprint({ stats: { bestScore: Number(r.stats?.bestScore) || 0, bestStars: Number(r.stats?.bestStars) || 0 }, byStars: r.byStars || NO_RANK, byScore: r.byScore || NO_RANK }); }
+    catch { /* игра покажет ошибку сама */ }
+  }, []);
+  const loadRating = useCallback(async () => {
+    try { const r = await api<StRating>('/api/student/rating'); setSt({ stars: Number(r.stars) || 0, top: r.top || [], me: r.me || null }); }
+    catch (x) { setError(errText(x, 'Не удалось загрузить рейтинг.')); }
+  }, []);
+  useEffect(() => { void Promise.all([loadSky(), loadSprint(), loadRating()]).finally(() => setLoading(false)); }, [loadSky, loadSprint, loadRating]);
   useEffect(() => {
     const onMsg = (ev: MessageEvent) => {
       if (ev.origin !== window.location.origin) return;
-      if (ev.data?.type === 'SKYQUEST_BALANCE_CHANGED') void load();
-      if (ev.data?.type === 'SKYQUEST_CLOSE') { setSection('rating'); void load(); }
-      if (ev.data?.type === 'SPRINT_CLOSE') setSprintOpen(false);
-      if (ev.data?.type === 'FLAPPY_GAME_OVER') {
-        const score = Number(ev.data.score);
+      const d = ev.data;
+      if (d?.type === 'SKYQUEST_BALANCE_CHANGED') void loadSky();
+      if (d?.type === 'SKYQUEST_CLOSE') { setSkyOpen(false); setSkySub('play'); void loadSky(); }
+      if (d?.type === 'SPRINT_CLOSE') { setSprintOpen(false); setSprintSub('play'); void loadSprint(); }
+      if (d?.type === 'FLAPPY_GAME_OVER') {
+        const score = Number(d.score);
         if (!Number.isSafeInteger(score) || score < 0) return;
-        api('/api/student/skyquest/score', { method: 'POST', body: JSON.stringify({ score }) }).then(() => load()).catch(() => {});
+        api('/api/student/skyquest/score', { method: 'POST', body: JSON.stringify({ score, stars: Number(d.sessionCoins) || 0, runToken: typeof d.runToken === 'string' ? d.runToken : '' }) }).then(() => loadSky()).catch(() => {});
       }
     };
     window.addEventListener('message', onMsg); return () => window.removeEventListener('message', onMsg);
-  }, [load]);
-  const players = mode === 'stars' ? data.leaderboard : data.scoreLeaderboard;
+  }, [loadSky, loadSprint]);
+  const star = <Star size={14} fill="currentColor" style={{ verticalAlign: -2 }} />;
+  const list = (r: Ranking, unit: ReactNode, hint: string) => <div className="stack"><p className="small muted">{hint}</p>{loading ? <div className="spin" /> : <RankList rows={r.top} me={r.me} unit={unit} />}</div>;
   return <div className="stack">
-    <div className="row between"><Head kicker="Игры и рейтинг" title="Играть" /><span className="pill gold" style={{ alignSelf: 'flex-start', marginTop: 6 }}><Star size={14} fill="currentColor" /> {loading ? '…' : data.stars}</span></div>
-    <div className="seg"><button className={section === 'game' ? 'on' : ''} onClick={() => setSection('game')}>Sky Quest</button><button className={section === 'sprint' ? 'on' : ''} onClick={() => { setSection('sprint'); setSprintOpen(false); }}>School Sprint</button><button className={section === 'rating' ? 'on' : ''} onClick={() => { setSection('rating'); void load(); }}>Рейтинг</button></div>
+    <div className="row between"><Head kicker="Игры и рейтинг" title="Играть" /><span className="pill gold" style={{ alignSelf: 'flex-start', marginTop: 6 }}><Star size={14} fill="currentColor" /> {loading ? '…' : sky.stars}</span></div>
+    <div className="seg"><button className={section === 'sky' ? 'on' : ''} onClick={() => setSection('sky')}>Sky Quest</button><button className={section === 'sprint' ? 'on' : ''} onClick={() => { setSection('sprint'); void loadSprint(); }}>School Sprint</button><button className={section === 'rating' ? 'on' : ''} onClick={() => { setSection('rating'); void loadRating(); }}>Рейтинг</button></div>
     {error && <p className="err" role="alert">{error}</p>}
-    {section === 'sprint'
-      ? (sprintOpen
+    {section === 'sky' && <>
+      <SubTabs sub={skySub} setSub={(s) => { setSkySub(s); if (s !== 'play') setSkyOpen(false); }} onRefresh={() => void loadSky()} />
+      {skySub === 'play' && (skyOpen
+        ? <iframe className="game game-full" src="/flappy/index.html?autostart=1" title="Sky Quest" allow="autoplay" />
+        : <GameIntro title="Sky Quest" text="Веди ракету между колоннами: касание — взлёт. Собирай звёзды — они копятся на твоём счёте — и побивай рекорды." record={`Рекорд: ${sky.bestScore} очков · ${sky.bestStars} звёзд за заход`} onPlay={() => setSkyOpen(true)} />)}
+      {skySub === 'stars' && list(sky.byStars, star, 'Рекорд по звёздам, собранным за один заход.')}
+      {skySub === 'score' && list(sky.byScore, 'очк.', 'Рекорд по очкам за один заход.')}
+    </>}
+    {section === 'sprint' && <>
+      <SubTabs sub={sprintSub} setSub={(s) => { setSprintSub(s); if (s !== 'play') setSprintOpen(false); }} onRefresh={() => void loadSprint()} />
+      {sprintSub === 'play' && (sprintOpen
         ? <iframe className="game game-full" src="/school-sprint/index.html" title="Школьный спринт" allow="autoplay" />
-        : <div className="card stack" style={{ textAlign: 'center' }}><h3>Школьный спринт</h3><p className="small muted">Беги по коридору как можно дольше: свайпы меняют дорожки, вверх — прыжок, вниз — кувырок. Собирай звёзды и побивай рекорд.</p><button className="btn gold block" onClick={() => setSprintOpen(true)}>Играть</button></div>)
-      : section === 'game'
-      ? <iframe className="game game-full" src="/flappy/index.html?autostart=1" title="Sky Quest" allow="autoplay" />
-      : <div className="stack">
-        <div className="row between"><p className="small muted">Мой рекорд: <b>{data.bestScore}</b> очков</p><button className="iconbtn" style={{ width: 40, height: 40 }} aria-label="Обновить" onClick={() => void load()}><RefreshCw size={16} /></button></div>
-        <div className="seg"><button className={mode === 'stars' ? 'on' : ''} onClick={() => setMode('stars')}>По звёздам</button><button className={mode === 'score' ? 'on' : ''} onClick={() => setMode('score')}>По очкам</button></div>
-        {loading ? <div className="spin" /> : players.length ? players.map((p, idx) => <div key={p.id} className={`rank ${idx < 3 ? 'top3' : ''}`}><span className="n">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}</span><span className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span><b>{'stars' in p ? <>{(p as any).stars} <Star size={14} fill="currentColor" style={{ verticalAlign: -2 }} /></> : `${(p as any).score} очк.`}</b></div>)
-          : <Empty icon={Trophy} title="Пока пусто" text="Рейтинг появится, когда ученики наберут первые звёзды и очки." />}
-      </div>}
+        : <GameIntro title="Школьный спринт" text="Беги по коридору как можно дольше: свайпы меняют дорожки, вверх — прыжок, вниз — кувырок. Собирай звёзды и побивай рекорд." record={`Рекорд: ${sprint.stats.bestScore} очков · ${sprint.stats.bestStars} звёзд за забег`} onPlay={() => setSprintOpen(true)} />)}
+      {sprintSub === 'stars' && list(sprint.byStars, star, 'Рекорд по звёздам, собранным за один забег.')}
+      {sprintSub === 'score' && list(sprint.byScore, 'очк.', 'Рекорд по очкам за один забег.')}
+    </>}
+    {section === 'rating' && <div className="stack">
+      <div className="row between"><div><h3>Звёзды ST</h3><p className="small muted">За квизы и домашние задания. Твои: <b>{st.stars}</b></p></div><button className="iconbtn" style={{ width: 40, height: 40 }} aria-label="Обновить" onClick={() => void loadRating()}><RefreshCw size={16} /></button></div>
+      {loading ? <div className="spin" /> : <RankList rows={st.top} me={st.me} unit={star} />}
+    </div>}
   </div>;
 }
 
@@ -399,17 +446,37 @@ function Messages({ portal, onClose, onRead }: { portal: Portal; onClose: () => 
 function SettingsSheet({ portal, onClose, onLogout }: { portal: Portal; onClose: () => void; onLogout: () => void }) {
   const [cur, setCur] = useState(''); const [pw, setPw] = useState(''); const [pw2, setPw2] = useState('');
   const [busy, setBusy] = useState(false); const [note, setNote] = useState<{ t: string; ok: boolean } | null>(null);
+  const [creds, setCreds] = useState<{ login: string; password: string | null } | null>(null);
+  const [show, setShow] = useState(false); const [opening, setOpening] = useState(false);
+  useEffect(() => { api<{ login: string; password: string | null }>('/api/auth/credentials').then(setCreds).catch(() => {}); }, []);
   const change = async (e: FormEvent) => {
     e.preventDefault(); setNote(null);
     if (pw !== pw2) { setNote({ t: 'Новые пароли не совпадают.', ok: false }); return; }
     setBusy(true);
-    try { await api('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: cur, newPassword: pw }) }); setCur(''); setPw(''); setPw2(''); notify('success'); setNote({ t: 'Пароль изменён.', ok: true }); }
-    catch (x) { notify('error'); setNote({ t: errText(x, 'Не удалось сменить пароль.'), ok: false }); }
+    try {
+      await api('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: cur, newPassword: pw }) });
+      setCreds((c) => ({ login: c?.login || '', password: pw })); setShow(true);
+      setCur(''); setPw(''); setPw2(''); notify('success'); setNote({ t: 'Пароль изменён.', ok: true });
+    } catch (x) { notify('error'); setNote({ t: errText(x, 'Не удалось сменить пароль.'), ok: false }); }
     finally { setBusy(false); }
   };
+  const openSite = async () => {
+    setOpening(true);
+    try { const r = await api<{ url: string }>('/api/auth/web-link', { method: 'POST' }); openExternal(r.url); }
+    catch { openExternal(`${location.origin}/student`); }
+    finally { setOpening(false); }
+  };
+  const copy = (text: string) => { try { void navigator.clipboard?.writeText(text); notify('success'); } catch { /* ignore */ } };
   return <Sheet onClose={onClose}>
     <div className="row between"><h2>Настройки</h2><button className="iconbtn" onClick={onClose} aria-label="Закрыть"><X size={20} /></button></div>
     <div className="card flat" style={{ margin: '12px 0' }}><p><b>{portal.account.firstName} {portal.account.lastName}</b></p><p className="small muted">{portal.account.studentClass || 'Класс не указан'}{portal.account.teacher ? ` · преподаватель: ${portal.account.teacher.firstName} ${portal.account.teacher.lastName}` : ''}</p></div>
+    <div className="card stack">
+      <h3>Данные для входа</h3>
+      <div className="row between"><span className="small muted">Логин (телефон)</span><button className="btn small ghost" onClick={() => creds && copy(creds.login)}><b>{creds?.login || '…'}</b></button></div>
+      <div className="row between"><span className="small muted">Пароль</span>{creds?.password
+        ? <span className="row" style={{ gap: 6 }}><button className="btn small ghost" onClick={() => copy(creds.password!)}><b>{show ? creds.password : '••••••••'}</b></button><button className="btn small ghost" onClick={() => setShow((v) => !v)}>{show ? 'Скрыть' : 'Показать'}</button></span>
+        : <span className="small muted">{creds ? 'появится после входа по паролю или смены' : '…'}</span>}</div>
+    </div>
     <form onSubmit={change} className="stack card">
       <h3>Сменить пароль</h3>
       <label className="field"><span>Текущий пароль</span><input className="input" type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} required /></label>
@@ -419,7 +486,7 @@ function SettingsSheet({ portal, onClose, onLogout }: { portal: Portal; onClose:
       <button className="btn block" disabled={busy}>{busy ? 'Сохраняем…' : 'Сохранить пароль'}</button>
     </form>
     <div className="stack" style={{ marginTop: 14 }}>
-      <button className="btn ghost block" onClick={() => openExternal(`${location.origin}/student`)}>Открыть полную версию на сайте</button>
+      <button className="btn ghost block" disabled={opening} onClick={() => void openSite()}>{opening ? 'Открываем…' : 'Открыть полную версию на сайте'}</button>
       <button className="btn red block" onClick={onLogout}><LogOut size={18} /> Выйти</button>
     </div>
   </Sheet>;

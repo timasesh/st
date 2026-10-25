@@ -12,6 +12,8 @@ import { registerHomeworkRoutes } from './server/routes/homework.js';
 import { createTelegramIdentity } from './server/telegram-identity.js';
 import { createSchoolSprint } from './server/school-sprint.js';
 import { createTelegramNotifier } from './server/telegram-notify.js';
+import { createAccountAccess } from './server/account-access.js';
+import { createSkyQuestRecords } from './server/skyquest-records.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(ROOT, '.env.local') });
@@ -1210,6 +1212,7 @@ async function ensureTrialStudentAccountBase(trial) {
   const passwordHash = await hashPassword('test2026', salt);
   const student = { id: trial.studentId || crypto.randomUUID(), role: 'student', phone, firstName: trial.firstName, lastName: trial.lastName, studentClass: trial.studentClass, teacherId: trial.teacherId, lessonLink: trial.lessonLink, lessonDescription: trial.lessonDescription || '', children: [], status: 'active', progress: { trialAccount: true }, salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString() };
   await writeAccounts([...accounts, student]);
+  await accountAccess.remember(student.id, 'test2026');
   return student;
 }
 
@@ -1455,6 +1458,7 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
     salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString(),
   };
   await writeAccounts([...accounts, account]);
+  await accountAccess.remember(account.id, password);
   if (role === 'student') await identity.ensureStid(account.id);
   await recordAdminAuditSafely(req.adminSession.sub, 'Создан аккаунт', `${role}: ${account.firstName} ${account.lastName}`);
   return res.status(201).json({ account: adminAccount(account) });
@@ -1512,6 +1516,7 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
     return account;
   });
   await writeAccounts(nextAccounts);
+  if (typeof password === 'string' && password.length) await accountAccess.remember(updated.id, password);
   await recordAdminAuditSafely(req.adminSession.sub, 'Изменён аккаунт', `${current.role}: ${updated.firstName} ${updated.lastName}`);
   return res.json({ account: adminAccount(updated) });
 });
@@ -1937,37 +1942,6 @@ async function recordSkyQuestScore(studentId, score) {
   return balances[studentId].bestScore;
 }
 
-app.get('/api/student/skyquest', async (req, res) => {
-  await refreshAccounts();
-  const user = getUserSession(req);
-  if (!user || user.account.role !== 'student') return res.status(403).json({ error: 'Доступ запрещён.' });
-  try {
-    const balances = await readSkyQuestProgress();
-    const activeStudents = accounts.filter((account) => account.role === 'student' && account.status !== 'withdrawn');
-    const leaderboard = activeStudents.filter((account) => balances[account.id]?.stars > 0)
-      .map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim(), stars: balances[account.id].stars }))
-      .sort((a, b) => b.stars - a.stars || a.name.localeCompare(b.name, 'ru'))
-      .slice(0, 20);
-    const scoreLeaderboard = activeStudents.filter((account) => balances[account.id]?.bestScore > 0)
-      .map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim(), score: balances[account.id].bestScore }))
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'ru'))
-      .slice(0, 20);
-    return res.json({ stars: balances[user.account.id]?.stars || 0, bestScore: balances[user.account.id]?.bestScore || 0, leaderboard, scoreLeaderboard });
-  } catch (error) { console.error('Could not load Sky Quest data:', error); return res.status(503).json({ error: 'Не удалось загрузить Sky Quest. Проверьте настройку хранилища.' }); }
-});
-
-app.post('/api/student/skyquest/score', async (req, res) => {
-  await refreshAccounts();
-  const user = getUserSession(req);
-  if (!user || user.account.role !== 'student') return res.status(403).json({ error: 'Доступ запрещён.' });
-  const score = Number(req.body?.score);
-  if (!Number.isSafeInteger(score) || score < 0 || score > 1000000) return res.status(400).json({ error: 'Некорректный счёт.' });
-  try {
-    const bestScore = await recordSkyQuestScore(user.account.id, score);
-    return res.json({ bestScore });
-  } catch (error) { console.error('Could not save Sky Quest score:', error); return res.status(503).json({ error: 'Не удалось сохранить рекорд Sky Quest.' }); }
-});
-
 app.post('/api/student/skyquest/stars', async (req, res) => {
   await refreshAccounts();
   const user = getUserSession(req);
@@ -2128,6 +2102,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
   failedLoginAttempts.delete(ip);
   setUserSessionCookie(res, account);
+  void accountAccess.remember(account.id, password);
   const progress = account.progress ? {
     ...account.progress,
     userName: `${account.firstName} ${account.lastName}`,
@@ -2156,6 +2131,7 @@ app.post('/api/auth/change-password', async (req, res) => {
     ? { ...account, salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64') }
     : account);
   await writeAccounts(nextAccounts);
+  await accountAccess.remember(user.account.id, newPassword);
   return res.json({ ok: true });
 });
 
@@ -2221,6 +2197,12 @@ const notifier = createTelegramNotifier({
   readHistory: readStudentLessonHistory,
   listHomeworkFiles: listHomeworkAttachmentMetadata,
 });
+const accountAccess = createAccountAccess({ getSupabase: () => supabase, dataDir, getAccounts: () => accounts, refreshAccounts, getUserSession, setUserSessionCookie, getSecret: () => sessionSecret, passwordsMatch });
+accountAccess.register(app);
+createSkyQuestRecords({
+  getSupabase: () => supabase, dataDir, getAccounts: () => accounts, refreshAccounts, getUserSession,
+  getSecret: () => sessionSecret, readBalances: readSkyQuestProgress, recordScore: recordSkyQuestScore,
+}).register(app);
 createSchoolSprint({ getSupabase: () => supabase, dataDir, getAccounts: () => accounts, refreshAccounts, getUserSession }).register(app);
 const adminAccount = (account) => account.role === 'student' ? { ...publicAccount(account), stid: identity.stidOf(account.id), telegramLinked: identity.isLinked(account.id) } : publicAccount(account);
 
