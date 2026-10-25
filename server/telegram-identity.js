@@ -6,13 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 export const STID_LENGTH = 6; // сколько цифр в коде
 
-export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refreshAccounts, setUserSessionCookie, requireAdmin, recordAudit }) {
+export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refreshAccounts, setUserSessionCookie, clearUserSessionCookie, requireAdmin, recordAudit }) {
   const token = process.env.TELEGRAM_BOT_TOKEN || '';
   const publicUrl = (process.env.PUBLIC_URL || 'https://study-task.kz').replace(/\/+$/, '');
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || (token ? crypto.createHash('sha256').update(`${token}:study-task-webhook`).digest('hex').slice(0, 40) : '');
   const storePath = path.join(dataDir, 'identity-links.json');
   const STORE_KEY = 'identity_links';
-  let store = { stids: {}, telegram: {}, accountTg: {} };
+  let store = { stids: {}, telegram: {}, accountTg: {}, exited: {} };
   let saveChain = Promise.resolve();
 
   /* ───── хранилище ───── */
@@ -27,7 +27,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
         raw = JSON.parse(await fs.readFile(storePath, 'utf8'));
       }
     } catch { /* пусто — создадим */ }
-    if (raw && typeof raw === 'object') store = { stids: raw.stids || {}, telegram: raw.telegram || {}, accountTg: raw.accountTg || {} };
+    if (raw && typeof raw === 'object') store = { stids: raw.stids || {}, telegram: raw.telegram || {}, accountTg: raw.accountTg || {}, exited: raw.exited || {} };
   }
   function save() {
     const snapshot = JSON.stringify(store);
@@ -91,6 +91,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     if (previous && previous !== account.id) delete store.accountTg[previous];
     store.telegram[id] = account.id;
     store.accountTg[account.id] = id;
+    delete store.exited[id];
     await save();
     return 'ok';
   }
@@ -164,6 +165,14 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     await refreshAccounts();
     const linkedId = store.telegram[tgId];
     const linkedAccount = linkedId ? getAccounts().find((a) => a.id === linkedId && a.status !== 'withdrawn') : null;
+    // /exit — выход из аккаунта: снимаем привязку Telegram, при следующем открытии мини-приложения сессия сбрасывается
+    if (/^\/exit(@\w+)?$/i.test(text)) {
+      if (linkedId) { delete store.accountTg[linkedId]; delete store.telegram[tgId]; }
+      store.exited[tgId] = true;
+      await save();
+      try { await tgCall('setChatMenuButton', { chat_id: chatId, menu_button: { type: 'default' } }); } catch { /* не критично */ }
+      return say(chatId, 'Вы вышли из аккаунта. 👋\nЧтобы войти снова, отправьте код ученика (STID).', { reply_markup: { remove_keyboard: true } });
+    }
     const digits = text.replace(/\D/g, '');
     const looksLikeCode = digits.length === STID_LENGTH && /^[\s\d\-–—:]+$/.test(text.replace(/stid/ig, ''));
 
@@ -229,7 +238,10 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
       await refreshAccounts();
       const accountId = store.telegram[String(user.id)];
       const account = accountId ? getAccounts().find((a) => a.id === accountId && a.role === 'student' && a.status !== 'withdrawn') : null;
-      if (!account) return res.status(404).json({ linked: false });
+      if (!account) {
+        if (store.exited[String(user.id)]) { delete store.exited[String(user.id)]; await save(); if (clearUserSessionCookie) clearUserSessionCookie(res); }
+        return res.status(404).json({ linked: false });
+      }
       setUserSessionCookie(res, account);
       return res.json({ ok: true, linked: true });
     });
