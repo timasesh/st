@@ -1459,7 +1459,7 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   };
   await writeAccounts([...accounts, account]);
   await accountAccess.remember(account.id, password);
-  if (role === 'student') await identity.ensureStid(account.id);
+  if (role === 'student' || role === 'parent') await identity.ensureStid(account.id);
   await recordAdminAuditSafely(req.adminSession.sub, 'Создан аккаунт', `${role}: ${account.firstName} ${account.lastName}`);
   return res.status(201).json({ account: adminAccount(account) });
 });
@@ -2204,7 +2204,7 @@ createSkyQuestRecords({
   getSecret: () => sessionSecret, readBalances: readSkyQuestProgress, recordScore: recordSkyQuestScore,
 }).register(app);
 createSchoolSprint({ getSupabase: () => supabase, dataDir, getAccounts: () => accounts, refreshAccounts, getUserSession }).register(app);
-const adminAccount = (account) => account.role === 'student' ? { ...publicAccount(account), stid: identity.stidOf(account.id), telegramLinked: identity.isLinked(account.id) } : publicAccount(account);
+const adminAccount = (account) => account.role === 'student' || account.role === 'parent' ? { ...publicAccount(account), stid: identity.stidOf(account.id), telegramLinked: identity.isLinked(account.id) } : publicAccount(account);
 
 async function start() {
   await initializeAuth();

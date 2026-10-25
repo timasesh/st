@@ -21,7 +21,10 @@ const openExternal = (url: string) => { if (tg) tg.openLink(url); else window.op
 
 /* ───────── Типы ───────── */
 type Tab = 'home' | 'plan' | 'tests' | 'hw' | 'prizes' | 'sky';
-type Lesson = { id: string; day: number; hour: number; title: string; lessonLink?: string; lessonDescription?: string; attendance?: boolean };
+type PTab = 'kids' | 'plan' | 'hist' | 'prizes';
+type Lesson = { id: string; day: number; hour: number; title: string; lessonLink?: string; lessonDescription?: string; attendance?: boolean; studentId?: string; student?: { firstName?: string } | null };
+type Child = { id: string; firstName: string; lastName: string; studentClass?: string; teacher?: { firstName: string; lastName: string } | null; progress?: { stars?: number } };
+type HistoryEntry = { id: string; date: string; time: string; topic?: string; homeworkGrade?: string; testGrade?: string; nextHomework?: string; attendance?: boolean; attendanceReason?: string; attachment?: { filename: string } | null };
 type Question = { question: string; choices: string[] };
 type Test = { id: string; title: string; studentClass: string; lessonHour?: number; deadlineAt?: string; durationMinutes: number; questions: Question[]; status: 'assigned' | 'completed' | 'expired'; score?: number };
 type Homework = { id: string; date: string; time: string; topic: string; nextHomework: string; attachment?: { filename: string; mimeType?: string } | null };
@@ -29,6 +32,7 @@ type Message = { id: string; at: string; sender: string; body: string; read: boo
 type Portal = {
   account: { firstName: string; lastName: string; studentClass?: string; trialAccount?: boolean; role: string; teacher?: { firstName: string; lastName: string } | null };
   progress: { stars?: number; xp?: number; level?: number } | null;
+  relatedAccounts?: Child[];
   lessons: Lesson[]; studentTests?: Test[]; studentHomework?: Homework[]; messages: Message[];
 };
 
@@ -118,7 +122,7 @@ function Login({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState('');
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setBusy(true); setError('');
-    try { await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ phone, password, audience: 'student' }) }); notify('success'); onDone(); }
+    try { await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ phone, password }) }); notify('success'); onDone(); }
     catch (x) { notify('error'); setError(errText(x, 'Не удалось войти.')); }
     finally { setBusy(false); }
   };
@@ -192,7 +196,7 @@ function Plan({ portal, now }: { portal: Portal; now: Date }) {
             const isLive = c.day === di && l.hour === c.hour; const abs = l.attendance === false;
             return <div key={l.id} className={`slot ${isLive ? 'live' : abs ? 'abs' : ''}`}>
               <span className="time">{pad(l.hour)}:00</span>
-              <div className="grow"><p>{l.title}</p><p className="tiny muted">{hh(l.hour)}{abs ? ' · не посещено' : isLive ? ' · идёт сейчас' : ''}</p></div>
+              <div className="grow"><p>{l.title}{portal.account.role === 'parent' && l.student?.firstName ? ` · ${l.student.firstName}` : ''}</p><p className="tiny muted">{hh(l.hour)}{abs ? ' · не посещено' : isLive ? ' · идёт сейчас' : ''}</p></div>
               {l.lessonLink && <button className="btn small" onClick={() => { tap(); openExternal(l.lessonLink!); }}><Play size={14} fill="currentColor" /></button>}
             </div>;
           })}</div>
@@ -428,6 +432,118 @@ function SkyQuest() {
   </div>;
 }
 
+/* ───────── Кабинет родителя ───────── */
+function ChildPick({ kids, value, onChange }: { kids: Child[]; value: string; onChange: (id: string) => void }) {
+  if (kids.length < 2) return null;
+  return <div className="seg" style={{ marginBottom: 12 }}>{kids.map((k) => <button key={k.id} className={value === k.id ? 'on' : ''} onClick={() => { tap(); onChange(k.id); }}>{k.firstName}</button>)}</div>;
+}
+
+function ParentKids({ portal, now, go }: { portal: Portal; now: Date; go: (t: PTab) => void }) {
+  const kids = portal.relatedAccounts || [];
+  return <div className="stack">
+    <div><p className="muted small">{greeting(now)},</p><h1><span className="hl">{portal.account.firstName}</span>!</h1></div>
+    {!kids.length ? <Empty icon={BookOpen} title="Ученик пока не привязан" text="Когда администратор свяжет аккаунт с ребёнком, он появится здесь." /> :
+      kids.map((k) => {
+        const lessons = portal.lessons.filter((l) => l.studentId === k.id).map((l) => ({ ...l, d: offsetOf(l, now) })).sort((a, b) => a.d - b.d || a.hour - b.hour);
+        const next = lessons[0];
+        return <div key={k.id} className="card stack">
+          <div className="row between"><div><h2 style={{ marginBottom: 2 }}>{k.firstName} {k.lastName}</h2><p className="small muted">{k.studentClass || 'Класс не указан'}{k.teacher ? ` · преподаватель: ${k.teacher.firstName} ${k.teacher.lastName}` : ''}</p></div>
+            <span className="pill gold"><Star size={15} fill="currentColor" /> {k.progress?.stars ?? 0}</span></div>
+          {next ? <div className="slot"><span className="time">{pad(next.hour)}:00</span><div className="grow"><p>{next.title}</p><p className="tiny muted">{next.d === 0 ? 'Сегодня' : dateOf(now, next.d)} · {hh(next.hour)}</p></div></div>
+            : <p className="small muted">Занятий в расписании пока нет.</p>}
+          <div className="row" style={{ gap: 8 }}><button className="btn ghost small grow" onClick={() => go('hist')}>История уроков</button><button className="btn ghost small grow" onClick={() => go('prizes')}>Призы</button></div>
+        </div>;
+      })}
+  </div>;
+}
+
+function ParentHistory({ portal }: { portal: Portal }) {
+  const kids = portal.relatedAccounts || [];
+  const [kid, setKid] = useState(kids[0]?.id || '');
+  const [items, setItems] = useState<HistoryEntry[] | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!kid) return;
+    setItems(null); setError('');
+    api<{ history: HistoryEntry[] }>(`/api/parent/students/${kid}/lesson-history`).then((r) => setItems([...(r.history || [])].sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)))).catch((x) => setError(errText(x, 'Не удалось загрузить историю.')));
+  }, [kid]);
+  const fmt = (d: string) => { const t = new Date(`${d}T00:00:00+05:00`); return Number.isNaN(t.getTime()) ? d : t.toLocaleDateString('ru-KZ', { timeZone: 'Asia/Almaty', day: 'numeric', month: 'long' }); };
+  return <div>
+    <Head kicker="Что проходили" title="История уроков" sub="Темы, оценки и домашние задания." />
+    <ChildPick kids={kids} value={kid} onChange={setKid} />
+    {error ? <p className="err" role="alert">{error}</p> : items === null ? <div className="spin" /> : !items.length ? <Empty icon={BookOpen} title="Записей пока нет" text="После занятий преподаватель добавит тему, оценки и домашку." /> :
+      <div className="stack">{items.map((e) => <div key={e.id} className={`card ${e.attendance === false ? 'bad' : 'flat'}`}>
+        <div className="row between"><h3>{e.topic || 'Занятие'}</h3><span className="tiny muted">{fmt(e.date)} · {e.time}</span></div>
+        {e.attendance === false && <p className="small" style={{ marginTop: 4 }}>Не посетил(а){e.attendanceReason ? ` — ${e.attendanceReason}` : ''}</p>}
+        {(e.homeworkGrade || e.testGrade) && <p className="small muted" style={{ marginTop: 4 }}>{e.homeworkGrade ? `Домашка: ${e.homeworkGrade}` : ''}{e.homeworkGrade && e.testGrade ? ' · ' : ''}{e.testGrade ? `Тест: ${e.testGrade}` : ''}</p>}
+        {e.nextHomework && <p className="small" style={{ marginTop: 6 }}><Paperclip size={14} style={{ verticalAlign: -2 }} /> {e.nextHomework}{e.attachment ? ' · файл сдан' : ''}</p>}
+      </div>)}</div>}
+  </div>;
+}
+
+function ParentPrizes({ portal, refresh, say }: { portal: Portal; refresh: () => Promise<void>; say: (t: string, k: 'ok' | 'bad') => void }) {
+  const kids = portal.relatedAccounts || [];
+  const [kid, setKid] = useState(kids[0]?.id || '');
+  const [busy, setBusy] = useState(false);
+  const child = kids.find((k) => k.id === kid) || kids[0];
+  const stars = child?.progress?.stars ?? 0;
+  const enough = stars >= KIT_COST;
+  const buy = async () => {
+    if (!child || !window.confirm(`Оформить полный набор для ${child.firstName} за ${KIT_COST} звёзд?`)) return;
+    setBusy(true);
+    try { await api(`/api/parent/students/${child.id}/prize-kit`, { method: 'POST', body: JSON.stringify({ itemIds: KIT.map((i) => i.id) }) }); notify('success'); say(`Набор оформлен! Списано ${KIT_COST} звёзд.`, 'ok'); await refresh(); }
+    catch (x) { notify('error'); say(errText(x, 'Не удалось оформить набор.'), 'bad'); }
+    finally { setBusy(false); }
+  };
+  if (!child) return <div><Head kicker="Магазин наград" title="Призы" /><Empty icon={Gift} title="Ученик не привязан" text="Призы появятся, когда аккаунт будет связан с ребёнком." /></div>;
+  return <div>
+    <Head kicker="Магазин наград" title="Призы" sub="Призы выдаются только полным комплектом." />
+    <ChildPick kids={kids} value={child.id} onChange={setKid} />
+    <div className="stack">
+      <div className="card"><div className="row between"><span>Звёзды: {child.firstName}</span><span className="pill gold"><Star size={15} fill="currentColor" /> {stars}</span></div>
+        <div className="xp" style={{ margin: '8px 0 4px' }}><i style={{ width: `${Math.min(100, stars / KIT_COST * 100)}%` }} /></div>
+        <p className="tiny muted">{enough ? 'Звёзд хватает на полный набор!' : `Для набора нужно ${KIT_COST}, не хватает ${KIT_COST - stars}.`}</p></div>
+      <div className="gifts">{KIT.map((g) => <div key={g.id} className="gift"><div className="pic"><img src={g.img} alt={g.name} loading="lazy" /></div><p className="small" style={{ margin: '6px 0 2px' }}>{g.name}</p><span className="pill gold"><Star size={13} fill="currentColor" /> {g.stars}</span></div>)}</div>
+      <div className="card flat row between"><span>Полный набор</span><b className="hand" style={{ fontSize: 28 }}>{KIT_COST} <Star size={18} fill="currentColor" style={{ verticalAlign: -2 }} /></b></div>
+      <button className="btn block" disabled={!enough || busy} onClick={() => void buy()}><Gift size={20} /> {busy ? 'Оформляем…' : 'Оформить набор'}</button>
+    </div>
+  </div>;
+}
+
+function ParentShell({ portal, now, reload, say, onLogout }: { portal: Portal; now: Date; reload: (quiet?: boolean) => Promise<void>; say: (t: string, k: 'ok' | 'bad') => void; onLogout: () => void }) {
+  const [tab, setTab] = useState<PTab>('kids');
+  const [showMsg, setShowMsg] = useState(false);
+  const [showSet, setShowSet] = useState(false);
+  const [msgs, setMsgs] = useState(portal.messages);
+  useEffect(() => setMsgs(portal.messages), [portal.messages]);
+  const unread = msgs.filter((m) => !m.read).length;
+  const NAV: { id: PTab; label: string; icon: typeof BookOpen }[] = [
+    { id: 'kids', label: 'Дети', icon: BookOpen }, { id: 'plan', label: 'План', icon: Clock3 },
+    { id: 'hist', label: 'Уроки', icon: Paperclip }, { id: 'prizes', label: 'Призы', icon: Gift },
+  ];
+  const view = { ...portal, messages: msgs };
+  return <>
+    <div className="app">
+      <header className="top">
+        <img src="/static/ST.webp" alt="StudyTask" className="logo" />
+        <div className="grow"><h3 style={{ lineHeight: 1 }}>StudyTask</h3><p className="tiny muted">Кабинет родителя</p></div>
+        <button className="iconbtn" aria-label="Сообщения" onClick={() => { tap(); setShowMsg(true); }}><MessageCircle size={21} />{unread > 0 && <span className="dot">{unread}</span>}</button>
+        <button className="iconbtn" aria-label="Настройки" onClick={() => { tap(); setShowSet(true); }}><Settings size={21} /></button>
+      </header>
+      <main key={tab}>
+        {tab === 'kids' && <ParentKids portal={view} now={now} go={setTab} />}
+        {tab === 'plan' && <Plan portal={view} now={now} />}
+        {tab === 'hist' && <ParentHistory portal={view} />}
+        {tab === 'prizes' && <ParentPrizes portal={view} refresh={() => reload(true)} say={say} />}
+      </main>
+    </div>
+    <nav className="nav" aria-label="Разделы"><div className="nav-in">{NAV.map(({ id, label, icon: Icon }) =>
+      <button key={id} className={tab === id ? 'on' : ''} aria-current={tab === id ? 'page' : undefined} onClick={() => { tap(); setTab(id); window.scrollTo({ top: 0 }); }}><Icon size={21} /><span>{label}</span></button>)}</div></nav>
+    {showMsg && <Messages portal={view} onClose={() => setShowMsg(false)} onRead={(id) => setMsgs((m) => m.map((x) => x.id === id ? { ...x, read: true } : x))} />}
+    {showSet && <SettingsSheet portal={view} onClose={() => setShowSet(false)} onLogout={() => { setShowSet(false); onLogout(); }} />}
+  </>;
+}
+
 /* ───────── Сообщения и настройки ───────── */
 function Messages({ portal, onClose, onRead }: { portal: Portal; onClose: () => void; onRead: (id: string) => void }) {
   const [busy, setBusy] = useState('');
@@ -463,7 +579,7 @@ function SettingsSheet({ portal, onClose, onLogout }: { portal: Portal; onClose:
   const openSite = async () => {
     setOpening(true);
     try { const r = await api<{ url: string }>('/api/auth/web-link', { method: 'POST' }); openExternal(r.url); }
-    catch { openExternal(`${location.origin}/student`); }
+    catch { openExternal(`${location.origin}/${portal.account.role === 'parent' ? 'parent' : 'student'}`); }
     finally { setOpening(false); }
   };
   const copy = (text: string) => { try { void navigator.clipboard?.writeText(text); notify('success'); } catch { /* ignore */ } };
@@ -528,7 +644,7 @@ export default function TgApp() {
         const fe = first as Error & { status?: number };
         if (fe.status === 401 && await tgAuth()) p = await api<Portal>('/api/auth/portal'); else throw first;
       }
-      if (p.account.role !== 'student') { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setState('login'); return; }
+      if (p.account.role !== 'student' && p.account.role !== 'parent') { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setState('login'); return; }
       setPortal(p); setState('ready');
     } catch (x) {
       const e = x as Error & { status?: number };
@@ -546,6 +662,11 @@ export default function TgApp() {
   if (state === 'loading') return <div className="app"><div className="spin" /></div>;
   if (state === 'login') return <Login onDone={() => void load()} />;
   if (state === 'error' || !portal) return <div className="app"><div className="card bad stack" style={{ marginTop: 40 }}><h3>Ой…</h3><p>{error}</p><button className="btn block" onClick={() => void load()}>Повторить</button></div></div>;
+
+  if (portal.account.role === 'parent') return <>
+    <ParentShell portal={portal} now={now} reload={load} say={say} onLogout={() => void logout()} />
+    {toast && <Toast text={toast.t} kind={toast.k} onDone={() => setToast(null)} />}
+  </>;
 
   if (result) return <div className="app"><div className="login" style={{ minHeight: '80dvh', textAlign: 'center' }}>
     <div className="card ok pop"><Sparkles size={40} /><h1 style={{ marginTop: 6 }}>Тест завершён!</h1>

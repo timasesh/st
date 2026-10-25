@@ -64,7 +64,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     return store.stids[accountId];
   }
   async function ensureAll() {
-    const students = getAccounts().filter((a) => a.role === 'student');
+    const students = getAccounts().filter((a) => a.role === 'student' || a.role === 'parent'); // STID есть у учеников и родителей
     const ids = new Set(students.map((a) => a.id));
     let changed = false;
     for (const a of students) if (!store.stids[a.id]) { store.stids[a.id] = newStid(); changed = true; }
@@ -73,7 +73,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
   }
   const accountByStid = (code) => {
     const id = Object.keys(store.stids).find((k) => store.stids[k] === code);
-    return id ? getAccounts().find((a) => a.id === id && a.role === 'student' && a.status !== 'withdrawn') : null;
+    return id ? getAccounts().find((a) => a.id === id && (a.role === 'student' || a.role === 'parent') && a.status !== 'withdrawn') : null;
   };
   async function unlink(accountId) {
     const tg = store.accountTg[accountId];
@@ -113,7 +113,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
   const fileIdPath = path.join(dataDir, 'welcome-video-file-id.json');
   let welcomeFileId = null;
   let welcomeLoaded = false;
-  const welcomeCaption = `Привет! 👋 Это <b>StudyTask</b> — математический центр для 5–9 классов.\n\n📚 Живые уроки с учителем, тесты и домашка по фото\n⭐ Звёзды, рейтинг и призы\n\nЧтобы начать, отправьте сюда <b>код ученика</b> (${STID_LENGTH} цифр) — его выдаёт администратор. Мы привяжем кабинет к вашему Telegram, и входить заново не придётся.`;
+  const welcomeCaption = `Привет! 👋 Это <b>StudyTask</b> — математический центр для 5–9 классов.\n\n📚 Живые уроки с учителем, тесты и домашка по фото\n⭐ Звёзды, рейтинг и призы\n\nЧтобы начать, отправьте сюда <b>свой код</b> (${STID_LENGTH} цифр) — ученика или родителя. Его выдаёт администратор. Мы привяжем кабинет к вашему Telegram, и входить заново не придётся.`;
   async function sendWelcome(chatId) {
     try {
       if (!welcomeLoaded) {
@@ -188,7 +188,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
 
     if (!looksLikeCode) {
       if (linkedAccount) {
-        return say(chatId, text.startsWith('/start') ? `С возвращением, <b>${esc(linkedAccount.firstName)}</b>! 👋\nНажмите кнопку, чтобы открыть кабинет — входить заново не нужно.` : 'Кабинет ученика — по кнопке ниже 👇\nЕсли нужно привязать другого ученика, отправьте его код.', { reply_markup: openButton() });
+        return say(chatId, text.startsWith('/start') ? `С возвращением, <b>${esc(linkedAccount.firstName)}</b>! 👋\nНажмите кнопку, чтобы открыть кабинет — входить заново не нужно.` : (linkedAccount.role === 'parent' ? 'Кабинет родителя — по кнопке ниже 👇\nЕсли нужно привязать другой аккаунт, отправьте его код.' : 'Кабинет ученика — по кнопке ниже 👇\nЕсли нужно привязать другого ученика, отправьте его код.'), { reply_markup: openButton() });
       }
       if (text.startsWith('/start') && await sendWelcome(chatId)) return;
       return say(chatId, `Привет! 👋 Это бот <b>StudyTask</b> — математический центр для 5–9 классов.\n\nОтправьте <b>код ученика (STID)</b> — ${STID_LENGTH} цифр. Его выдал администратор.`);
@@ -247,7 +247,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
       if (!user?.id) return res.status(401).json({ error: 'Не удалось подтвердить Telegram.' });
       await refreshAccounts();
       const accountId = store.telegram[String(user.id)];
-      const account = accountId ? getAccounts().find((a) => a.id === accountId && a.role === 'student' && a.status !== 'withdrawn') : null;
+      const account = accountId ? getAccounts().find((a) => a.id === accountId && (a.role === 'student' || a.role === 'parent') && a.status !== 'withdrawn') : null;
       if (!account) {
         if (store.exited[String(user.id)]) { delete store.exited[String(user.id)]; await save(); if (clearUserSessionCookie) clearUserSessionCookie(res); }
         return res.status(404).json({ linked: false });
