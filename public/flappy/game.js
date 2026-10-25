@@ -1905,6 +1905,30 @@ canvas.addEventListener('pointerdown', e => {
   startFlight();
 });
 
+const tapZone = document.getElementById('tapZone');
+if (tapZone) {
+  tapZone.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (loginDemo) return;
+    if (gameState !== 'playing' && gameState !== 'ready') return;
+    if (tapZone.setPointerCapture) tapZone.setPointerCapture(e.pointerId);
+    startFlight();
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => tapZone.addEventListener(n, stopFlight));
+}
+['gesturestart', 'gesturechange', 'gestureend'].forEach(n => document.addEventListener(n, e => e.preventDefault()));
+document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => { const now = Date.now(); if (now - lastTouchEnd < 350) e.preventDefault(); lastTouchEnd = now; }, { passive: false });
+
+function closeGame() {
+  stopFlight();
+  if (gameState === 'playing' && !isPaused) { try { togglePause(); } catch (_) {} }
+  if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'SKYQUEST_CLOSE' }, window.location.origin);
+  else if (history.length > 1) history.back();
+  else goToMainMenu();
+}
+
 canvas.addEventListener('pointerup', stopFlight);
 canvas.addEventListener('pointercancel', stopFlight);
 canvas.addEventListener('lostpointercapture', stopFlight);

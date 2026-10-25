@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 import { validateHomeworkUpload, writeJsonAtomically } from './server/homework-files.js';
 import { mergeStudentProgress } from './server/student-progress.js';
 import { registerHomeworkRoutes } from './server/routes/homework.js';
+import { createTelegramIdentity } from './server/telegram-identity.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(ROOT, '.env.local') });
@@ -989,14 +990,16 @@ const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
 app.get('/api/admin/students', requireAdmin, async (_req, res) => {
   try {
     await refreshAccounts();
-    res.json((await getVisibleRosterAccounts()).filter((account) => account.role === 'student').map(publicAccount));
+    await identity.ensureAll();
+    res.json((await getVisibleRosterAccounts()).filter((account) => account.role === 'student').map(adminAccount));
   } catch (error) { res.status(503).json({ error: error.message || 'Не удалось загрузить список учеников.' }); }
 });
 
 app.get('/api/admin/accounts', requireAdmin, async (_req, res) => {
   try {
     await refreshAccounts();
-    res.json((await getVisibleRosterAccounts()).map(publicAccount));
+    await identity.ensureAll();
+    res.json((await getVisibleRosterAccounts()).map(adminAccount));
   } catch (error) { res.status(503).json({ error: error.message || 'Не удалось загрузить аккаунты.' }); }
 });
 
@@ -1176,6 +1179,12 @@ async function writeTrialLessons(lessons) {
 }
 
 async function ensureTrialStudentAccount(trial) {
+  const student = await ensureTrialStudentAccountBase(trial);
+  await identity.ensureStid(student.id);
+  return student;
+}
+
+async function ensureTrialStudentAccountBase(trial) {
   const phone = normalizePhone(trial.parentPhone);
   if (trial.studentId) {
     const linked = accounts.find((account) => account.id === trial.studentId && account.role === 'student');
@@ -1249,6 +1258,8 @@ app.get('/api/admin/trial-lessons', requireAdmin, async (_req, res) => {
       ...lesson,
       accountSetupError: accountErrors.get(lesson.id),
       scheduledAt: getTrialScheduledAt(lesson),
+      stid: lesson.studentId ? identity.stidOf(lesson.studentId) : '',
+      telegramLinked: lesson.studentId ? identity.isLinked(lesson.studentId) : false,
       teacher: publicAccount(accounts.find((account) => account.id === lesson.teacherId) || { id: '', role: 'teacher', phone: '', firstName: 'Удалённый', lastName: 'преподаватель' }),
     })));
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить пробные уроки.' }); }
@@ -1442,8 +1453,9 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
     salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString(),
   };
   await writeAccounts([...accounts, account]);
+  if (role === 'student') await identity.ensureStid(account.id);
   await recordAdminAuditSafely(req.adminSession.sub, 'Создан аккаунт', `${role}: ${account.firstName} ${account.lastName}`);
-  return res.status(201).json({ account: publicAccount(account) });
+  return res.status(201).json({ account: adminAccount(account) });
 });
 
 app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
@@ -1499,7 +1511,7 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
   });
   await writeAccounts(nextAccounts);
   await recordAdminAuditSafely(req.adminSession.sub, 'Изменён аккаунт', `${current.role}: ${updated.firstName} ${updated.lastName}`);
-  return res.json({ account: publicAccount(updated) });
+  return res.json({ account: adminAccount(updated) });
 });
 
 app.delete('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
@@ -2173,8 +2185,21 @@ registerHomeworkRoutes(app, {
   validateHomeworkUpload,
 });
 
+const identity = createTelegramIdentity({
+  getSupabase: () => supabase,
+  dataDir,
+  getAccounts: () => accounts,
+  refreshAccounts,
+  setUserSessionCookie,
+  requireAdmin,
+  recordAudit: recordAdminAuditSafely,
+});
+identity.register(app);
+const adminAccount = (account) => account.role === 'student' ? { ...publicAccount(account), stid: identity.stidOf(account.id), telegramLinked: identity.isLinked(account.id) } : publicAccount(account);
+
 async function start() {
   await initializeAuth();
+  try { await identity.load(); await identity.ensureAll(); } catch (error) { console.warn('STID init failed:', error.message); }
 
   if (isProduction) {
     const distDir = path.join(ROOT, 'dist');
@@ -2214,6 +2239,7 @@ async function start() {
 
   app.listen(port, '0.0.0.0', () => {
     console.log(`StudyTask server listening on http://localhost:${port}`);
+    void identity.setupWebhook();
   });
 }
 

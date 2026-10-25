@@ -11,6 +11,7 @@ type TgWebApp = {
   openLink: (url: string) => void;
   BackButton: { show: () => void; hide: () => void; onClick: (cb: () => void) => void; offClick: (cb: () => void) => void };
   HapticFeedback?: { impactOccurred: (s: string) => void; notificationOccurred: (s: string) => void; selectionChanged: () => void };
+  initData?: string;
   initDataUnsafe?: { user?: { first_name?: string } };
 };
 const tg: TgWebApp | undefined = (window as unknown as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
@@ -131,6 +132,7 @@ function Login({ onDone }: { onDone: () => void }) {
       {error && <p className="err" role="alert">{error}</p>}
       <button className="btn block gold" disabled={busy || password.length < 1}>{busy ? 'Входим…' : 'Войти'}</button>
     </form>
+    <p className="muted small" style={{ marginTop: 14 }}>💡 Проще: отправь боту <b>@studytaskkzbot</b> код ученика (STID) от администратора — и входить больше не придётся.</p>
   </div>;
 }
 
@@ -348,6 +350,7 @@ function SkyQuest() {
     const onMsg = (ev: MessageEvent) => {
       if (ev.origin !== window.location.origin) return;
       if (ev.data?.type === 'SKYQUEST_BALANCE_CHANGED') void load();
+      if (ev.data?.type === 'SKYQUEST_CLOSE') { setSection('rating'); void load(); }
       if (ev.data?.type === 'FLAPPY_GAME_OVER') {
         const score = Number(ev.data.score);
         if (!Number.isSafeInteger(score) || score < 0) return;
@@ -362,7 +365,7 @@ function SkyQuest() {
     <div className="seg"><button className={section === 'game' ? 'on' : ''} onClick={() => setSection('game')}>Играть</button><button className={section === 'rating' ? 'on' : ''} onClick={() => { setSection('rating'); void load(); }}>Рейтинг</button></div>
     {error && <p className="err" role="alert">{error}</p>}
     {section === 'game'
-      ? <iframe className="game" src="/flappy/index.html?autostart=1" title="Sky Quest" allow="autoplay" />
+      ? <iframe className="game game-full" src="/flappy/index.html?autostart=1" title="Sky Quest" allow="autoplay" />
       : <div className="stack">
         <div className="row between"><p className="small muted">Мой рекорд: <b>{data.bestScore}</b> очков</p><button className="iconbtn" style={{ width: 40, height: 40 }} aria-label="Обновить" onClick={() => void load()}><RefreshCw size={16} /></button></div>
         <div className="seg"><button className={mode === 'stars' ? 'on' : ''} onClick={() => setMode('stars')}>По звёздам</button><button className={mode === 'score' ? 'on' : ''} onClick={() => setMode('score')}>По очкам</button></div>
@@ -417,6 +420,7 @@ function SettingsSheet({ portal, onClose, onLogout }: { portal: Portal; onClose:
 }
 
 /* ───────── Корень ───────── */
+let tgAuthDone = false;
 export default function TgApp() {
   const [portal, setPortal] = useState<Portal | null>(null);
   const [state, setState] = useState<'loading' | 'login' | 'ready' | 'error'>('loading');
@@ -436,10 +440,21 @@ export default function TgApp() {
     const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t);
   }, []);
 
+  // Вход по подписи Telegram: если Telegram привязан к ученику (код STID), пароль не нужен.
+  const tgAuth = useCallback(async () => {
+    if (!tg?.initData) return false;
+    try { await api('/api/tg/auth', { method: 'POST', body: JSON.stringify({ initData: tg.initData }) }); return true; } catch { return false; }
+  }, []);
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setState('loading');
     try {
-      const p = await api<Portal>('/api/auth/portal');
+      if (!quiet && !tgAuthDone) { tgAuthDone = true; await tgAuth(); }
+      let p: Portal;
+      try { p = await api<Portal>('/api/auth/portal'); }
+      catch (first) {
+        const fe = first as Error & { status?: number };
+        if (fe.status === 401 && await tgAuth()) p = await api<Portal>('/api/auth/portal'); else throw first;
+      }
       if (p.account.role !== 'student') { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setState('login'); return; }
       setPortal(p); setState('ready');
     } catch (x) {
@@ -448,7 +463,7 @@ export default function TgApp() {
       else if (quiet) say(errText(x, 'Не удалось обновить данные.'), 'bad');
       else { setError(errText(x, 'Не удалось загрузить кабинет.')); setState('error'); }
     }
-  }, [say]);
+  }, [say, tgAuth]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { const f = () => { if (document.visibilityState === 'visible' && state === 'ready') void load(true); }; document.addEventListener('visibilitychange', f); return () => document.removeEventListener('visibilitychange', f); }, [load, state]);
 

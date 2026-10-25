@@ -1,5 +1,6 @@
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+html { touch-action: none; overscroll-behavior: none; }
 
 body {
   background: #0a0a1a;
@@ -468,3 +469,24 @@ canvas {
   transform: rotate(-42deg);
 }
 body.login-demo-mode #audioControls { display: none !important; }
+
+
+/* === TAP ZONE + CLOSE BUTTON === */
+#tapZone {
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  z-index: 5;
+  background: transparent;
+  touch-action: none;
+}
+#closeGameBtn {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1100;
+  pointer-events: all;
+}
+body.login-demo-mode #closeGameBtn, body.login-demo-mode #tapZone { display: none !important; }
+@media (max-width: 420px) {
+  #gameWrapper { height: 100dvh; }
+}
