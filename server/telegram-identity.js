@@ -165,6 +165,16 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     await refreshAccounts();
     const linkedId = store.telegram[tgId];
     const linkedAccount = linkedId ? getAccounts().find((a) => a.id === linkedId && a.status !== 'withdrawn') : null;
+    // /restart — бот начинает с нуля: выход из аккаунта + приветствие с видео и просьбой прислать код
+    if (/^\/restart(@\w+)?$/i.test(text)) {
+      if (linkedId) { delete store.accountTg[linkedId]; delete store.telegram[tgId]; }
+      store.exited[tgId] = true;
+      failsByTg.delete(tgId);
+      await save();
+      try { await tgCall('setChatMenuButton', { chat_id: chatId, menu_button: { type: 'default' } }); } catch { /* не критично */ }
+      if (await sendWelcome(chatId)) return;
+      return say(chatId, `Привет! 👋 Это бот <b>StudyTask</b> — математический центр для 5–9 классов.\n\nОтправьте <b>код ученика (STID)</b> — ${STID_LENGTH} цифр. Его выдал администратор.`, { reply_markup: { remove_keyboard: true } });
+    }
     // /exit — выход из аккаунта: снимаем привязку Telegram, при следующем открытии мини-приложения сессия сбрасывается
     if (/^\/exit(@\w+)?$/i.test(text)) {
       if (linkedId) { delete store.accountTg[linkedId]; delete store.telegram[tgId]; }
