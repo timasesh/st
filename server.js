@@ -8,6 +8,9 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { validateHomeworkUpload, writeJsonAtomically } from './server/homework-files.js';
 import { mergeStudentProgress } from './server/student-progress.js';
+import { earnedStars, levelFor } from './src/shared/levels.js';
+// Уровень считается на клиентах по earnedStars (баланс + потрачено на призы), см. src/shared/levels.js.
+const withEarned = (progress) => (progress ? { ...progress, earnedStars: earnedStars(progress) } : progress);
 import { registerHomeworkRoutes } from './server/routes/homework.js';
 import { createTelegramIdentity } from './server/telegram-identity.js';
 import { createSchoolSprint } from './server/school-sprint.js';
@@ -810,7 +813,7 @@ app.get('/api/admin/cleanup/data', requireCleanupAccess, async (_req, res) => {
       scheduleTargets: list(Object.entries(scheduleData.targets || {}).map(([id, count]) => ({ id, label: `${people.get(id)?.firstName || 'Ученик'} ${people.get(id)?.lastName || ''}`.trim(), details: `План: ${count} занятий в неделю`, model: 'scheduleTargets' }))),
       trials: list(trials.map((trial, index) => ({ id: trial.id || String(index), label: `${trial.firstName || 'Пробный'} ${trial.lastName || 'урок'}`, details: `${trial.status || 'запланирован'} · ${trial.day ?? ''} ${trial.hour ?? ''}:00`, model: 'trials' }))),
       tests: list(tests), lessonHistory: list(histories), homework: list(homework), homeworkFiles: list(attachmentRows), gameProgress: list(gameProgress), messages: list(messages), audit: list(audit),
-      studentProgress: list(accounts.filter((account) => account.progress).map((account) => ({ id: account.id, label: `${account.firstName} ${account.lastName}`, details: `Уровень ${account.progress?.level || 1} · ${account.progress?.xp || 0} XP · ${account.progress?.stars || 0} звёзд`, model: 'studentProgress' }))),
+      studentProgress: list(accounts.filter((account) => account.progress).map((account) => ({ id: account.id, label: `${account.firstName} ${account.lastName}`, details: `Уровень ${levelFor(earnedStars(account.progress)).level} · заработано ${earnedStars(account.progress)} ★ · на балансе ${account.progress?.stars || 0}`, model: 'studentProgress' }))),
     };
     return res.json({ models: Object.entries(cleanupModelLabels).map(([key, label]) => ({ key, label, count: rows[key]?.length || 0 })), rows });
   } catch (error) { console.error('[Admin cleanup] Could not load model records:', error); return res.status(500).json({ error: 'Не удалось загрузить список объектов для очистки.' }); }
@@ -1570,7 +1573,7 @@ app.get('/api/auth/session', async (req, res) => {
   await refreshAccounts();
   const user = getUserSession(req);
   const progress = user?.account.progress ? {
-    ...user.account.progress,
+    ...withEarned(user.account.progress),
     userName: `${user.account.firstName} ${user.account.lastName}`,
     userClass: user.account.studentClass || '',
   } : null;
@@ -1660,7 +1663,7 @@ app.post('/api/parent/students/:studentId/prize-kit', async (req, res) => {
   const order = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), items: kit, cost, status: 'requested' };
   const progress = { ...(student.progress || {}), stars: balance - cost, prizeOrders: [...(Array.isArray(student.progress?.prizeOrders) ? student.progress.prizeOrders : []), order] };
   await writeAccounts(accounts.map((account) => account.id === student.id ? { ...account, progress } : account));
-  return res.status(201).json({ ok: true, order, stars: progress.stars });
+  return res.status(201).json({ ok: true, order, stars: progress.stars, earnedStars: earnedStars(progress) });
 });
 
 app.post('/api/student/prize-kit', async (req, res) => {
@@ -1694,7 +1697,7 @@ app.post('/api/student/prize-kit', async (req, res) => {
   const order = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), items: kit, cost, status: 'requested' };
   const progress = { ...(user.account.progress || {}), trialAccount: Boolean(user.account.progress?.trialAccount), stars: balance - cost, prizeOrders: [...(Array.isArray(user.account.progress?.prizeOrders) ? user.account.progress.prizeOrders : []), order] };
   await writeAccounts(accounts.map((account) => account.id === user.account.id ? { ...account, progress } : account));
-  return res.status(201).json({ ok: true, order, stars: progress.stars });
+  return res.status(201).json({ ok: true, order, stars: progress.stars, earnedStars: earnedStars(progress) });
 });
 
 app.post('/api/teacher/students/:studentId/lesson-history', async (req, res) => {
@@ -2054,8 +2057,8 @@ app.get('/api/auth/portal', async (req, res) => {
     });
     return res.json({
       account,
-      progress: current.progress || null,
-      relatedAccounts: relatedAccounts.map((item) => current.role === 'teacher' ? teacherStudentSummary(item) : current.role === 'parent' ? { ...publicAccount(item), progress: { stars: Number(item.progress?.stars) || 0 } } : publicAccount(item)),
+      progress: withEarned(current.progress) || null,
+      relatedAccounts: relatedAccounts.map((item) => current.role === 'teacher' ? teacherStudentSummary(item) : current.role === 'parent' ? { ...publicAccount(item), progress: { stars: Number(item.progress?.stars) || 0, earnedStars: earnedStars(item.progress) } } : publicAccount(item)),
       lessons,
       recordedLessonIds,
       studentTests,
@@ -2104,7 +2107,7 @@ app.post('/api/auth/login', async (req, res) => {
   setUserSessionCookie(res, account);
   void accountAccess.remember(account.id, password);
   const progress = account.progress ? {
-    ...account.progress,
+    ...withEarned(account.progress),
     userName: `${account.firstName} ${account.lastName}`,
     userClass: account.studentClass || '',
   } : null;

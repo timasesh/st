@@ -1,0 +1,11 @@
+export type Rank = { id: string; name: string; from: number; color: string };
+export type LevelInfo = { level: number; name: string; rank: Rank; earned: number; isMax: boolean; base: number; nextAt: number; into: number; span: number; left: number; pct: number; nextName: string | null };
+export const RANKS: Rank[];
+export const LEVEL_NAMES: string[];
+export const LEVEL_STARS: number[];
+export const MAX_LEVEL: number;
+export function levelImage(n: number): string;
+export function isMilestone(n: number): boolean;
+export function rankOf(n: number): Rank;
+export function earnedStars(progress: { stars?: number; prizeOrders?: { cost?: number }[] } | null | undefined): number;
+export function levelFor(earned: number): LevelInfo;

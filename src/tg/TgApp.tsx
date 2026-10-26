@@ -1,3 +1,4 @@
+import { levelFor, earnedStars, LEVEL_NAMES, LEVEL_STARS, RANKS, MAX_LEVEL, levelImage, isMilestone, rankOf } from '../shared/levels.js';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight, BookOpen, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, Clock3, FileQuestion, Gift, Lock, LogOut, MessageCircle,
@@ -20,7 +21,7 @@ const notify = (kind: 'success' | 'error' | 'warning') => { try { tg?.HapticFeed
 const openExternal = (url: string) => { if (tg) tg.openLink(url); else window.open(url, '_blank', 'noopener'); };
 
 /* ───────── Типы ───────── */
-type Tab = 'home' | 'plan' | 'tests' | 'hw' | 'prizes' | 'sky';
+type Tab = 'home' | 'plan' | 'tests' | 'hw' | 'levels' | 'sky';
 type PTab = 'kids' | 'plan' | 'hist' | 'prizes';
 type Lesson = { id: string; day: number; hour: number; title: string; lessonLink?: string; lessonDescription?: string; attendance?: boolean; studentId?: string; student?: { firstName?: string } | null };
 type Child = { id: string; firstName: string; lastName: string; studentClass?: string; teacher?: { firstName: string; lastName: string } | null; progress?: { stars?: number } };
@@ -31,7 +32,7 @@ type Homework = { id: string; date: string; time: string; topic: string; nextHom
 type Message = { id: string; at: string; sender: string; body: string; read: boolean };
 type Portal = {
   account: { firstName: string; lastName: string; studentClass?: string; trialAccount?: boolean; role: string; teacher?: { firstName: string; lastName: string } | null };
-  progress: { stars?: number; xp?: number; level?: number } | null;
+  progress: { stars?: number; xp?: number; level?: number; earnedStars?: number; prizeOrders?: { cost?: number }[] } | null;
   relatedAccounts?: Child[];
   lessons: Lesson[]; studentTests?: Test[]; studentHomework?: Homework[]; messages: Message[];
 };
@@ -148,16 +149,20 @@ function Home({ portal, now, go, openHw, startTest }: { portal: Portal; now: Dat
   const live = Boolean(next && next.d === 0 && c.hour * 60 + c.minute >= next.hour * 60 && c.hour * 60 + c.minute < (next.hour + 1) * 60 + 10);
   const tests = (portal.studentTests || []).filter((t) => t.status === 'assigned');
   const hw = (portal.studentHomework || []).filter((h) => !h.attachment);
-  const stars = portal.progress?.stars ?? 0, level = portal.progress?.level ?? 1, xp = portal.progress?.xp ?? 0;
-  const target = level * 100, pct = target ? Math.min(100, Math.max(0, xp) / target * 100) : 0;
+  const stars = portal.progress?.stars ?? 0;
+  const lv = levelFor(portal.progress?.earnedStars ?? earnedStars(portal.progress));
   return <div className="stack">
     <div><p className="muted small">{greeting(now)},</p><h1><span className="hl">{portal.account.firstName}</span>!</h1></div>
 
-    <div className="card">
-      <div className="row between"><span className="hand" style={{ fontSize: 26 }}>Уровень {level}</span><span className="pill gold"><Star size={15} fill="currentColor" /> {stars}</span></div>
-      <div className="xp" style={{ margin: '8px 0 4px' }}><i style={{ width: `${pct}%` }} /></div>
-      <p className="tiny muted">{Math.min(xp, target)} / {target} XP · до следующего уровня {Math.max(0, target - xp)}</p>
-    </div>
+    <button type="button" className="card tap" onClick={() => { tap(); go('levels'); }}>
+      <div className="row" style={{ gap: 12 }}>
+        <img src={levelImage(lv.level)} alt="" width={64} height={64} style={{ borderRadius: 12, flex: 'none' }} />
+        <div className="grow"><span className="tiny muted">{lv.rank.name} · уровень {lv.level} из {MAX_LEVEL}</span><div className="hand" style={{ fontSize: 26 }}>{lv.name}</div></div>
+        <span className="pill gold"><Star size={15} fill="currentColor" /> {stars}</span>
+      </div>
+      <div className="xp" style={{ margin: '8px 0 4px' }}><i style={{ width: `${lv.pct}%` }} /></div>
+      <p className="tiny muted">{lv.isMax ? 'Максимальный уровень!' : `${lv.into} / ${lv.span} ★ · до уровня ${lv.level + 1} «${lv.nextName}» ещё ${lv.left} ★`}</p>
+    </button>
 
     {next ? <div className="card blue">
       <p className="small" style={{ opacity: .85 }}>{live ? 'Занятие идёт прямо сейчас' : next.d === 0 ? 'Сегодня' : 'Следующее занятие'}</p>
@@ -305,6 +310,50 @@ function HomeworkSheet({ hw, onClose, onSaved, say }: { hw: Homework; onClose: (
     </label>
     <p className="tiny muted" style={{ textAlign: 'center', marginTop: 8 }}>Сфотографируй тетрадь или выбери PDF. Фото сожмём сами. {pickedName && busy ? `(${pickedName})` : ''}</p>
   </Sheet>;
+}
+
+/* ───────── Уровни ───────── */
+function Levels({ portal, refresh, say }: { portal: Portal; refresh: () => Promise<void>; say: (t: string, k: 'ok' | 'bad') => void }) {
+  const lv = levelFor(portal.progress?.earnedStars ?? earnedStars(portal.progress));
+  const [sel, setSel] = useState(lv.level);
+  const n = sel, reached = n <= lv.level, rank = rankOf(n);
+  return <div>
+    <Head kicker="Твой путь" title="Уровни" sub="Звёзды за тесты и домашки поднимают тебя от Земли до Вселенной. Потраченные на призы звёзды уровень не снижают." />
+    <div className="stack">
+      <div className="card" style={{ textAlign: 'center' }}>
+        <img src={levelImage(lv.level)} alt={lv.name} width={150} height={150} style={{ borderRadius: 18, margin: '0 auto' }} />
+        <p className="tiny muted" style={{ marginTop: 6 }}>{lv.rank.name} · уровень {lv.level} из {MAX_LEVEL}</p>
+        <div className="hand" style={{ fontSize: 34 }}>{lv.name}</div>
+        <div className="xp" style={{ margin: '10px 0 4px' }}><i style={{ width: `${lv.pct}%` }} /></div>
+        <p className="tiny muted">{lv.isMax ? 'Ты на вершине — Легенда StudyTask!' : `${lv.into} / ${lv.span} ★ · до уровня ${lv.level + 1} «${lv.nextName}» ещё ${lv.left} ★`}</p>
+        <p className="tiny muted">Всего заработано: {lv.earned} ★</p>
+      </div>
+      <div className={`card flat row ${reached ? '' : 'muted'}`} style={{ gap: 12 }}>
+        <img src={levelImage(n)} alt="" width={56} height={56} style={{ borderRadius: 10, flex: 'none', filter: reached ? 'none' : 'grayscale(1)', opacity: reached ? 1 : .6 }} />
+        <div className="grow"><span className="tiny muted">{rank.name} · уровень {n}{isMilestone(n) ? ' · веха' : ''}</span><div className="hand" style={{ fontSize: 24 }}>{LEVEL_NAMES[n - 1]}</div></div>
+        <span className={`pill ${reached ? 'green' : 'gray'}`}>{reached ? 'Открыт' : `${LEVEL_STARS[n - 1]} ★`}</span>
+      </div>
+      {RANKS.map((r, ri) => {
+        const to = ri + 1 < RANKS.length ? RANKS[ri + 1].from - 1 : MAX_LEVEL;
+        const ids = Array.from({ length: to - r.from + 1 }, (_, i) => r.from + i);
+        return <div key={r.id}>
+          <p className="small" style={{ margin: '4px 2px 6px', color: r.color }}><b>{r.name}</b> <span className="muted tiny">· уровни {r.from}–{to}</span></p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+            {ids.map((i) => {
+              const ok = i <= lv.level;
+              return <button key={i} type="button" aria-label={`Уровень ${i}: ${LEVEL_NAMES[i - 1]}`} onClick={() => { tap(); setSel(i); }}
+                style={{ padding: 0, border: 'none', background: 'none', position: 'relative', borderRadius: 12, outline: i === lv.level ? '3px solid var(--ink)' : i === sel ? '2px dashed var(--navy)' : 'none', outlineOffset: 2 }}>
+                <img src={levelImage(i)} alt="" loading="lazy" style={{ width: '100%', display: 'block', borderRadius: 10, filter: ok ? 'none' : 'grayscale(1)', opacity: ok ? 1 : .38 }} />
+                {!ok && <Lock size={14} style={{ position: 'absolute', right: 4, bottom: 4, color: 'var(--navy)' }} />}
+              </button>;
+            })}
+          </div>
+        </div>;
+      })}
+      <div style={{ height: 2, background: 'var(--line)', margin: '10px 0 0' }} />
+      <Prizes portal={portal} refresh={refresh} say={say} />
+    </div>
+  </div>;
 }
 
 /* ───────── Призы ───────── */
@@ -683,7 +732,7 @@ export default function TgApp() {
   const NAV: { id: Tab; label: string; icon: typeof BookOpen; badge?: number }[] = [
     { id: 'home', label: 'Занятия', icon: BookOpen }, { id: 'plan', label: 'План', icon: Clock3 },
     { id: 'tests', label: 'Тесты', icon: FileQuestion, badge: pendingTests }, { id: 'hw', label: 'Д/з', icon: Paperclip, badge: pendingHw },
-    { id: 'prizes', label: 'Призы', icon: Gift }, { id: 'sky', label: 'Играть', icon: Rocket },
+    { id: 'levels', label: 'Уровни', icon: Trophy }, { id: 'sky', label: 'Играть', icon: Rocket },
   ];
   const startTest = (t: Test) => { setTestRun(t); };
 
@@ -701,7 +750,7 @@ export default function TgApp() {
         {tab === 'plan' && <Plan portal={portal} now={now} />}
         {tab === 'tests' && <Tests portal={portal} start={startTest} />}
         {tab === 'hw' && <HomeworkList portal={portal} open={setHw} />}
-        {tab === 'prizes' && <Prizes portal={portal} refresh={() => load(true)} say={say} />}
+        {tab === 'levels' && <Levels portal={portal} refresh={() => load(true)} say={say} />}
         {tab === 'sky' && <SkyQuest />}
       </main>
     </div>
