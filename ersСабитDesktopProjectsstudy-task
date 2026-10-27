@@ -1,0 +1,87 @@
+[33m92b50d7[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Генерация тестов через Claude API (NVIDIA как запасной вариант)
+ server.js                    | 31 [32m+++++++++++++++++++++++++++++[m[31m--[m
+ src/components/AuthPages.tsx |  2 [32m+[m[31m-[m
+ 2 files changed, 30 insertions(+), 3 deletions(-)
+[33ma2269b6[m Тесты: генерация по промпту, дроби с чертой, SVG-рисунки в вопросах
+ server.js                    | 41 [32m++++++++++++++[m[31m----[m
+ src/components/AuthPages.tsx | 18 [32m++++[m[31m----[m
+ src/shared/MathText.tsx      | 99 [32m++++++++++++++++++++++++++++++++++++++++++++[m
+ src/tg/TgApp.tsx             |  7 [32m++[m[31m--[m
+ 4 files changed, 146 insertions(+), 19 deletions(-)
+[33m0edd154[m Вкладка Уровни вместо Призов: 50 уровней, расчёт по заработанным звёздам
+ public/static/levels/level_01.webp  | Bin [31m0[m -> [32m22276[m bytes
+ public/static/levels/level_02.webp  | Bin [31m0[m -> [32m23474[m bytes
+ public/static/levels/level_03.webp  | Bin [31m0[m -> [32m24154[m bytes
+ public/static/levels/level_04.webp  | Bin [31m0[m -> [32m25582[m bytes
+ public/static/levels/level_05.webp  | Bin [31m0[m -> [32m29424[m bytes
+ public/static/levels/level_06.webp  | Bin [31m0[m -> [32m22540[m bytes
+ public/static/levels/level_07.webp  | Bin [31m0[m -> [32m22542[m bytes
+ public/static/levels/level_08.webp  | Bin [31m0[m -> [32m23208[m bytes
+ public/static/levels/level_09.webp  | Bin [31m0[m -> [32m26354[m bytes
+ public/static/levels/level_10.webp  | Bin [31m0[m -> [32m32808[m bytes
+ public/static/levels/level_11.webp  | Bin [31m0[m -> [32m25356[m bytes
+ public/static/levels/level_12.webp  | Bin [31m0[m -> [32m26468[m bytes
+ public/static/levels/level_13.webp  | Bin [31m0[m -> [32m26038[m bytes
+ public/static/levels/level_14.webp  | Bin [31m0[m -> [32m26176[m bytes
+ public/static/levels/level_15.webp  | Bin [31m0[m -> [32m27730[m bytes
+ public/static/levels/level_16.webp  | Bin [31m0[m -> [32m27744[m bytes
+ public/static/levels/level_17.webp  | Bin [31m0[m -> [32m26326[m bytes
+ public/static/levels/level_18.webp  | Bin [31m0[m -> [32m27710[m bytes
+ public/static/levels/level_19.webp  | Bin [31m0[m -> [32m28014[m bytes
+ public/static/levels/level_20.webp  | Bin [31m0[m -> [32m36180[m bytes
+ public/static/levels/level_21.webp  | Bin [31m0[m -> [32m24280[m bytes
+ public/static/levels/level_22.webp  | Bin [31m0[m -> [32m27490[m bytes
+ public/static/levels/level_23.webp  | Bin [31m0[m -> [32m29842[m bytes
+ public/static/levels/level_24.webp  | Bin [31m0[m -> [32m32360[m bytes
+ public/static/levels/level_25.webp  | Bin [31m0[m -> [32m35910[m bytes
+ public/static/levels/level_26.webp  | Bin [31m0[m -> [32m25518[m bytes
+ public/static/levels/level_27.webp  | Bin [31m0[m -> [32m30128[m bytes
+ public/static/levels/level_28.webp  | Bin [31m0[m -> [32m28756[m bytes
+ public/static/levels/level_29.webp  | Bin [31m0[m -> [32m27978[m bytes
+ public/static/levels/level_30.webp  | Bin [31m0[m -> [32m34916[m bytes
+ public/static/levels/level_31.webp  | Bin [31m0[m -> [32m24644[m bytes
+ public/static/levels/level_32.webp  | Bin [31m0[m -> [32m27286[m bytes
+ public/static/levels/level_33.webp  | Bin [31m0[m -> [32m28680[m bytes
+ public/static/levels/level_34.webp  | Bin [31m0[m -> [32m28818[m bytes
+ public/static/levels/level_35.webp  | Bin [31m0[m -> [32m30678[m bytes
+ public/static/levels/level_36.webp  | Bin [31m0[m -> [32m23864[m bytes
+ public/static/levels/level_37.webp  | Bin [31m0[m -> [32m25622[m bytes
+ public/static/levels/level_38.webp  | Bin [31m0[m -> [32m26332[m bytes
+ public/static/levels/level_39.webp  | Bin [31m0[m -> [32m27886[m bytes
+ public/static/levels/level_40.webp  | Bin [31m0[m -> [32m31518[m bytes
+ public/static/levels/level_41.webp  | Bin [31m0[m -> [32m30494[m bytes
+ public/static/levels/level_42.webp  | Bin [31m0[m -> [32m30548[m bytes
+ public/static/levels/level_43.webp  | Bin [31m0[m -> [32m34924[m bytes
+ public/static/levels/level_44.webp  | Bin [31m0[m -> [32m33540[m bytes
+ public/static/levels/level_45.webp  | Bin [31m0[m -> [32m37982[m bytes
+ public/static/levels/level_46.webp  | Bin [31m0[m -> [32m28278[m bytes
+ public/static/levels/level_47.webp  | Bin [31m0[m -> [32m27834[m bytes
+ public/static/levels/level_48.webp  | Bin [31m0[m -> [32m29544[m bytes
+ public/static/levels/level_49.webp  | Bin [31m0[m -> [32m28658[m bytes
+ public/static/levels/level_50.webp  | Bin [31m0[m -> [32m36616[m bytes
+ server.js                           |  17 [32m+++++[m[31m----[m
+ src/components/AuthPages.tsx        |   2 [32m+[m[31m-[m
+ src/components/StudentDashboard.tsx |  27 [32m++++++[m[31m--------[m
+ src/components/StudentLevelsTab.tsx |  64 [32m++++++++++++++++++++++++++++++++[m
+ src/shared/levels.d.ts              |  11 [32m++++++[m
+ src/shared/levels.js                |  70 [32m+++++++++++++++++++++++++++++++++++[m
+ src/tg/TgApp.tsx                    |  71 [32m++++++++++++++++++++++++++++++[m[31m------[m
+ 57 files changed, 228 insertions(+), 34 deletions(-)
+[33m5d8017c[m STID и мини-приложение для родителей
+ server.js                    |   4 [32m+[m[31m-[m
+ server/telegram-identity.js  |  10 [32m++[m[31m--[m
+ src/components/AuthPages.tsx |   4 [32m+[m[31m-[m
+ src/tg/TgApp.tsx             | 131 [32m+++++++++++++++++++++++++++++++++++++++++[m[31m--[m
+ 4 files changed, 135 insertions(+), 14 deletions(-)
+[33mdb838b4[m Рейтинг, подвкладки игр, логин/пароль в настройках, вход на сайт из Mini App
+ public/flappy/game.js             |  15 [32m+++[m[31m-[m
+ public/flappy/index.html          |   2 [32m+[m[31m-[m
+ server.js                         |  44 [32m++++[m[31m-------[m
+ server/account-access.js          | 123 [32m++++++++++++++++++++++++++++++[m
+ server/game-ranking.js            |  23 [32m++++++[m
+ server/school-sprint.js           |  28 [32m++++[m[31m---[m
+ server/skyquest-records.js        | 144 [32m++++++++++++++++++++++++++++++++++++[m
+ src/components/PortalSettings.tsx |  16 [32m+++[m[31m-[m
+ src/components/SkyQuestTab.tsx    | 152 [32m++++++++++++++++++++++++++++++[m[31m--------[m
+ src/tg/TgApp.tsx                  | 133 [32m++++++++++++++++++++++++[m[31m---------[m
+ 10 files changed, 571 insertions(+), 109 deletions(-)
