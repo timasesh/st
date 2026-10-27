@@ -1887,20 +1887,25 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     });
     let response = await callModel();
     let result = await response.json().catch(() => ({}));
-    // Модель могла быть снята с обслуживания: берём самую свежую доступную Kimi из каталога NVIDIA и повторяем один раз.
-    if (!response.ok && response.status !== 202 && /no longer available|not found|does not exist|deprecated|retired/i.test(JSON.stringify(result || {}))) {
-      console.error('[StudyTask] NVIDIA model unavailable:', model, JSON.stringify(result).slice(0, 400));
+    // Модель могла быть снята с обслуживания или не развёрнута для вашего ключа: перебираем доступные Kimi из каталога NVIDIA.
+    const modelUnavailable = (status, body) => status !== 202 && status !== 429 && status >= 400 && /no longer available|not found|does not exist|deprecated|retired|not exist|unavailable/i.test(JSON.stringify(body || {}));
+    if (!response.ok && modelUnavailable(response.status, result)) {
+      console.error('[StudyTask] NVIDIA model unavailable:', model, response.status, JSON.stringify(result).slice(0, 400));
       try {
         const listResponse = await fetch('https://integrate.api.nvidia.com/v1/models', { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
         const list = await listResponse.json().catch(() => ({}));
-        const ids = (Array.isArray(list?.data) ? list.data : []).map((item) => String(item?.id || '')).filter((id) => /^moonshotai\/kimi/i.test(id) && id !== model && !/turbo|thinking-only/i.test(id));
+        const failed = model;
+        const ids = (Array.isArray(list?.data) ? list.data : []).map((item) => String(item?.id || '')).filter((id) => /^moonshotai\/kimi/i.test(id) && id !== failed);
         ids.sort((x, y) => y.localeCompare(x, 'en', { numeric: true }));
-        if (ids.length) {
-          model = ids[0];
-          console.error('[StudyTask] Fallback NVIDIA model:', model, '(задайте NVIDIA_MODEL на Render, чтобы закрепить)');
+        for (const candidate of ids.slice(0, 6)) {
+          model = candidate;
+          console.error('[StudyTask] Пробуем модель NVIDIA:', model);
           response = await callModel();
           result = await response.json().catch(() => ({}));
+          if (response.ok || response.status === 202 || !modelUnavailable(response.status, result)) break;
+          console.error('[StudyTask] Модель недоступна:', model, JSON.stringify(result).slice(0, 200));
         }
+        if (response.ok) console.error('[StudyTask] Рабочая модель NVIDIA:', model, '— задайте её в NVIDIA_MODEL на Render.');
       } catch (fallbackError) { console.error('[StudyTask] NVIDIA fallback failed:', fallbackError?.message); }
     }
     if (response.status === 202 && typeof result.requestId === 'string') {
