@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, FileQuestion, Plus, Search, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, FileQuestion, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import MathText, { QuestionFigure } from '../shared/MathText';
 
 /* Вкладка «Тесты» преподавателя:
@@ -49,6 +49,17 @@ const astanaLocalInput = (offsetMs: number, hour?: number) => {
   return `${key}T${time}`;
 };
 
+async function patchTest(url: string, body: unknown) {
+  const response = await fetch(url, { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const text = await response.text();
+  let data: any = {}; try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
+  if (!response.ok) throw new Error(data.error || 'Не удалось сохранить изменения.');
+  return data;
+}
+type EditQuestion = { question: string; choices: string[]; correctIndex: number; figure?: string };
+type Editing = { id: string; kind: 'lesson_quiz' | 'quiz'; title: string; questions: EditQuestion[]; deadline: string; deadlineOrig: string };
+const isoToAstanaInput = (iso?: string) => { if (!iso) return ''; const d = new Date(iso); return `${dateKeyOf(d)}T${hhmm(d)}`; };
+
 async function api(url: string) {
   const response = await fetch(url, { credentials: 'same-origin' });
   const text = await response.text();
@@ -65,6 +76,9 @@ export default function TeacherTestsTab({ students, lessons, refreshKey, onStart
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [openId, setOpenId] = useState('');
+  const [editing, setEditing] = useState<Editing | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
   const [wizard, setWizard] = useState<null | 'type' | 'grid' | 'deadline'>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [picked, setPicked] = useState<{ lesson: TestsLesson; date: string } | null>(null);
@@ -132,6 +146,24 @@ export default function TeacherTestsTab({ students, lessons, refreshKey, onStart
     );
   }
 
+  const startEdit = (t: TeacherTest) => { setEditError(''); setEditing({ id: t.id, kind: t.kind, title: t.title, questions: t.questions.map((q) => ({ question: q.question, choices: [...q.choices], correctIndex: q.correctIndex ?? 0, ...(q.figure ? { figure: q.figure } : {}) })), deadline: isoToAstanaInput(t.deadlineAt), deadlineOrig: isoToAstanaInput(t.deadlineAt) }); };
+  const updateQuestion = (index: number, patch: Partial<EditQuestion>) => setEditing((cur) => cur ? { ...cur, questions: cur.questions.map((q, i) => i === index ? { ...q, ...patch } : q) } : cur);
+  const saveEdit = async () => {
+    if (!editing || !student) return;
+    const bad = editing.questions.findIndex((q) => !q.question.trim() || q.choices.some((c) => !c.trim()));
+    if (editing.questions.length < 5) { setEditError('В тесте должно быть не меньше 5 вопросов.'); return; }
+    if (bad >= 0) { setEditError(`Заполните вопрос ${bad + 1} и все четыре варианта ответа.`); return; }
+    setEditSaving(true); setEditError('');
+    try {
+      const body: Record<string, unknown> = { title: editing.title.trim() || 'Тест', questions: editing.questions.map((q) => ({ question: q.question.trim(), choices: q.choices.map((c) => c.trim()), correctIndex: q.correctIndex, ...(q.figure ? { figure: q.figure } : {}) })) };
+      if (editing.kind === 'quiz' && editing.deadline && editing.deadline !== editing.deadlineOrig) body.deadlineAt = toAstanaIso(editing.deadline);
+      const result = await patchTest(`/api/teacher/students/${student.id}/tests/${editing.id}`, body);
+      setTests((cur) => cur.map((t) => t.id === editing.id ? { ...t, ...result.test } : t));
+      setEditing(null);
+    } catch (reason) { setEditError(reason instanceof Error ? reason.message : 'Не удалось сохранить изменения.'); }
+    finally { setEditSaving(false); }
+  };
+
   /* ───────── тесты ученика ───────── */
   const pickedStart = picked ? startOf(picked.date, picked.lesson.hour) : null;
   return (
@@ -164,7 +196,10 @@ export default function TeacherTestsTab({ students, lessons, refreshKey, onStart
                 {t.state === 'completed' && <p className="mt-1 text-sm font-bold text-emerald-700">Результат: {t.score ?? 0} из {t.total} ({t.total ? Math.round(((t.score ?? 0) / t.total) * 100) : 0}%) · сдан {dateTime(t.submittedAt)}</p>}
               </>}
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+            {t.state !== 'skipped' && t.state !== 'completed' && <button type="button" onClick={() => startEdit(t)} className="inline-flex items-center gap-1 rounded-lg border border-primary/40 bg-primary-light px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary hover:text-white"><Pencil className="h-3.5 w-3.5" />Редактировать</button>}
             {t.state !== 'skipped' && <button type="button" onClick={() => setOpenId(open ? '' : t.id)} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted hover:bg-primary-light">{t.state === 'completed' ? 'Разбор' : 'Вопросы'}<ChevronDown className={`h-3.5 w-3.5 transition ${open ? 'rotate-180' : ''}`} /></button>}
+            </div>
           </div>
           {open && <ol className="mt-3 space-y-2 border-t border-border pt-3">{t.questions.map((q, qi) => {
             const mine = t.answers?.[qi];
@@ -183,6 +218,40 @@ export default function TeacherTestsTab({ students, lessons, refreshKey, onStart
           })}</ol>}
         </article>;
       })}</div> : <div className="rounded-xl border border-dashed border-border py-10 text-center"><FileQuestion className="mx-auto mb-2 h-8 w-8 text-muted" /><p className="text-sm text-muted">Тестов у этого ученика пока нет. Нажмите «Создать новый тест».</p></div>}
+
+      {/* ───────── редактирование теста ───────── */}
+      {editing && <div className="fixed inset-0 z-[140] flex items-start justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !editSaving) setEditing(null); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="edit-test-title" className="my-auto w-full max-w-3xl rounded-2xl border border-border bg-white p-5 shadow-2xl sm:p-6">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div><p className="text-sm font-bold text-primary">{KIND_LABEL[editing.kind]} · {student.firstName} {student.lastName}</p><h3 id="edit-test-title" className="font-display text-2xl font-extrabold">Редактировать тест</h3></div>
+            <button type="button" onClick={() => setEditing(null)} disabled={editSaving} aria-label="Закрыть" className="rounded-lg p-2 text-muted hover:bg-primary-light"><X className="h-5 w-5" /></button>
+          </div>
+          <label className="mb-3 block text-sm font-bold">Название
+            <input value={editing.title} maxLength={120} onChange={(e) => setEditing({ ...editing, title: e.target.value })} className="mt-1 w-full rounded-xl border border-border px-3 py-2.5 font-normal outline-none focus:border-primary" />
+          </label>
+          {editing.kind === 'quiz' && <label className="mb-3 block text-sm font-bold">Дедлайн (время Астаны)
+            <input type="datetime-local" value={editing.deadline} min={astanaLocalInput(10 * 60000)} onChange={(e) => setEditing({ ...editing, deadline: e.target.value })} className="mt-1 w-full rounded-xl border border-border px-3 py-2.5 font-normal outline-none focus:border-primary sm:w-72" />
+          </label>}
+          <ol className="space-y-3">{editing.questions.map((q, qi) => <li key={qi} className="rounded-xl border border-border bg-primary-light/40 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2"><span className="text-sm font-extrabold text-primary">Вопрос {qi + 1}</span>
+              <button type="button" onClick={() => setEditing({ ...editing, questions: editing.questions.filter((_, i) => i !== qi) })} disabled={editing.questions.length <= 5} title={editing.questions.length <= 5 ? 'Минимум 5 вопросов' : 'Удалить вопрос'} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />Удалить</button></div>
+            <textarea value={q.question} rows={2} maxLength={700} onChange={(e) => updateQuestion(qi, { question: e.target.value })} className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
+            {q.figure && <div className="mt-2 flex items-center gap-3"><div className="max-w-[160px] overflow-hidden rounded-lg border border-border bg-white p-1"><QuestionFigure figure={q.figure} /></div><button type="button" onClick={() => updateQuestion(qi, { figure: undefined })} className="text-xs font-bold text-rose-700 hover:underline">Убрать рисунок</button></div>}
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">{q.choices.map((c, ci) => <label key={ci} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${q.correctIndex === ci ? 'border-emerald-300 bg-emerald-50' : 'border-border bg-white'}`}>
+              <input type="radio" name={`correct-${qi}`} checked={q.correctIndex === ci} onChange={() => updateQuestion(qi, { correctIndex: ci })} aria-label={`Правильный ответ: вариант ${String.fromCharCode(65 + ci)}`} className="h-4 w-4 shrink-0 accent-emerald-600" />
+              <span className="text-[11px] font-extrabold text-muted">{String.fromCharCode(65 + ci)}</span>
+              <input value={c} maxLength={300} onChange={(e) => updateQuestion(qi, { choices: q.choices.map((x, i) => i === ci ? e.target.value : x) })} className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+            </label>)}</div>
+            <p className="mt-1 text-[11px] text-muted">Отметьте кружком правильный ответ. Формулы можно писать в LaTeX, как в сгенерированном тесте.</p>
+          </li>)}</ol>
+          <button type="button" onClick={() => setEditing({ ...editing, questions: [...editing.questions, { question: '', choices: ['', '', '', ''], correctIndex: 0 }] })} disabled={editing.questions.length >= 30} className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-dashed border-primary/50 px-4 py-2 text-sm font-bold text-primary hover:bg-primary-light disabled:opacity-40"><Plus className="h-4 w-4" />Добавить вопрос</button>
+          {editError && <p role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{editError}</p>}
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setEditing(null)} disabled={editSaving} className="rounded-xl border border-border px-5 py-2.5 text-sm font-bold text-muted hover:bg-primary-light">Отмена</button>
+            <button type="button" onClick={() => void saveEdit()} disabled={editSaving} className="rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60">{editSaving ? 'Сохраняем…' : 'Сохранить изменения'}</button>
+          </div>
+        </section>
+      </div>}
 
       {/* ───────── мастер создания ───────── */}
       {wizard && <div className="fixed inset-0 z-[135] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) closeWizard(); }}>

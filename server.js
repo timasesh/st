@@ -821,8 +821,8 @@ app.get('/api/admin/cleanup/data', requireCleanupAccess, async (_req, res) => {
         gameRows.push(...(result.data || []));
         if ((result.data || []).length < 1000) break;
       }
-      gameProgress = gameRows.map((row) => ({ id: row.student_id, label: `${people.get(row.student_id)?.firstName || 'Ученик'} ${people.get(row.student_id)?.lastName || ''}`.trim(), details: `${row.stars} звёзд · рекорд ${row.best_score}`, model: 'Игровой прогресс' }));
-    } else gameProgress = Object.entries(await readJsonFileOr(skyQuestProgressPath, {})).map(([id, progress]) => ({ id, label: `${people.get(id)?.firstName || 'Ученик'} ${people.get(id)?.lastName || ''}`.trim(), details: `${progress.stars || 0} звёзд · рекорд ${progress.bestScore || 0}`, model: 'Игровой прогресс' }));
+      gameProgress = gameRows.map((row) => ({ id: row.student_id, label: `${people.get(row.student_id)?.firstName || 'Ученик'} ${people.get(row.student_id)?.lastName || ''}`.trim(), details: `${row.stars} койнов · рекорд ${row.best_score}`, model: 'Игровой прогресс' }));
+    } else gameProgress = Object.entries(await readJsonFileOr(skyQuestProgressPath, {})).map(([id, progress]) => ({ id, label: `${people.get(id)?.firstName || 'Ученик'} ${people.get(id)?.lastName || ''}`.trim(), details: `${progress.stars || 0} койнов · рекорд ${progress.bestScore || 0}`, model: 'Игровой прогресс' }));
     const rows = {
       accounts: list(accounts.map((account) => ({ id: account.id, label: `${account.firstName} ${account.lastName}`, details: `${account.role} · ${account.phone}`, model: 'accounts' }))),
       schedule: list(schedule.map((lesson, index) => ({ id: lesson.id || String(index), label: lesson.title || 'Занятие', details: `${people.get(lesson.studentId)?.firstName || 'Ученик'} · ${lesson.day + 1} день · ${lesson.hour}:00`, model: 'schedule' }))),
@@ -1813,6 +1813,34 @@ app.get('/api/teacher/students/:studentId/tests', async (req, res) => {
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить тесты ученика.' }); }
 });
 
+app.patch('/api/teacher/students/:studentId/tests/:testId', async (req, res) => {
+  await refreshAccounts();
+  const subject = await getAssignedTeacherLessonSubject(req, res);
+  if (!subject) return;
+  try {
+    const tests = await readStudentTests(subject.id);
+    const index = tests.findIndex((item) => item.id === req.params.testId && Array.isArray(item.questions));
+    if (index < 0) return res.status(404).json({ error: 'Тест не найден.' });
+    const current = tests[index];
+    if (current.status === 'completed') return res.status(409).json({ error: 'Ученик уже сдал этот тест — изменить его нельзя.' });
+    let next = { ...current };
+    if (req.body?.questions !== undefined || req.body?.title !== undefined) {
+      const quiz = validateGeneratedQuiz({ title: req.body?.title ?? current.title, questions: req.body?.questions ?? current.questions });
+      next = { ...next, title: quiz.title, questions: quiz.questions, durationMinutes: Math.max(3, Math.ceil(quiz.questions.length * 0.4)) };
+    }
+    if (req.body?.deadlineAt !== undefined) {
+      if (current.kind !== 'quiz') return res.status(400).json({ error: 'Срок проверочного квиза задаётся временем урока.' });
+      const deadline = Date.parse(String(req.body.deadlineAt));
+      if (!Number.isFinite(deadline) || deadline < Date.now() + 10 * 60000 || deadline > Date.now() + 90 * 86400000) return res.status(400).json({ error: 'Укажите дедлайн: не раньше чем через 10 минут и не позже чем через 90 дней.' });
+      next = { ...next, deadlineAt: new Date(deadline).toISOString(), status: 'assigned' };
+    }
+    next.editedAt = new Date().toISOString();
+    tests[index] = next;
+    await writeStudentTests(subject.id, tests);
+    return res.json({ test: describeTestForTeacher(next) });
+  } catch (error) { return res.status(400).json({ error: error.message || 'Не удалось сохранить изменения.' }); }
+});
+
 app.get('/api/teacher/tests/summary', async (req, res) => {
   await refreshAccounts();
   const user = getUserSession(req);
@@ -2018,9 +2046,17 @@ app.post('/api/student/tests/:testId/submit', async (req, res) => {
     const total = tests[index].questions.length;
     if (answers.length !== total || answers.some((answer, questionIndex) => !Number.isInteger(answer) || answer < 0 || answer >= (tests[index].questions[questionIndex]?.choices?.length || 0))) return res.status(400).json({ error: `Ответьте на все ${total} вопросов.` });
     const correct = answers.reduce((sum, answer, questionIndex) => sum + Number(answer === tests[index].questions[questionIndex]?.correctIndex), 0);
-    tests[index] = { ...tests[index], status: 'completed', answers, score: correct, submittedAt: new Date().toISOString() };
+    // За каждый сданный тест ученик получает 1 звезду (общий баланс «звёзд ST», не игровой).
+    const starAwarded = !tests[index].starAwarded;
+    tests[index] = { ...tests[index], status: 'completed', answers, score: correct, submittedAt: new Date().toISOString(), starAwarded: true };
     await writeStudentTests(testStoreId, tests);
-    return res.json({ ok: true, score: correct, total });
+    let stars = Number(user.account.progress?.stars) || 0;
+    if (starAwarded) {
+      const progress = { ...(user.account.progress || {}), stars: stars + 1 };
+      await writeAccounts(accounts.map((account) => account.id === user.account.id ? { ...account, progress } : account));
+      stars += 1;
+    }
+    return res.json({ ok: true, score: correct, total, starsAwarded: starAwarded ? 1 : 0, stars });
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить результат теста.' }); }
 });
 
@@ -2084,9 +2120,9 @@ app.post('/api/student/skyquest/stars', async (req, res) => {
   if (![1, -5].includes(delta)) return res.status(400).json({ error: 'Недопустимое изменение баланса.' });
   try {
     const stars = await changeSkyQuestStars(user.account.id, delta);
-    if (stars < 0) return res.status(429).json({ error: 'На сегодня достаточно игровых звёзд. Возвращайся завтра!' });
+    if (stars < 0) return res.status(429).json({ error: 'На сегодня достаточно койнов. Возвращайся завтра!' });
     return res.json({ stars });
-  } catch (error) { console.error('Could not update Sky Quest stars:', error); return res.status(503).json({ error: 'Не удалось сохранить игровые звёзды.' }); }
+  } catch (error) { console.error('Could not update Sky Quest stars:', error); return res.status(503).json({ error: 'Не удалось сохранить койны.' }); }
 });
 
 app.get('/api/auth/portal', async (req, res) => {
@@ -2174,6 +2210,20 @@ app.get('/api/auth/portal', async (req, res) => {
       recordedLessonIds = historyByLesson.filter(Boolean);
     }
     const messages = await readAccountInbox(current.id);
+    if (current.role === 'student') {
+      // Разовое начисление за тесты, сданные в последние 3 дня до появления награды (поле starAwarded ещё не стоит).
+      try {
+        const storeId = convertedTrial?.id || current.id;
+        const stored = await readStudentTests(storeId);
+        const pending = stored.filter((test) => test.status === 'completed' && test.starAwarded === undefined && Date.now() - Date.parse(test.submittedAt || 0) < 3 * 86400000);
+        if (pending.length) {
+          const progress = { ...(current.progress || {}), stars: (Number(current.progress?.stars) || 0) + pending.length };
+          await writeStudentTests(storeId, stored.map((test) => pending.includes(test) ? { ...test, starAwarded: true } : test));
+          await writeAccounts(accounts.map((account) => account.id === current.id ? { ...account, progress } : account));
+          current.progress = progress;
+        }
+      } catch (backfillError) { console.error('Star backfill failed:', backfillError?.message); }
+    }
     const studentTests = current.role === 'student'
       ? (await readStudentTests(convertedTrial?.id || current.id)).filter((test) => Array.isArray(test.questions) && (!getStudentTestWindow(test).availableAt || Date.now() >= Date.parse(getStudentTestWindow(test).availableAt))).map((test) => { const window = getStudentTestWindow(test); return { ...test, ...window, status: test.status === 'assigned' && window.deadlineAt && Date.now() >= Date.parse(window.deadlineAt) ? 'expired' : test.status, questions: test.questions.map(({ correctIndex, ...question }) => question) }; })
       : [];

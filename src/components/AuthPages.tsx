@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, BarChart3, Check, Eye, EyeOff, KeyRound, LockKeyhole, LogIn, ShieldCheck, UserRound, Users, GraduationCap, BriefcaseBusiness, Search, Plus, LogOut, Settings, Moon, Sun, Pencil, Trash2, X, RotateCcw, RotateCw, CalendarDays, Clock3, GripVertical, Trash, History, MessageCircle, Mail, Send, UserPlus, FileQuestion, Upload, Play, Paperclip, Star, Gift } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import StudentDashboard from './StudentDashboard';
+import StarFlight from './StarFlight';
 import PortalSettings from './PortalSettings';
 import { ParentChildrenView, ParentPrizesView } from './ParentPortalSections';
 import AdminDataCleanup from './AdminDataCleanup';
@@ -259,6 +260,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
   const [studentTest, setStudentTest] = useState<PortalTest | null>(null);
   const [studentTestAnswers, setStudentTestAnswers] = useState<number[]>([]);
   const [studentTestSaving, setStudentTestSaving] = useState(false);
+  const [starFlight, setStarFlight] = useState<{ key: number; amount: number } | null>(null);
   const [studentTestNotice, setStudentTestNotice] = useState('');
   const [studentHistory, setStudentHistory] = useState<StudentLessonHistoryEntry[]>([]);
   const [studentHistoryLoading, setStudentHistoryLoading] = useState(false);
@@ -429,7 +431,14 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
       const response = await fetch(`/api/student/tests/${studentTest.id}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ answers: studentTestAnswers }) });
       const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'Не удалось отправить ответы.');
-      setStudentTestNotice(`Тест завершён: ${result.score} из ${result.total}.`); setStudentTest(null); setStudentTestAnswers([]); await loadPortal();
+      const awarded = Number(result.starsAwarded) || 0;
+      setStudentTestNotice(`Тест завершён: ${result.score} из ${result.total}.${awarded ? ` Ты получил ${awarded} ⭐` : ''}`); setStudentTest(null); setStudentTestAnswers([]);
+      if (awarded) {
+        // Сначала запускаем полёт звезды (счётчик пока показывает старое число), затем подтягиваем новый баланс.
+        setStarFlight({ key: Date.now(), amount: awarded });
+        setPortal((current) => current ? { ...current, progress: { ...(current.progress || {}), stars: Number(result.stars) || ((current.progress?.stars ?? 0) + awarded), earnedStars: ((current.progress as { earnedStars?: number } | null)?.earnedStars ?? current.progress?.stars ?? 0) + awarded } } : current);
+      }
+      await loadPortal();
     } catch (reason) { setStudentTestNotice(getFriendlyError(reason, 'Не удалось отправить ответы.')); }
     finally { setStudentTestSaving(false); }
   };
@@ -481,6 +490,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
   return (
     <div className={`portal-dashboard min-h-screen bg-primary-light text-foreground ${portalDarkTheme ? 'portal-theme-dark' : ''}`}>
       {isStudentRole() ? (
+        <>
         <StudentDashboard
           portal={portal}
           now={nowTick}
@@ -499,8 +509,11 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
           testNotice={studentTestNotice}
           onStartTest={(test) => { setStudentTest(test); setStudentTestAnswers(Array(test.questions.length).fill(-1)); setStudentTestNotice(''); }}
           onOpenHomework={(item) => { setSelectedHomework(item); setHomeworkFile(null); setHomeworkNotice(''); }}
+          starsHidden={starFlight ? starFlight.amount : 0}
           onPrizeBalanceUpdate={(stars) => setPortal((current) => current ? { ...current, progress: { ...(current.progress || {}), stars } } : current)}
         />
+        {starFlight && <StarFlight amount={starFlight.amount} onLanded={() => setStarFlight(null)} />}
+        </>
       ) : (
         <>
       <header className="flex flex-wrap items-center justify-between gap-y-3 border-b border-border bg-white px-5 py-4 shadow-sm sm:px-8"><a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">{roleLabel}</span></span></a><div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">{isStudentRole() && <div className="flex items-center gap-4 rounded-2xl bg-primary-light px-3 py-2 sm:px-5"><div className="flex items-center gap-2 text-amber-500"><Star className="h-9 w-9 fill-current sm:h-11 sm:w-11" /><span className="text-3xl font-extrabold leading-none text-amber-600 sm:text-4xl">{portal?.progress?.stars ?? 0}</span></div><div className="min-w-28 sm:min-w-44"><div className="mb-1 flex items-center justify-between gap-2 text-xs font-extrabold"><span>Уровень {studentLevel}</span><span className="text-muted">{studentXp}/{levelXpRequired} XP</span></div><div role="progressbar" aria-label={`Опыт до уровня ${studentLevel + 1}`} aria-valuemin={0} aria-valuemax={levelXpRequired} aria-valuenow={studentXp} className="h-3 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-[width]" style={{ width: `${levelProgress}%` }} /></div></div></div>}<div className="relative"><button type="button" onClick={() => { const open = !messagesOpen; setMessagesOpen(open); if (open) void loadPortal(); }} aria-label="Открыть сообщения" aria-expanded={messagesOpen} className="relative grid h-10 w-10 place-items-center rounded-xl border border-border bg-white text-primary transition hover:bg-primary-light"><MessageCircle className="h-5 w-5" />{portal?.messages.some((message) => !message.read) && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-rose-500" />}</button>{messagesOpen && <div role="dialog" aria-label="Сообщения" className="absolute right-0 top-full z-50 mt-3 w-[min(92vw,420px)] overflow-hidden rounded-2xl border border-border bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-border px-4 py-3"><div><strong className="font-display">Сообщения</strong><p className="text-xs text-muted">{portal?.messages.filter((message) => !message.read).length || 0} непрочитанных</p></div><button type="button" onClick={() => setMessagesOpen(false)} aria-label="Закрыть сообщения" className="rounded-lg p-1.5 text-muted hover:bg-primary-light"><X className="h-4 w-4" /></button></div><div className="max-h-[min(65vh,520px)] space-y-2 overflow-y-auto p-3">{portal?.messages.length ? portal.messages.map((message) => <article key={message.id} className={`rounded-xl border p-3 ${message.read ? 'border-border bg-white' : 'border-blue-200 bg-blue-50/70'}`}><p className="text-xs text-muted">{message.sender} · {new Date(message.at).toLocaleString('ru-KZ', { timeZone: 'Asia/Qyzylorda' })}</p><p className="mt-2 whitespace-pre-wrap text-sm">{message.body}</p>{!message.read && <button type="button" disabled={savingMessageId === message.id} onClick={() => void markRead(message)} className="mt-2 rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50">Отметить прочитанным</button>}</article>) : <p className="py-8 text-center text-sm text-muted">Сообщений пока нет.</p>}</div></div>}</div><PortalSettings dark={portalDarkTheme} onThemeChange={changePortalTheme} /><button type="button" onClick={() => window.location.reload()} aria-label="Обновить страницу" title="Обновить страницу" className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-white text-primary hover:bg-primary-light"><RotateCw className="h-4 w-4" /></button><button type="button" onClick={logout} className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-primary-light">Выйти</button></div></header>

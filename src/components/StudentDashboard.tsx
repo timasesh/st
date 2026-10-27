@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, BookOpenCheck, CalendarDays, Check, CheckCircle2, ChevronRight, Clock3, FileQuestion, Gift, GraduationCap, LockKeyhole, LogOut, MessageCircle, Paperclip, Play, Rocket, Sparkles, Star, Trophy, X, RotateCw } from 'lucide-react';
+import { motion } from 'motion/react';
 import SkyQuestTab from './SkyQuestTab';
 import StudentLevelsTab from './StudentLevelsTab';
 import { earnedStars, levelFor, levelImage, MAX_LEVEL } from '../shared/levels.js';
@@ -72,6 +73,7 @@ type Props = {
   onStartTest: (test: StudentTest) => void;
   onOpenHomework: (homework: StudentHomework) => void;
   onPrizeBalanceUpdate: (stars: number) => void;
+  starsHidden?: number;
 };
 
 const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
@@ -147,11 +149,19 @@ function EmptyState({ icon: Icon, title, text, action }: { icon: typeof BookOpen
   );
 }
 
-export default function StudentDashboard({ portal, now, loading, error, activeTab, onChangeTab, messagesOpen, darkTheme, onThemeChange, onToggleMessages, onCloseMessages, onLogout, savingMessageId, onMarkRead, testNotice, onStartTest, onOpenHomework, onPrizeBalanceUpdate }: Props) {
+// Число звёзд: подпрыгивает только когда значение выросло (после прилёта звезды).
+function StarNumber({ value, className }: { value: number; className: string }) {
+  const previous = useRef(value);
+  const grew = value > previous.current;
+  useEffect(() => { previous.current = value; }, [value]);
+  return <motion.span key={value} initial={{ scale: grew ? 1.7 : 1 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 380, damping: 14 }} className={className}>{value}</motion.span>;
+}
+
+export default function StudentDashboard({ portal, now, loading, error, activeTab, onChangeTab, messagesOpen, darkTheme, onThemeChange, onToggleMessages, onCloseMessages, onLogout, savingMessageId, onMarkRead, testNotice, onStartTest, onOpenHomework, onPrizeBalanceUpdate, starsHidden = 0 }: Props) {
   if (!portal) return <div className="min-h-screen bg-[#f4f7fc] px-4 py-6 sm:px-6"><header className="mx-auto flex max-w-6xl items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 object-contain" /><div><strong className="block font-display font-extrabold">StudyTask</strong><span className="text-xs text-slate-500">Кабинет ученика</span></div></header><main className="mx-auto mt-10 max-w-6xl">{error && <p role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{error}</p>}{loading ? <div aria-label="Загружаем кабинет" className="space-y-5"><div className="h-56 animate-pulse rounded-3xl bg-white" /><div className="grid gap-4 md:grid-cols-3"><div className="h-32 animate-pulse rounded-2xl bg-white" /><div className="h-32 animate-pulse rounded-2xl bg-white" /><div className="h-32 animate-pulse rounded-2xl bg-white" /></div></div> : <p className="text-sm text-slate-600">Не удалось загрузить данные кабинета.</p>}</main></div>;
   const account = portal.account;
-  const stars = portal.progress?.stars ?? 0;
-  const lv = levelFor(portal.progress?.earnedStars ?? earnedStars(portal.progress));
+  const stars = Math.max(0, (portal.progress?.stars ?? 0) - starsHidden);
+  const lv = levelFor(Math.max(0, (portal.progress?.earnedStars ?? earnedStars(portal.progress)) - starsHidden));
   const lessons = [...portal.lessons].map((lesson) => ({ ...lesson, daysUntil: getLessonOffset(lesson, now) })).sort((a, b) => a.daysUntil - b.daysUntil || a.hour - b.hour);
   const tests = [...(portal.studentTests || [])].sort((a, b) => {
     if (a.status !== b.status) return a.status === 'assigned' ? -1 : 1;
@@ -191,9 +201,9 @@ export default function StudentDashboard({ portal, now, loading, error, activeTa
           </a>
 
           <div className="flex items-center gap-2 sm:gap-3">
-          <div className="hidden items-center gap-3 rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2 sm:flex">
+          <div data-star-counter className="hidden items-center gap-3 rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2 sm:flex">
               <Star className="h-6 w-6 fill-amber-400 text-amber-500" />
-              <span className="text-lg font-extrabold leading-none text-amber-700">{stars}</span>
+              <StarNumber value={stars} className="inline-block text-lg font-extrabold leading-none text-amber-700" />
             </div>
             <div className="hidden min-w-[156px] rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 md:block">
               <div className="mb-1 flex items-center justify-between gap-2 text-[11px] font-bold"><span>Уровень {lv.level}</span><span className="text-slate-500">{lv.isMax ? 'MAX' : `${lv.into}/${lv.span} ★`}</span></div>
@@ -215,7 +225,7 @@ export default function StudentDashboard({ portal, now, loading, error, activeTa
           </div>
         </div>
         <div className="border-t border-slate-100 bg-white px-4 py-2 sm:hidden">
-          <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-2"><Star className="h-5 w-5 shrink-0 fill-amber-400 text-amber-500" /><strong className="text-sm text-amber-700">{stars}</strong></div><div className="min-w-0 flex-1"><div className="mb-1 flex justify-between text-[10px] font-bold"><span>Уровень {lv.level}</span><span className="text-slate-500">{lv.isMax ? 'MAX' : `${lv.into}/${lv.span} ★`}</span></div><div role="progressbar" aria-label={`Прогресс до уровня ${lv.level + 1}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={lv.pct} className="h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600 transition-[width] duration-700 ease-out" style={{ width: `${lv.pct}%` }} /></div></div></div>
+          <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3"><div data-star-counter className="flex min-w-0 items-center gap-2"><Star className="h-5 w-5 shrink-0 fill-amber-400 text-amber-500" /><StarNumber value={stars} className="inline-block text-sm font-bold text-amber-700" /></div><div className="min-w-0 flex-1"><div className="mb-1 flex justify-between text-[10px] font-bold"><span>Уровень {lv.level}</span><span className="text-slate-500">{lv.isMax ? 'MAX' : `${lv.into}/${lv.span} ★`}</span></div><div role="progressbar" aria-label={`Прогресс до уровня ${lv.level + 1}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={lv.pct} className="h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600 transition-[width] duration-700 ease-out" style={{ width: `${lv.pct}%` }} /></div></div></div>
         </div>
       </header>
 

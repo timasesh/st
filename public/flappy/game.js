@@ -306,7 +306,7 @@ function updateSkyQuestBalance(delta) {
   const totalCount = document.getElementById('goTotalCoins');
   if (startCount) startCount.textContent = totalCoins;
   if (coinCount) coinCount.textContent = totalCoins;
-  if (totalCount) totalCount.textContent = `Всего звёзд: ${totalCoins}`;
+  if (totalCount) totalCount.textContent = `Всего койнов: ${totalCoins}`;
   if (!skyQuestAccountSync || !delta) return;
   skyQuestSyncQueue = skyQuestSyncQueue.then(() => fetch('/api/student/skyquest/stars', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delta }) }))
     .then(response => response.ok ? response.json() : null)
@@ -337,13 +337,13 @@ const deathMessages = [
   "Не успел добраться до следующего урока!",
   "Домашка снова впереди — попробуй ещё раз",
   "Учитель говорит: тренировка делает мастера",
-  "Чуть не долетел до звезды — в следующий раз!",
+  "Чуть не долетел до койна — в следующий раз!",
   "Контрольная подождёт, перезапускай!",
   "Нужно ещё немного практики",
   "Каждая ошибка — шаг к новому рекорду",
   "Перерыв окончен — возвращайся в игру!",
   "Пропустил звонок на перемену",
-  "Звёзды ждут — собери больше в следующий заход",
+  "Койны ждут — собери больше в следующий заход",
   "Тетрадка улетела — но ты справишься",
   "Почти как отличник — ещё один прыжок!",
   "Репетитор верит: у тебя получится!",
@@ -1021,7 +1021,7 @@ function drawCoin() {
       updateSkyQuestBalance(1);
       floatingTexts.push({
         x: player.x + 20, y: player.y - 15,
-        text: '+1 ⭐', color: '#ffcc00', size: 15,
+        text: '+1 койн', color: '#ffcc00', size: 15,
         life: 45, maxLife: 45
       });
     }
@@ -1029,47 +1029,35 @@ function drawCoin() {
 }
 
 const starSprites = new Map();
+// Игровая валюта — койны: золотая монета с тёмным логотипом ST (звёзды ST зарабатываются за квизы и домашки).
 function drawStar(x, y, radius) {
   const r = Math.max(6, Math.round(radius));
   let sprite = starSprites.get(r);
   if (!sprite) {
     const S = r * 2 + 12;
     sprite = makeSprite(S, S, () => {
-      const c = ctx, cx = S / 2, cy = S / 2 + r * 0.04, R = r * 1.1, inner = R * 0.5;
-      const v = [];
-      for (let k = 0; k < 10; k++) {
-        const ang = -Math.PI / 2 + k * Math.PI / 5, d = k % 2 === 0 ? R : inner;
-        v.push([cx + Math.cos(ang) * d, cy + Math.sin(ang) * d]);
-      }
-      const roundedStar = () => {
-        c.beginPath();
-        const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-        const m0 = mid(v[9], v[0]); c.moveTo(m0[0], m0[1]);
-        for (let k = 0; k < 10; k++) { const m = mid(v[k], v[(k + 1) % 10]); c.quadraticCurveTo(v[k][0], v[k][1], m[0], m[1]); }
-        c.closePath();
-      };
-      roundedStar();
-      const g = c.createLinearGradient(cx, cy - R, cx, cy + R);
-      g.addColorStop(0, '#fff9c2'); g.addColorStop(.42, '#fcd34d'); g.addColorStop(1, '#f59e0b');
+      const c = ctx, cx = S / 2, cy = S / 2, R = r * 1.08;
+      c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2);
+      const g = c.createLinearGradient(cx - R, cy - R, cx + R, cy + R);
+      g.addColorStop(0, '#fff3a6'); g.addColorStop(.45, '#fbbf24'); g.addColorStop(1, '#d97706');
       c.fillStyle = g; c.fill();
-      c.save(); roundedStar(); c.clip();
-      // грани: светлая и тёмная половины каждого луча
-      for (let k = 0; k < 5; k++) {
-        const o = v[k * 2], l = v[(k * 2 + 9) % 10], rr2 = v[(k * 2 + 1) % 10];
-        c.beginPath(); c.moveTo(cx, cy); c.lineTo(o[0], o[1]); c.lineTo(l[0], l[1]); c.closePath(); c.fillStyle = 'rgba(255,255,255,.26)'; c.fill();
-        c.beginPath(); c.moveTo(cx, cy); c.lineTo(o[0], o[1]); c.lineTo(rr2[0], rr2[1]); c.closePath(); c.fillStyle = 'rgba(217,119,6,.28)'; c.fill();
-      }
-      const core = c.createRadialGradient(cx - R * 0.15, cy - R * 0.2, 0, cx, cy, R * 0.6);
-      core.addColorStop(0, 'rgba(255,255,255,.75)'); core.addColorStop(1, 'rgba(255,255,255,0)');
-      c.fillStyle = core; c.fillRect(0, 0, S, S);
-      c.restore();
-      roundedStar(); c.lineJoin = 'round'; c.lineWidth = Math.max(1.2, r * 0.09); c.strokeStyle = 'rgba(146,64,14,.72)'; c.stroke();
+      c.lineWidth = Math.max(1.2, r * 0.1); c.strokeStyle = 'rgba(146,64,14,.85)'; c.stroke();
+      c.beginPath(); c.arc(cx, cy, R * 0.78, 0, Math.PI * 2);
+      c.lineWidth = Math.max(1, r * 0.07); c.strokeStyle = 'rgba(180,83,9,.55)'; c.stroke();
+      const shine = c.createRadialGradient(cx - R * 0.35, cy - R * 0.4, 0, cx - R * 0.35, cy - R * 0.4, R * 0.7);
+      shine.addColorStop(0, 'rgba(255,255,255,.65)'); shine.addColorStop(1, 'rgba(255,255,255,0)');
+      c.save(); c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.clip(); c.fillStyle = shine; c.fillRect(0, 0, S, S); c.restore();
+      c.fillStyle = '#12266F'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.font = `900 ${Math.round(R * 0.95)}px "Arial Black", "Nunito", Arial, sans-serif`;
+      c.fillText('ST', cx, cy + R * 0.04);
     });
     if (starSprites.size > 40) starSprites.clear();
     starSprites.set(r, sprite);
   }
   const S = r * 2 + 12, scale = radius / r;
-  ctx.drawImage(sprite, x - S * scale / 2, y - S * scale / 2, S * scale, S * scale);
+  // лёгкое вращение монеты вокруг вертикальной оси
+  const spin = 0.4 + 0.6 * Math.abs(Math.cos(frame * 0.045));
+  ctx.drawImage(sprite, x - S * scale * spin / 2, y - S * scale / 2, S * scale * spin, S * scale);
 }
 
 // ===== PLAYER =====
@@ -1259,7 +1247,7 @@ function drawLoginDemoStar() {
       demoStarOnScreen.pipe = null;
       floatingTexts.push({
         x: player.x + 35, y: player.y - 14,
-        text: '⭐ +1 звезда', color: '#ffdd00', size: 15,
+        text: '+1 койн', color: '#ffdd00', size: 15,
         life: 48, maxLife: 48
       });
     }
@@ -1439,7 +1427,7 @@ function updatePipes() {
         };
         floatingTexts.push({
           x: player.x + 45, y: player.y - 14,
-          text: '⭐ +1 звезда', color: '#ffdd00', size: 15,
+          text: '+1 койн', color: '#ffdd00', size: 15,
           life: 48, maxLife: 48
         });
       }
@@ -1545,8 +1533,8 @@ function showGameOver() {
   document.getElementById('goTitle').style.color =
     score >= 30 ? '#ffdd00' : score >= 20 ? '#00ff88' : '#ff4444';
 
-  document.getElementById('goCoins').textContent = `+${sessionCoins} звёзд за раунд`;
-  document.getElementById('goTotalCoins').textContent = `Всего звёзд: ${totalCoins}`;
+  document.getElementById('goCoins').textContent = `+${sessionCoins} койнов за раунд`;
+  document.getElementById('goTotalCoins').textContent = `Всего койнов: ${totalCoins}`;
 
   const btn = document.getElementById('continueBtn');
   if (lifeUsedThisRound) {
@@ -1555,11 +1543,11 @@ function showGameOver() {
     btn.style.display = '';
     if (totalCoins >= 5) {
       btn.disabled = false;
-      btn.textContent = '⭐ Продолжить за 5 звёзд';
+      btn.textContent = 'Продолжить за 5 койнов';
       btn.classList.remove('btn-coin--disabled');
     } else {
       btn.disabled = true;
-      btn.textContent = `Недостаточно звёзд (нужно 5)`;
+      btn.textContent = `Недостаточно койнов (нужно 5)`;
       btn.classList.add('btn-coin--disabled');
     }
   }

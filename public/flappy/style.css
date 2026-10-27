@@ -490,3 +490,11 @@ body.login-demo-mode #closeGameBtn, body.login-demo-mode #tapZone { display: non
 @media (max-width: 420px) {
   #gameWrapper { height: 100dvh; }
 }
+
+/* Койн — игровая монета с тёмным логотипом ST */
+.st-coin{display:inline-grid;place-items:center;width:1.4em;height:1.4em;border-radius:50%;vertical-align:-0.28em;
+  background:radial-gradient(circle at 32% 28%,#fff3a6 0,#fbbf24 48%,#d97706 100%);border:2px solid #92400e;box-shadow:inset 0 0 0 2px rgba(180,83,9,.35)}
+.st-coin b{font:900 .55em/1 "Arial Black",Arial,sans-serif;letter-spacing:-.02em;color:#12266F}
+#startCoinBalance .st-coin{width:20px;height:20px;font-size:20px;vertical-align:-5px}
+#coinDisplay .st-coin{width:22px;height:22px;font-size:22px;vertical-align:-5px}
+.btn-coin .st-coin{width:20px;height:20px;font-size:20px;vertical-align:-5px}

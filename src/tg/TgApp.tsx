@@ -406,7 +406,7 @@ function RankList({ rows, me, unit }: { rows: Row[]; me: { rank: number; value: 
 
 function SubTabs({ sub, setSub, onRefresh }: { sub: Sub; setSub: (s: Sub) => void; onRefresh: () => void }) {
   return <div className="row" style={{ gap: 8 }}>
-    <div className="seg grow"><button className={sub === 'play' ? 'on' : ''} onClick={() => { tap(); setSub('play'); }}>Играть</button><button className={sub === 'stars' ? 'on' : ''} onClick={() => { tap(); setSub('stars'); onRefresh(); }}>По звёздам</button><button className={sub === 'score' ? 'on' : ''} onClick={() => { tap(); setSub('score'); onRefresh(); }}>По очкам</button></div>
+    <div className="seg grow"><button className={sub === 'play' ? 'on' : ''} onClick={() => { tap(); setSub('play'); }}>Играть</button><button className={sub === 'stars' ? 'on' : ''} onClick={() => { tap(); setSub('stars'); onRefresh(); }}>По койнам</button><button className={sub === 'score' ? 'on' : ''} onClick={() => { tap(); setSub('score'); onRefresh(); }}>По очкам</button></div>
   </div>;
 }
 
@@ -454,25 +454,26 @@ function SkyQuest() {
     window.addEventListener('message', onMsg); return () => window.removeEventListener('message', onMsg);
   }, [loadSky, loadSprint]);
   const star = <Star size={14} fill="currentColor" style={{ verticalAlign: -2 }} />;
+  const coin = <span aria-hidden style={{ display: 'inline-grid', placeItems: 'center', width: 16, height: 16, borderRadius: '50%', border: '1.5px solid #92400e', background: 'radial-gradient(circle at 32% 28%,#fff3a6,#fbbf24 48%,#d97706)', color: '#12266F', font: '900 7px/1 Arial,sans-serif', verticalAlign: -3 }}>ST</span>;
   const list = (r: Ranking, unit: ReactNode, hint: string) => <div className="stack"><p className="small muted">{hint}</p>{loading ? <div className="spin" /> : <RankList rows={r.top} me={r.me} unit={unit} />}</div>;
   return <div className="stack">
-    <div className="row between"><Head kicker="Игры и рейтинг" title="Играть" /><span className="pill gold" style={{ alignSelf: 'flex-start', marginTop: 6 }}><Star size={14} fill="currentColor" /> {loading ? '…' : sky.stars}</span></div>
+    <div className="row between"><Head kicker="Игры и рейтинг" title="Играть" /><span className="pill gold" style={{ alignSelf: 'flex-start', marginTop: 6 }}>{coin} {loading ? '…' : sky.stars}</span></div>
     <div className="seg"><button className={section === 'sky' ? 'on' : ''} onClick={() => setSection('sky')}>Sky Quest</button><button className={section === 'sprint' ? 'on' : ''} onClick={() => { setSection('sprint'); void loadSprint(); }}>School Sprint</button><button className={section === 'rating' ? 'on' : ''} onClick={() => { setSection('rating'); void loadRating(); }}>Рейтинг</button></div>
     {error && <p className="err" role="alert">{error}</p>}
     {section === 'sky' && <>
       <SubTabs sub={skySub} setSub={(s) => { setSkySub(s); if (s !== 'play') setSkyOpen(false); }} onRefresh={() => void loadSky()} />
       {skySub === 'play' && (skyOpen
         ? <iframe className="game game-full" src="/flappy/index.html?autostart=1" title="Sky Quest" allow="autoplay" />
-        : <GameIntro title="Sky Quest" text="Веди ракету между колоннами: касание — взлёт. Собирай звёзды — они копятся на твоём счёте — и побивай рекорды." record={`Рекорд: ${sky.bestScore} очков · ${sky.bestStars} звёзд за заход`} onPlay={() => setSkyOpen(true)} />)}
-      {skySub === 'stars' && list(sky.byStars, star, 'Рекорд по звёздам, собранным за один заход.')}
+        : <GameIntro title="Sky Quest" text="Веди ракету между колоннами: касание — взлёт. Собирай койны — они копятся на твоём счёте — и побивай рекорды." record={`Рекорд: ${sky.bestScore} очков · ${sky.bestStars} койнов за заход`} onPlay={() => setSkyOpen(true)} />)}
+      {skySub === 'stars' && list(sky.byStars, coin, 'Рекорд по койнам, собранным за один заход.')}
       {skySub === 'score' && list(sky.byScore, 'очк.', 'Рекорд по очкам за один заход.')}
     </>}
     {section === 'sprint' && <>
       <SubTabs sub={sprintSub} setSub={(s) => { setSprintSub(s); if (s !== 'play') setSprintOpen(false); }} onRefresh={() => void loadSprint()} />
       {sprintSub === 'play' && (sprintOpen
         ? <iframe className="game game-full" src="/school-sprint/index.html" title="Школьный спринт" allow="autoplay" />
-        : <GameIntro title="Школьный спринт" text="Беги по коридору как можно дольше: свайпы меняют дорожки, вверх — прыжок, вниз — кувырок. Собирай звёзды и побивай рекорд." record={`Рекорд: ${sprint.stats.bestScore} очков · ${sprint.stats.bestStars} звёзд за забег`} onPlay={() => setSprintOpen(true)} />)}
-      {sprintSub === 'stars' && list(sprint.byStars, star, 'Рекорд по звёздам, собранным за один забег.')}
+        : <GameIntro title="Школьный спринт" text="Беги по коридору как можно дольше: свайпы меняют дорожки, вверх — прыжок, вниз — кувырок. Собирай койны и побивай рекорд." record={`Рекорд: ${sprint.stats.bestScore} очков · ${sprint.stats.bestStars} койнов за забег`} onPlay={() => setSprintOpen(true)} />)}
+      {sprintSub === 'stars' && list(sprint.byStars, coin, 'Рекорд по койнам, собранным за один забег.')}
       {sprintSub === 'score' && list(sprint.byScore, 'очк.', 'Рекорд по очкам за один забег.')}
     </>}
     {section === 'rating' && <div className="stack">

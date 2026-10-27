@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Gamepad2, RefreshCw, Rocket, Star, Trophy, Zap } from 'lucide-react';
+import { Gamepad2, RefreshCw, Rocket, Trophy, Zap } from 'lucide-react';
 
 type Row = { rank: number; name: string; value: number; me: boolean };
 type Ranking = { top: Row[]; me: { rank: number; value: number } | null };
@@ -16,6 +16,10 @@ type Sub = 'play' | 'stars' | 'score';
 const MEDAL = ['🥇', '🥈', '🥉'];
 const btn = (on: boolean) => `inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold ${on ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white text-slate-600'}`;
 const subBtn = (on: boolean) => `rounded-lg px-3 py-2 text-sm font-bold ${on ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`;
+
+export function Coin({ className = 'h-5 w-5' }: { className?: string }) {
+  return <span aria-hidden className={`inline-grid shrink-0 place-items-center rounded-full border-2 border-amber-700 bg-[radial-gradient(circle_at_32%_28%,#fff3a6,#fbbf24_48%,#d97706)] text-[8px] font-black leading-none text-[#12266F] ${className}`}>ST</span>;
+}
 
 function RankRows({ rows, me, unit, empty }: { rows: Row[]; me: { rank: number; value: number } | null; unit: string; empty: string }) {
   if (!rows.length) return <p className="py-8 text-center text-sm text-slate-500">{empty}</p>;
@@ -37,7 +41,7 @@ function Panel({ children }: { children: React.ReactNode }) {
 function SubNav({ sub, setSub, onRefresh }: { sub: Sub; setSub: (s: Sub) => void; onRefresh: () => void }) {
   return <div className="mb-5 flex flex-wrap items-center gap-2">
     <button type="button" onClick={() => setSub('play')} className={subBtn(sub === 'play')}><Gamepad2 className="mr-1 inline h-4 w-4" />Играть</button>
-    <button type="button" onClick={() => { setSub('stars'); onRefresh(); }} className={subBtn(sub === 'stars')}><Star className="mr-1 inline h-4 w-4 fill-current" />Лучшие по звёздам</button>
+    <button type="button" onClick={() => { setSub('stars'); onRefresh(); }} className={subBtn(sub === 'stars')}><Coin className="mr-1 inline-grid h-4 w-4" />Лучшие по койнам</button>
     <button type="button" onClick={() => { setSub('score'); onRefresh(); }} className={subBtn(sub === 'score')}><Trophy className="mr-1 inline h-4 w-4" />Лучшие по очкам</button>
     <button type="button" onClick={onRefresh} aria-label="Обновить" className="ml-auto grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"><RefreshCw className="h-4 w-4" /></button>
   </div>;
@@ -115,7 +119,7 @@ export default function SkyQuestTab() {
 
   return <section aria-labelledby="skyquest-title" className="space-y-5">
     <header className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-indigo-500">Игры и рейтинг</p><h2 id="skyquest-title" className="mt-1 font-display text-2xl font-extrabold tracking-tight">Играть</h2></div>
-      <div className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-amber-700"><Star className="h-5 w-5 fill-amber-400 text-amber-500" /><span className="text-sm font-bold">Игровые звёзды</span><strong className="text-xl">{loading ? '…' : sky.stars}</strong></div></header>
+      <div className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-amber-700"><Coin className="h-6 w-6" /><span className="text-sm font-bold">Койны</span><strong className="text-xl">{loading ? '…' : sky.stars}</strong></div></header>
     <nav aria-label="Разделы" className="flex flex-wrap gap-2">
       <button type="button" onClick={() => setSection('sky')} className={btn(section === 'sky')}><Rocket className="h-4 w-4" />Sky Quest</button>
       <button type="button" onClick={() => { setSection('sprint'); void loadSprint(); }} className={btn(section === 'sprint')}><Zap className="h-4 w-4" />School Sprint</button>
@@ -126,22 +130,22 @@ export default function SkyQuestTab() {
     {section === 'sky' && <Panel>
       <SubNav sub={skySub} setSub={(s) => { setSkySub(s); if (s !== 'play') setSkyOpen(false); }} onRefresh={() => void loadSky()} />
       {skySub === 'play' && (skyOpen ? frame('/flappy/index.html?autostart=1', 'Sky Quest', true, 'h-[min(650px,75vh)]', 'max-w-[400px]')
-        : intro(<Rocket className="h-7 w-7" />, 'Sky Quest', 'Веди ракету между колоннами: удерживай касание, чтобы лететь вверх. Собирай звёзды — они копятся на твоём счёте — и побивай рекорды.', `Рекорд: ${sky.bestScore} очков · ${sky.bestStars} звёзд за заход`, () => setSkyOpen(true)))}
-      {skySub === 'stars' && list(sky.byStars, '⭐', 'Лучшие по звёздам', 'Рекорд по звёздам, собранным за один заход.')}
+        : intro(<Rocket className="h-7 w-7" />, 'Sky Quest', 'Веди ракету между колоннами: удерживай касание, чтобы лететь вверх. Собирай койны — золотые монеты с ST, они копятся на твоём счёте — и побивай рекорды.', `Рекорд: ${sky.bestScore} очков · ${sky.bestStars} койнов за заход`, () => setSkyOpen(true)))}
+      {skySub === 'stars' && list(sky.byStars, 'койн.', 'Лучшие по койнам', 'Рекорд по койнам, собранным за один заход.')}
       {skySub === 'score' && list(sky.byScore, 'очк.', 'Лучшие по очкам', 'Рекорд по очкам за один заход.')}
     </Panel>}
 
     {section === 'sprint' && <Panel>
       <SubNav sub={sprintSub} setSub={(s) => { setSprintSub(s); if (s !== 'play') setSprintOpen(false); }} onRefresh={() => void loadSprint()} />
       {sprintSub === 'play' && (sprintOpen ? frame('/school-sprint/index.html', 'Школьный спринт', true, 'h-[min(680px,80vh)]', 'max-w-[420px]')
-        : intro(<Zap className="h-7 w-7" />, 'School Sprint', 'Беги по школьному коридору как можно дольше: свайпы меняют дорожки, вверх — прыжок, вниз — кувырок. Каждые 1000 очков скорость растёт.', `Рекорд: ${sprint.stats.bestScore} очков · ${sprint.stats.bestStars} звёзд за заход`, () => setSprintOpen(true)))}
-      {sprintSub === 'stars' && list(sprint.byStars, '⭐', 'Лучшие по звёздам', 'Рекорд по звёздам, собранным за один забег.')}
+        : intro(<Zap className="h-7 w-7" />, 'School Sprint', 'Беги по школьному коридору как можно дольше и собирай койны: свайпы меняют дорожки, вверх — прыжок, вниз — кувырок. Каждые 1000 очков скорость растёт.', `Рекорд: ${sprint.stats.bestScore} очков · ${sprint.stats.bestStars} койнов за заход`, () => setSprintOpen(true)))}
+      {sprintSub === 'stars' && list(sprint.byStars, 'койн.', 'Лучшие по койнам', 'Рекорд по койнам, собранным за один забег.')}
       {sprintSub === 'score' && list(sprint.byScore, 'очк.', 'Лучшие по очкам', 'Рекорд по очкам за один забег.')}
     </Panel>}
 
     {section === 'rating' && <Panel>
       <div className="mb-1 flex items-center justify-between gap-3"><h3 className="font-display text-lg font-extrabold">Звёзды ST</h3><button type="button" onClick={() => void loadRating()} aria-label="Обновить рейтинг" className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"><RefreshCw className="h-4 w-4" /></button></div>
-      <p className="mb-4 text-sm text-slate-500">Звёзды за квизы и домашние задания (игровые не считаются). Твои: <strong>{st.stars}</strong></p>
+      <p className="mb-4 text-sm text-slate-500">Звёзды за квизы и домашние задания (койны из игр не считаются). Твои: <strong>{st.stars}</strong></p>
       {loading ? <p className="py-8 text-center text-sm text-slate-500">Загружаем рейтинг…</p> : <RankRows rows={st.top} me={st.me} unit="⭐" empty="Рейтинг появится, когда ученики заработают первые звёзды." />}
     </Panel>}
   </section>;

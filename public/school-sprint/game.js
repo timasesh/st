@@ -260,7 +260,7 @@
     var distM = Math.floor(G.distU / C.UNITS_PER_M), sc = K.scoreOf(distM, G.stars), tl = Math.floor(G.t);
     if (force || uiCache.sc !== sc) { $('hScore').textContent = sc; uiCache.sc = sc; }
     if (force || uiCache.tl !== tl) { $('hTime').textContent = Math.floor(tl / 60) + ':' + ('0' + (tl % 60)).slice(-2); uiCache.tl = tl; }
-    if (force || uiCache.st !== G.stars) { $('hStars').textContent = '⭐ ' + G.stars; uiCache.st = G.stars; }
+    if (force || uiCache.st !== G.stars) { $('hStars').textContent = 'ST ' + G.stars; uiCache.st = G.stars; }
   }
 
   /* ───── отрисовка ───── */
@@ -375,13 +375,17 @@
     }
   }
   function drawStar(st) {
+    // койн: золотая монета с тёмным ST, вращается
     var s = S(st.z), p = PX((st.lane - 1) * C.LANE_W, 48, st.z), r = (st.gold ? 22 : 15) * s;
     var rot = (G.t * 2.4) % 6.283, wob = Math.abs(Math.cos(rot));
-    ctx.save(); ctx.translate(p[0], p[1]); ctx.scale(0.35 + 0.65 * wob, 1);
-    ctx.fillStyle = st.gold ? '#FFB400' : '#FFD34F'; ctx.strokeStyle = '#12266f'; ctx.lineWidth = Math.max(1, 2.2 * s);
-    ctx.beginPath(); for (var i = 0; i < 10; i++) { var rr = i % 2 ? r * 0.46 : r, an = -1.5708 + i * 0.6283; ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr); } ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.restore();
     if (st.gold) { ctx.fillStyle = 'rgba(255,211,79,.35)'; ctx.beginPath(); ctx.arc(p[0], p[1], r * 1.6, 0, 6.283); ctx.fill(); }
+    ctx.save(); ctx.translate(p[0], p[1]); ctx.scale(0.35 + 0.65 * wob, 1);
+    var gr = ctx.createLinearGradient(-r, -r, r, r); gr.addColorStop(0, '#fff3a6'); gr.addColorStop(0.5, st.gold ? '#FFB400' : '#FBBF24'); gr.addColorStop(1, '#D97706');
+    ctx.fillStyle = gr; ctx.strokeStyle = '#12266f'; ctx.lineWidth = Math.max(1, 2.2 * s);
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.283); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(146,64,14,.5)'; ctx.lineWidth = Math.max(1, 1.2 * s); ctx.beginPath(); ctx.arc(0, 0, r * 0.76, 0, 6.283); ctx.stroke();
+    if (r > 7) { ctx.fillStyle = '#12266F'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '900 ' + Math.round(r * 0.9) + 'px "Arial Black", Arial, sans-serif'; ctx.fillText('ST', 0, r * 0.04); }
+    ctx.restore();
   }
   function drawPlayer() {
     var p = G.p, px = cx + (p.x - 1) * C.LANE_W, base = gy - p.yOff, ph = G.runPhase, hit = state === 'hit';
