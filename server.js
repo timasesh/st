@@ -1883,21 +1883,23 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     const callModel = () => fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ model, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, ...imageParts] }], max_tokens: 12000, temperature: 0.2, reasoning_effort: 'low', stream: false }),
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, ...imageParts] }], max_tokens: 12000, temperature: 0.2, ...(/^moonshotai\//i.test(model) ? { reasoning_effort: 'low' } : {}), stream: false }),
     });
     let response = await callModel();
     let result = await response.json().catch(() => ({}));
     // Модель могла быть снята с обслуживания или не развёрнута для вашего ключа: перебираем доступные Kimi из каталога NVIDIA.
-    const modelUnavailable = (status, body) => status !== 202 && status !== 429 && status >= 400 && /no longer available|not found|does not exist|deprecated|retired|not exist|unavailable/i.test(JSON.stringify(body || {}));
+    const modelUnavailable = (status, body) => status !== 202 && status !== 429 && status >= 400 && /no longer available|not found|does not exist|deprecated|retired|not exist|unavailable|end of life|gone|image|vision|multimodal|modalit/i.test(JSON.stringify(body || {}));
     if (!response.ok && modelUnavailable(response.status, result)) {
       console.error('[StudyTask] NVIDIA model unavailable:', model, response.status, JSON.stringify(result).slice(0, 400));
       try {
         const listResponse = await fetch('https://integrate.api.nvidia.com/v1/models', { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
         const list = await listResponse.json().catch(() => ({}));
         const failed = model;
-        const ids = (Array.isArray(list?.data) ? list.data : []).map((item) => String(item?.id || '')).filter((id) => /^moonshotai\/kimi/i.test(id) && id !== failed);
-        ids.sort((x, y) => y.localeCompare(x, 'en', { numeric: true }));
-        for (const candidate of ids.slice(0, 6)) {
+        const ids = (Array.isArray(list?.data) ? list.data : []).map((item) => String(item?.id || '')).filter((id) => id !== failed && /(kimi|vl\b|-vl-|vision|multimodal|gemma-3|llama-4|qwen.*(vl|omni)|pixtral|mistral-(medium|large)-3|phi-4-multimodal|nemotron.*(vl|nano-vl|omni))/i.test(id) && !/guard|embed|reward|rerank|safety|clip|parse|ocr-only|whisper|tts|asr/i.test(id));
+        const rank = (id) => (/kimi/i.test(id) ? 0 : /qwen.*vl|nemotron.*vl|llama-4|gemma-3|mistral-(medium|large)-3/i.test(id) ? 1 : 2);
+        ids.sort((x, y) => rank(x) - rank(y) || y.localeCompare(x, 'en', { numeric: true }));
+        console.error('[StudyTask] Кандидаты NVIDIA:', ids.slice(0, 12).join(', ') || 'нет');
+        for (const candidate of ids.slice(0, 8)) {
           model = candidate;
           console.error('[StudyTask] Пробуем модель NVIDIA:', model);
           response = await callModel();
