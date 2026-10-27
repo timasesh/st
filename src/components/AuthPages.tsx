@@ -101,7 +101,8 @@ async function readApiResponse(response: Response) {
   catch (reason) { console.error('[StudyTask] Could not parse API response', { url: response.url, status: response.status, reason }); throw new Error('Не удалось получить ответ сервиса. Попробуйте ещё раз.'); }
   if (response.status >= 500) {
     console.error('[StudyTask] API request failed', { url: response.url, status: response.status, error: result?.error });
-    return { ...result, error: 'Сейчас не удалось выполнить запрос. Попробуйте ещё раз позже.' };
+    const detail = response.status === 502 || response.status === 503 ? String(result?.error || '') : '';
+    return { ...result, error: detail || 'Сейчас не удалось выполнить запрос. Попробуйте ещё раз позже.' };
   }
   return result;
 }
