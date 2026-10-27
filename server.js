@@ -1743,37 +1743,115 @@ app.post('/api/teacher/students/:studentId/lesson-history', async (req, res) => 
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить занятие.' }); }
 });
 
+
+/* ───────── Типы тестов ─────────
+   lesson_quiz — «Проверочный квиз»: привязан к занятию, открывается за 10 минут до конца урока,
+                 сдать можно ещё 10 минут после окончания.
+   quiz        — «Квиз»: не привязан к уроку, дедлайн вводит преподаватель при создании. */
+const LESSON_MINUTES = 60;
+const LESSON_QUIZ_OPEN_MIN = LESSON_MINUTES - 10;
+const LESSON_QUIZ_CLOSE_MIN = LESSON_MINUTES + 10;
+const astanaDateKeyOf = (date) => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date).map(({ type, value }) => [type, value])); return `${p.year}-${p.month}-${p.day}`; };
+const weekdayOfDateKey = (key) => (new Date(`${key}T12:00:00+05:00`).getUTCDay() + 6) % 7;
+const lessonStartAt = (dateKey, hour) => new Date(`${dateKey}T${String(hour).padStart(2, '0')}:00:00+05:00`);
+
+async function readWeeklyScheduleData() {
+  let schedule = await readJsonFileOr(schedulePath, { lessons: [], targets: {} });
+  if (supabase) {
+    const result = await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle();
+    if (result.error) throw new Error(`Не удалось проверить расписание: ${result.error.message}`);
+    if (result.data?.value) schedule = JSON.parse(result.data.value);
+  }
+  if (Array.isArray(schedule)) schedule = { lessons: schedule, targets: {} };
+  return schedule;
+}
+
+/* Проверяет, что занятие принадлежит этому преподавателю и ещё не закончилось (с учётом +10 минут). */
+async function resolveLessonQuizSlot(req, subject, lessonId, lessonDate) {
+  const user = getUserSession(req);
+  if (typeof lessonId !== 'string' || !lessonId) return { status: 400, error: 'Не удалось определить урок.' };
+  if (subject.trial) {
+    const trial = (await readTrialLessons()).find((item) => item.id === lessonId && item.id === subject.id && item.teacherId === user.account.id && ['scheduled', 'trial', 'attended', 'no_show', undefined].includes(item.status));
+    if (!trial) return { status: 403, error: 'Пробный урок не закреплён за вами.' };
+    const start = new Date(getTrialScheduledAt(trial));
+    if (!Number.isFinite(start.getTime())) return { status: 400, error: 'Не удалось определить время пробного урока.' };
+    return { start, hour: Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Almaty', hour: '2-digit', hourCycle: 'h23' }).format(start)), date: astanaDateKeyOf(start), trial: true };
+  }
+  let schedule;
+  try { schedule = await readWeeklyScheduleData(); } catch (error) { return { status: 500, error: error.message }; }
+  const lesson = (schedule.lessons || []).find((item) => item.id === lessonId && item.studentId === subject.id && item.teacherId === user.account.id && item.kind !== 'block');
+  if (!lesson) return { status: 403, error: 'Урок не закреплён за вами.' };
+  const dateKey = typeof lessonDate === 'string' && lessonDate ? lessonDate : astanaDateKeyOf(new Date());
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !Number.isFinite(lessonStartAt(dateKey, 0).getTime())) return { status: 400, error: 'Некорректная дата занятия.' };
+  if (weekdayOfDateKey(dateKey) !== lesson.day) return { status: 400, error: 'Выбранная дата не совпадает с днём недели этого занятия.' };
+  const start = lessonStartAt(dateKey, lesson.hour);
+  if (Date.now() >= start.getTime() + LESSON_QUIZ_CLOSE_MIN * 60000) return { status: 409, error: 'Это занятие уже закончилось — тест к нему больше не откроется. Выберите будущее занятие или создайте «Квиз» с дедлайном.' };
+  if (start.getTime() > Date.now() + 28 * 86400000) return { status: 400, error: 'Тест можно подготовить не более чем на 4 недели вперёд.' };
+  return { start, hour: lesson.hour, date: dateKey, trial: false };
+}
+
+function describeTestForTeacher(test, nowMs = Date.now()) {
+  const kind = test.kind === 'quiz' ? 'quiz' : 'lesson_quiz';
+  const win = getStudentTestWindow(test);
+  const from = Date.parse(win.availableAt || ''), to = Date.parse(win.deadlineAt || '');
+  let state = 'open';
+  if (test.status === 'skipped') state = 'skipped';
+  else if (test.status === 'completed') state = 'completed';
+  else if (test.status === 'expired' || (Number.isFinite(to) && nowMs >= to)) state = 'expired';
+  else if (Number.isFinite(from) && nowMs < from) state = 'upcoming';
+  const questions = Array.isArray(test.questions) ? test.questions : [];
+  return { id: test.id, kind, title: test.title, state, createdAt: test.createdAt, lessonId: test.lessonId || null, lessonDate: test.lessonDate || null, lessonHour: test.lessonHour ?? null, availableAt: win.availableAt, deadlineAt: win.deadlineAt, durationMinutes: test.durationMinutes, reason: test.reason, score: test.score, total: questions.length, submittedAt: test.submittedAt, answers: test.answers, questions };
+}
+
+app.get('/api/teacher/students/:studentId/tests', async (req, res) => {
+  await refreshAccounts();
+  const subject = await getAssignedTeacherLessonSubject(req, res);
+  if (!subject) return;
+  try {
+    const tests = await readStudentTests(subject.id);
+    return res.json({ tests: tests.map((test) => describeTestForTeacher(test)) });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить тесты ученика.' }); }
+});
+
+app.get('/api/teacher/tests/summary', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'teacher') return res.status(403).json({ error: 'Доступно только преподавателю.' });
+  try {
+    const students = accounts.filter((entry) => entry.role === 'student' && entry.teacherId === user.account.id && entry.status !== 'withdrawn');
+    const summary = {};
+    await Promise.all(students.map(async (student) => {
+      const items = (await readStudentTests(student.id)).filter((test) => Array.isArray(test.questions)).map((test) => describeTestForTeacher(test));
+      const last = items.map((item) => item.createdAt || '').sort().pop() || null;
+      summary[student.id] = { total: items.length, completed: items.filter((item) => item.state === 'completed').length, open: items.filter((item) => item.state === 'open' || item.state === 'upcoming').length, expired: items.filter((item) => item.state === 'expired').length, lastAt: last };
+    }));
+    return res.json({ summary });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить сводку по тестам.' }); }
+});
+
+async function readAllStudentTests() {
+  if (supabase) {
+    const result = await supabase.from('app_settings').select('key, value').like('key', 'student_tests:%');
+    if (result.error) throw new Error(`Could not load student tests: ${result.error.message}`);
+    return Object.fromEntries((result.data || []).map((row) => { let value = []; try { value = JSON.parse(row.value); } catch { /* ignore */ } return [row.key.slice('student_tests:'.length), Array.isArray(value) ? value : []]; }));
+  }
+  return await readJsonFileOr(studentTestsPath, {});
+}
+
 app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => {
   await refreshAccounts();
   const subject = await getAssignedTeacherLessonSubject(req, res);
   if (!subject) return;
   const user = getUserSession(req);
   const lessonId = req.body?.lessonId;
-  if (typeof lessonId !== 'string') return res.status(400).json({ error: 'Не удалось определить урок.' });
-  const clockParts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Almaty', weekday: 'short', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
-  const part = (type) => clockParts.find((item) => item.type === type)?.value || '';
-  const todayDay = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(part('weekday'));
-  const currentHour = Number(part('hour'));
-  let lessonIsCurrent = false;
-  if (subject.trial) {
-    const trial = (await readTrialLessons()).find((item) => item.id === lessonId && item.id === subject.id && item.teacherId === user.account.id && ['scheduled', 'trial', undefined].includes(item.status));
-    if (trial) {
-      const start = new Date(getTrialScheduledAt(trial)).getTime();
-      // A trial lesson may be recorded after it ends; it belongs to its scheduled date,
-      // not to a recurring weekday slot.
-      lessonIsCurrent = Date.now() >= start;
-    }
-  } else {
-    let schedule = await readJsonFileOr(schedulePath, { lessons: [], targets: {} });
-    if (supabase) {
-      const result = await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle();
-      if (result.error) return res.status(500).json({ error: `Не удалось проверить расписание: ${result.error.message}` });
-      if (result.data?.value) schedule = JSON.parse(result.data.value);
-    }
-    if (Array.isArray(schedule)) schedule = { lessons: schedule };
-    lessonIsCurrent = (schedule.lessons || []).some((item) => item.id === lessonId && item.studentId === subject.id && item.teacherId === user.account.id && item.day === todayDay && item.hour === currentHour);
+  if (req.body?.kind !== 'quiz' && typeof lessonId !== 'string') return res.status(400).json({ error: 'Не удалось определить урок.' });
+  const quizKind = req.body?.kind === 'quiz' ? 'quiz' : 'lesson_quiz';
+  let lessonSlot = null;
+  if (quizKind === 'lesson_quiz') {
+    const slot = await resolveLessonQuizSlot(req, subject, lessonId, req.body?.lessonDate);
+    if (slot.error) return res.status(slot.status).json({ error: slot.error });
+    lessonSlot = slot;
   }
-  if (!lessonIsCurrent) return res.status(409).json({ error: 'Сгенерировать тест можно только во время назначенного урока.' });
   const apiKey = process.env.NVIDIA_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'Не настроен NVIDIA API key. Добавьте NVIDIA_API_KEY в Environment вашего Web Service на Render.' });
   const images = req.body?.images;
@@ -1837,7 +1915,7 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     const latexFixed = raw.slice(firstBrace, lastBrace + 1).replace(/(?<!\\)\\(?=(?:frac|dfrac|tfrac|times|cdot|div|neq|ne|leq|le|geq|ge|sqrt|pi|circ|degree|beta|alpha|gamma|right|left|text|mathrm|angle|triangle|perp|parallel|infty|approx|pm|to|ldots|quad)(?![a-zA-Z]))/g, '\\\\');
     const quiz = validateGeneratedQuiz(latexFixed);
     const durationMinutes = Math.max(3, Math.ceil(quiz.questions.length * 0.4));
-    return res.json({ quiz: { ...quiz, studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, trial: Boolean(subject.trial), lessonId, lessonHour: currentHour, durationMinutes } });
+    return res.json({ quiz: { ...quiz, studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, trial: Boolean(subject.trial), kind: quizKind, lessonId: quizKind === 'quiz' ? null : lessonId, lessonDate: lessonSlot?.date ?? null, lessonHour: lessonSlot?.hour ?? null, durationMinutes } });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка.';
     return res.status(502).json({ error: `Ошибка соединения с NVIDIA API: ${message.slice(0, 300)}` });
@@ -1851,23 +1929,25 @@ app.post('/api/teacher/students/:studentId/tests', async (req, res) => {
   try {
     const quiz = validateGeneratedQuiz(req.body?.quiz);
     const tests = await readStudentTests(subject.id);
-    if (req.body?.quiz?.studentId !== subject.id || typeof req.body?.quiz?.lessonId !== 'string') return res.status(400).json({ error: 'Тест создан для другого ученика или урока.' });
+    if (req.body?.quiz?.studentId !== subject.id) return res.status(400).json({ error: 'Тест создан для другого ученика.' });
+    const kind = req.body?.quiz?.kind === 'quiz' ? 'quiz' : 'lesson_quiz';
     const durationMinutes = Math.max(3, Math.ceil(quiz.questions.length * 0.4));
-    const lessonId = req.body.quiz.lessonId;
-    const lessonHour = Number.isInteger(Number(req.body.quiz.lessonHour)) ? Number(req.body.quiz.lessonHour) : null;
-    let lessonStart = null;
-    if (req.body.quiz.trial) {
-      const trial = (await readTrialLessons()).find((item) => item.id === lessonId && item.teacherId === getUserSession(req).account.id);
-      if (trial) lessonStart = new Date(getTrialScheduledAt(trial));
+    let lessonId = null, lessonHour = null, lessonDate = null, availableAt, deadlineAt;
+    if (kind === 'quiz') {
+      const deadline = Date.parse(req.body?.quiz?.deadlineAt || '');
+      if (!Number.isFinite(deadline) || deadline < Date.now() + 10 * 60000 || deadline > Date.now() + 90 * 86400000) return res.status(400).json({ error: 'Укажите дедлайн: не раньше чем через 10 минут и не позже чем через 90 дней.' });
+      availableAt = new Date().toISOString();
+      deadlineAt = new Date(deadline).toISOString();
     } else {
-      const astana = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-      const part = (name) => astana.find((item) => item.type === name)?.value || '';
-      if (lessonHour !== null) lessonStart = new Date(`${part('year')}-${part('month')}-${part('day')}T${String(lessonHour).padStart(2, '0')}:00:00+05:00`);
+      lessonId = req.body?.quiz?.lessonId;
+      const slot = await resolveLessonQuizSlot(req, subject, lessonId, req.body?.quiz?.lessonDate);
+      if (slot.error) return res.status(slot.status).json({ error: slot.error });
+      if (tests.some((item) => item.kind !== 'quiz' && item.lessonId === lessonId && (item.lessonDate || null) === slot.date && Array.isArray(item.questions))) return res.status(409).json({ error: 'На это занятие проверочный квиз уже назначен.' });
+      lessonHour = slot.hour; lessonDate = slot.date;
+      availableAt = new Date(slot.start.getTime() + LESSON_QUIZ_OPEN_MIN * 60000).toISOString();
+      deadlineAt = new Date(slot.start.getTime() + LESSON_QUIZ_CLOSE_MIN * 60000).toISOString();
     }
-    if (!lessonStart || !Number.isFinite(lessonStart.getTime())) return res.status(400).json({ error: 'Не удалось определить время урока для дедлайна.' });
-    const availableAt = new Date(lessonStart.getTime() + 50 * 60000).toISOString();
-    const deadlineAt = new Date(lessonStart.getTime() + 65 * 60000).toISOString();
-    const saved = { id: crypto.randomUUID(), studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, lessonId, lessonHour, title: quiz.title, durationMinutes, questions: quiz.questions, status: 'assigned', createdAt: new Date().toISOString(), availableAt, deadlineAt };
+    const saved = { id: crypto.randomUUID(), kind, studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, lessonId, lessonDate, lessonHour, title: quiz.title, durationMinutes, questions: quiz.questions, status: 'assigned', createdAt: new Date().toISOString(), availableAt, deadlineAt };
     await writeStudentTests(subject.id, [saved, ...tests]);
     void notifier.notifyTest(subject.id, saved).catch(() => {});
     return res.status(201).json({ test: { ...saved, questions: saved.questions.map(({ correctIndex, ...question }) => question) } });
@@ -2225,6 +2305,8 @@ const notifier = createTelegramNotifier({
   nextSlotStart: nextTrialSlotStart,
   readHistory: readStudentLessonHistory,
   listHomeworkFiles: listHomeworkAttachmentMetadata,
+  readAllTests: readAllStudentTests,
+  getTestWindow: getStudentTestWindow,
 });
 const accountAccess = createAccountAccess({ getSupabase: () => supabase, dataDir, getAccounts: () => accounts, refreshAccounts, getUserSession, setUserSessionCookie, getSecret: () => sessionSecret, passwordsMatch });
 accountAccess.register(app);

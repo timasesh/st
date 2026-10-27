@@ -1,7 +1,9 @@
 /* Напоминания и уведомления ученикам в Telegram:
    • за час до урока;
    • вечером в 19:00 накануне урока — напоминание выполнить домашку (если она задана и ещё не сдана);
-   • сразу при назначении теста и домашнего задания. */
+   • сразу при назначении теста и домашнего задания;
+   • «Проверочный квиз» (привязан к уроку): открылся → осталось 5 минут → время вышло;
+   • «Квиз» (с дедлайном): за 24 часа → за 1 час → дедлайн прошёл. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -21,9 +23,10 @@ function localParts(date) {
 }
 const fmtTime = (date) => new Intl.DateTimeFormat('ru-RU', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date);
 const fmtDay = (date) => new Intl.DateTimeFormat('ru-RU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' }).format(date);
+const fmtDayTime = (date) => `${fmtDay(date)}, ${fmtTime(date)}`;
 const addDaysKey = (key, days) => { const [y, m, d] = key.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10); };
 
-export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refreshAccounts, sendToAccount, readSchedule, readTrialLessons, getTrialScheduledAt, nextSlotStart, readHistory, listHomeworkFiles }) {
+export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refreshAccounts, sendToAccount, readSchedule, readTrialLessons, getTrialScheduledAt, nextSlotStart, readHistory, listHomeworkFiles, readAllTests, getTestWindow }) {
   const storePath = path.join(dataDir, 'notify-sent.json');
   let sent = {};
   let saveChain = Promise.resolve();
@@ -110,8 +113,40 @@ export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refr
           if (hw) await once(`hw:${l.key}`, l.studentId, `📚 <b>Завтра урок</b> (${fmtDay(l.start)}, ${fmtTime(l.start)}).\nНе забудьте выполнить домашнее задание:\n\n${esc(String(hw.nextHomework).slice(0, 700))}\n\nФото решения можно прикрепить в кабинете.`, { button: 'Открыть кабинет' });
         }
       }
+      await testReminders(now);
     } catch (error) { console.warn('notify tick failed:', error.message); }
     finally { ticking = false; }
+  }
+
+  /* напоминания по тестам: «Проверочный квиз» (по окну урока) и «Квиз» (по дедлайну) */
+  async function testReminders(now) {
+    if (!readAllTests) return;
+    const accountIds = new Set(getAccounts().filter((a) => a.role === 'student' && a.status !== 'withdrawn').map((a) => a.id));
+    let all;
+    try { all = await readAllTests(); } catch (error) { console.warn('notify tests read failed:', error.message); return; }
+    const nowMs = now.getTime();
+    for (const [studentId, tests] of Object.entries(all || {})) {
+      if (!accountIds.has(studentId) || !Array.isArray(tests)) continue;
+      for (const test of tests) {
+        if (!Array.isArray(test.questions) || test.status !== 'assigned') continue;
+        const win = getTestWindow ? getTestWindow(test) : { availableAt: test.availableAt, deadlineAt: test.deadlineAt };
+        const from = Date.parse(win.availableAt || ''), to = Date.parse(win.deadlineAt || '');
+        if (!Number.isFinite(to)) continue;
+        const title = esc(test.title || 'Тест');
+        const left = to - nowMs;
+        const btn = { button: 'Открыть кабинет' };
+        if (test.kind === 'quiz') {
+          if (left > 0 && left <= 3600000) await once(`tq-1h:${test.id}`, studentId, `⏳ <b>Остался час до дедлайна квиза</b>\n«${title}» — сдать до <b>${fmtTime(new Date(to))}</b>.\n\nПройдите его в кабинете.`, btn);
+          else if (left > 3600000 && left <= 24 * 3600000) await once(`tq-24h:${test.id}`, studentId, `📝 <b>Напоминание о квизе</b>\n«${title}» — дедлайн <b>${fmtDayTime(new Date(to))}</b>.\n\nНе откладывайте: на прохождение нужно около ${test.durationMinutes || 5} мин.`, btn);
+          else if (left <= 0 && left > -6 * 3600000) await once(`tq-end:${test.id}`, studentId, `⌛ <b>Дедлайн прошёл</b>\nКвиз «${title}» не был сдан вовремя и закрыт. Если нужен ещё один шанс — напишите преподавателю.`, btn);
+        } else {
+          if (!Number.isFinite(from)) continue;
+          if (nowMs >= from && left > 5 * 60000) await once(`tq-open:${test.id}`, studentId, `🔔 <b>Проверочный квиз открыт!</b>\n«${title}» — до конца урока осталось 10 минут. Сдайте до <b>${fmtTime(new Date(to))}</b> (на тест — около ${test.durationMinutes || 5} мин).`, btn);
+          else if (nowMs >= from && left > 0 && left <= 5 * 60000) await once(`tq-5m:${test.id}`, studentId, `⚠️ <b>Осталось ${Math.max(1, Math.ceil(left / 60000))} мин</b> на проверочный квиз «${title}». Сдайте до <b>${fmtTime(new Date(to))}</b>!`, btn);
+          else if (left <= 0 && left > -30 * 60000) await once(`tq-end:${test.id}`, studentId, `⌛ <b>Время вышло</b>\nПроверочный квиз «${title}» закрыт: сдать его можно было до ${fmtTime(new Date(to))}.`, btn);
+        }
+      }
+    }
   }
 
   /* сразу при назначении */
@@ -121,8 +156,14 @@ export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refr
   }
   async function notifyTest(studentId, test) {
     const from = Date.parse(test.availableAt || ''), to = Date.parse(test.deadlineAt || '');
-    const when = Number.isFinite(from) && Number.isFinite(to) ? `\nОткроется в <b>${fmtTime(new Date(from))}</b>, сдать до <b>${fmtTime(new Date(to))}</b>${test.durationMinutes ? ` (на тест — ${test.durationMinutes} мин)` : ''}.` : '';
-    return sendToAccount(studentId, `📝 <b>Назначен тест</b>: «${esc(test.title || 'Тест')}»${when}\n\nПроходить — в кабинете.`, { button: 'Открыть кабинет' });
+    const title = esc(test.title || 'Тест');
+    const dur = test.durationMinutes ? ` (на прохождение — около ${test.durationMinutes} мин)` : '';
+    if (test.kind === 'quiz') {
+      const dl = Number.isFinite(to) ? `\nДедлайн: <b>${fmtDayTime(new Date(to))}</b>${dur}.` : '';
+      return sendToAccount(studentId, `📝 <b>Назначен квиз</b>: «${title}»${dl}\n\nПроходить можно в любое время до дедлайна — в кабинете. Я напомню заранее.`, { button: 'Открыть кабинет' });
+    }
+    const win = Number.isFinite(from) && Number.isFinite(to) ? `\nЗанятие: <b>${fmtDayTime(new Date(from - 50 * 60000))}</b>. За 10 минут до конца урока (с <b>${fmtTime(new Date(from))}</b>) откроется квиз, сдать нужно до <b>${fmtTime(new Date(to))}</b>${dur}.` : '';
+    return sendToAccount(studentId, `📝 <b>Назначен проверочный квиз</b>: «${title}»${win}\n\nПроходить — в кабинете. Я напомню, когда он откроется.`, { button: 'Открыть кабинет' });
   }
 
   async function start() {
@@ -130,7 +171,7 @@ export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refr
     await load();
     timer = setInterval(() => { void tick(); }, TICK_MS);
     void tick();
-    console.log('Telegram: напоминания включены (за час до урока, 19:00 накануне — домашка).');
+    console.log('Telegram: напоминания включены (урок за час, домашка в 19:00 накануне, квизы: открытие/дедлайн).');
   }
   function stop() { if (timer) clearInterval(timer); timer = null; }
 

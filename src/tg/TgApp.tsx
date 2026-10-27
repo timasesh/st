@@ -28,7 +28,7 @@ type Lesson = { id: string; day: number; hour: number; title: string; lessonLink
 type Child = { id: string; firstName: string; lastName: string; studentClass?: string; teacher?: { firstName: string; lastName: string } | null; progress?: { stars?: number } };
 type HistoryEntry = { id: string; date: string; time: string; topic?: string; homeworkGrade?: string; testGrade?: string; nextHomework?: string; attendance?: boolean; attendanceReason?: string; attachment?: { filename: string } | null };
 type Question = { question: string; choices: string[]; figure?: string };
-type Test = { id: string; title: string; studentClass: string; lessonHour?: number; deadlineAt?: string; durationMinutes: number; questions: Question[]; status: 'assigned' | 'completed' | 'expired'; score?: number };
+type Test = { id: string; kind?: 'lesson_quiz' | 'quiz'; title: string; studentClass: string; lessonHour?: number; deadlineAt?: string; durationMinutes: number; questions: Question[]; status: 'assigned' | 'completed' | 'expired'; score?: number };
 type Homework = { id: string; date: string; time: string; topic: string; nextHomework: string; attachment?: { filename: string; mimeType?: string } | null };
 type Message = { id: string; at: string; sender: string; body: string; read: boolean };
 type Portal = {
@@ -221,8 +221,8 @@ function Tests({ portal, start }: { portal: Portal; start: (t: Test) => void }) 
       <div className="stack">{tests.map((t) => <div key={t.id} className={`card ${t.status === 'assigned' ? 'warn' : t.status === 'completed' ? 'ok' : 'flat'}`}>
         <div className="row" style={{ alignItems: 'flex-start' }}>
           {t.status === 'expired' ? <Lock size={24} /> : t.status === 'completed' ? <CheckCircle2 size={24} /> : <FileQuestion size={24} />}
-          <div className="grow"><h3>{t.title}</h3><p className="small muted">{t.studentClass} · {t.questions.length} {plural(t.questions.length, 'вопрос', 'вопроса', 'вопросов')} · ≈{t.durationMinutes} мин</p>
-            {t.status === 'assigned' && <p className="small" style={{ marginTop: 4 }}>{t.deadlineAt ? `Сдать до ${timeOf(t.deadlineAt)}` : t.lessonHour !== undefined ? `Открывается в ${pad(t.lessonHour)}:50` : 'Время уточнит преподаватель'}</p>}
+          <div className="grow"><p className="small" style={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', opacity: 0.7 }}>{t.kind === 'quiz' ? 'Квиз' : 'Проверочный квиз'}</p><h3>{t.title}</h3><p className="small muted">{t.studentClass} · {t.questions.length} {plural(t.questions.length, 'вопрос', 'вопроса', 'вопросов')} · ≈{t.durationMinutes} мин</p>
+            {t.status === 'assigned' && <p className="small" style={{ marginTop: 4 }}>{t.deadlineAt ? (t.kind === 'quiz' ? `Дедлайн: ${new Date(t.deadlineAt).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}` : `Сдать до ${timeOf(t.deadlineAt)}`) : t.lessonHour !== undefined ? `Открывается в ${pad(t.lessonHour)}:50` : 'Время уточнит преподаватель'}</p>}
             {t.status === 'expired' && <p className="small" style={{ marginTop: 4 }}>Тест закрылся в {timeOf(t.deadlineAt)}</p>}
             {t.status === 'completed' && <p className="small" style={{ marginTop: 4 }}>Результат: <b>{t.score ?? 0} из {t.questions.length}</b></p>}
           </div></div>
