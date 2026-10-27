@@ -1,3 +1,4 @@
+import MathText, { QuestionFigure } from '../shared/MathText';
 import { levelFor, earnedStars, LEVEL_NAMES, LEVEL_STARS, RANKS, MAX_LEVEL, levelImage, isMilestone, rankOf } from '../shared/levels.js';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -26,7 +27,7 @@ type PTab = 'kids' | 'plan' | 'hist' | 'prizes';
 type Lesson = { id: string; day: number; hour: number; title: string; lessonLink?: string; lessonDescription?: string; attendance?: boolean; studentId?: string; student?: { firstName?: string } | null };
 type Child = { id: string; firstName: string; lastName: string; studentClass?: string; teacher?: { firstName: string; lastName: string } | null; progress?: { stars?: number } };
 type HistoryEntry = { id: string; date: string; time: string; topic?: string; homeworkGrade?: string; testGrade?: string; nextHomework?: string; attendance?: boolean; attendanceReason?: string; attachment?: { filename: string } | null };
-type Question = { question: string; choices: string[] };
+type Question = { question: string; choices: string[]; figure?: string };
 type Test = { id: string; title: string; studentClass: string; lessonHour?: number; deadlineAt?: string; durationMinutes: number; questions: Question[]; status: 'assigned' | 'completed' | 'expired'; score?: number };
 type Homework = { id: string; date: string; time: string; topic: string; nextHomework: string; attachment?: { filename: string; mimeType?: string } | null };
 type Message = { id: string; at: string; sender: string; body: string; read: boolean };
@@ -248,8 +249,8 @@ function TestRunner({ test, onExit, onDone }: { test: Test; onExit: () => void; 
   return <div className="stack">
     <div className="row"><button className="iconbtn" onClick={confirmExit} aria-label="Выйти"><X size={20} /></button><div className="grow"><div className="q-progress"><i style={{ width: `${((i + (answers[i] >= 0 ? 1 : 0)) / total) * 100}%` }} /></div></div><span className="hand" style={{ fontSize: 24 }}>{i + 1}/{total}</span></div>
     <p className="tiny muted">{test.title}</p>
-    <div className="card" key={i}><h2 style={{ fontSize: 30, lineHeight: 1.1, whiteSpace: 'pre-wrap' }}>{q.question}</h2></div>
-    <div className="stack">{q.choices.map((c, k) => <button key={k} className={`choice ${answers[i] === k ? 'on' : ''}`} onClick={() => pick(k)}><span className="k">{'АБВГДЕ'[k]}</span><span style={{ whiteSpace: 'pre-wrap' }}>{c}</span></button>)}</div>
+    <div className="card" key={i}><h2 style={{ fontSize: 30, lineHeight: 1.1, whiteSpace: 'pre-wrap' }}><MathText text={q.question} /></h2><QuestionFigure figure={q.figure} /></div>
+    <div className="stack">{q.choices.map((c, k) => <button key={k} className={`choice ${answers[i] === k ? 'on' : ''}`} onClick={() => pick(k)}><span className="k">{'АБВГДЕ'[k]}</span><span><MathText text={c} /></span></button>)}</div>
     {error && <p className="err" role="alert">{error}</p>}
     <div className="row">
       <button className="btn ghost" disabled={i === 0} onClick={() => setI(i - 1)}><ChevronLeft size={18} /></button>
