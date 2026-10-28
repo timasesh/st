@@ -9,6 +9,7 @@ import AdminDataCleanup from './AdminDataCleanup';
 import ManualQuizBuilder, { type ManualQuestion } from './ManualQuizBuilder';
 import { TestExplanationModal, type ReviewQuestion, type AnswerValue } from '../shared/quizReview';
 import InstagramLeadsTab from './InstagramLeadsTab';
+import AdminTelegramCard from './AdminTelegramCard';
 import TeacherTestsTab, { StartTestArgs } from './TeacherTestsTab';
 import MathText, { QuestionFigure } from '../shared/MathText';
 import { LoginLayout, LoginField, LoginError, LoginSubmit } from './LoginLayout';
@@ -1179,6 +1180,7 @@ export function AdminDashboardPage() {
                   <button type="submit" disabled={saving} className="clay-btn flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60"><KeyRound className="h-4 w-4" />{saving ? 'Сохраняем…' : 'Сменить пароль'}</button>
                 </form>
               </section>
+              <AdminTelegramCard />
             </div>
           ) : (
           <section className="admin-card w-full rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-7">

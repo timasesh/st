@@ -6,13 +6,15 @@ import { fileURLToPath } from 'node:url';
 
 export const STID_LENGTH = 6; // сколько цифр в коде
 
-export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refreshAccounts, setUserSessionCookie, clearUserSessionCookie, requireAdmin, recordAudit }) {
+export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refreshAccounts, setUserSessionCookie, clearUserSessionCookie, setAdminSessionCookie, requireAdmin, recordAudit }) {
   const token = process.env.TELEGRAM_BOT_TOKEN || '';
   const publicUrl = (process.env.PUBLIC_URL || 'https://study-task.kz').replace(/\/+$/, '');
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || (token ? crypto.createHash('sha256').update(`${token}:study-task-webhook`).digest('hex').slice(0, 40) : '');
   const storePath = path.join(dataDir, 'identity-links.json');
   const STORE_KEY = 'identity_links';
-  let store = { stids: {}, telegram: {}, accountTg: {}, exited: {} };
+  let store = { stids: {}, telegram: {}, accountTg: {}, exited: {}, admins: {}, adminCode: '' };
+  const DEFAULT_ADMIN_CODE = process.env.ADMIN_TG_CODE || '6564563';
+  const getAdminCode = () => store.adminCode || DEFAULT_ADMIN_CODE;
   let saveChain = Promise.resolve();
 
   /* ───── хранилище ───── */
@@ -27,7 +29,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
         raw = JSON.parse(await fs.readFile(storePath, 'utf8'));
       }
     } catch { /* пусто — создадим */ }
-    if (raw && typeof raw === 'object') store = { stids: raw.stids || {}, telegram: raw.telegram || {}, accountTg: raw.accountTg || {}, exited: raw.exited || {} };
+    if (raw && typeof raw === 'object') store = { stids: raw.stids || {}, telegram: raw.telegram || {}, accountTg: raw.accountTg || {}, exited: raw.exited || {}, admins: raw.admins || {}, adminCode: typeof raw.adminCode === 'string' ? raw.adminCode : '' };
   }
   function save() {
     const snapshot = JSON.stringify(store);
@@ -105,6 +107,8 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
   }
   const webAppUrl = `${publicUrl}/tg`;
   const openButton = (text = 'Открыть кабинет') => ({ inline_keyboard: [[{ text, web_app: { url: webAppUrl } }]] });
+  const adminWebAppUrl = `${publicUrl}/tg/admin`;
+  const openAdminButton = (text = 'Открыть админ-панель') => ({ inline_keyboard: [[{ text, web_app: { url: adminWebAppUrl } }]] });
   const say = (chatId, text, extra = {}) => tgCall('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra });
 
 
@@ -168,6 +172,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     // /restart — бот начинает с нуля: выход из аккаунта + приветствие с видео и просьбой прислать код
     if (/^\/restart(@\w+)?$/i.test(text)) {
       if (linkedId) { delete store.accountTg[linkedId]; delete store.telegram[tgId]; }
+      delete store.admins[tgId];
       store.exited[tgId] = true;
       failsByTg.delete(tgId);
       await save();
@@ -178,15 +183,37 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     // /exit — выход из аккаунта: снимаем привязку Telegram, при следующем открытии мини-приложения сессия сбрасывается
     if (/^\/exit(@\w+)?$/i.test(text)) {
       if (linkedId) { delete store.accountTg[linkedId]; delete store.telegram[tgId]; }
+      delete store.admins[tgId];
       store.exited[tgId] = true;
       await save();
       try { await tgCall('setChatMenuButton', { chat_id: chatId, menu_button: { type: 'default' } }); } catch { /* не критично */ }
       return say(chatId, 'Вы вышли из аккаунта. 👋\nЧтобы войти снова, отправьте код ученика (STID).', { reply_markup: { remove_keyboard: true } });
     }
+    const compact = text.replace(/[\s-]/g, '');
+    // код администратора: отправка его боту открывает доступ к админ-панели в Telegram
+    if (/^\d{7,12}$/.test(compact) && compact.length === getAdminCode().length) {
+      if (blocked(tgId)) return say(chatId, 'Слишком много неверных попыток. Попробуйте через 15 минут.');
+      const expected = crypto.createHash('sha256').update(getAdminCode()).digest();
+      const provided = crypto.createHash('sha256').update(compact).digest();
+      if (!crypto.timingSafeEqual(expected, provided)) {
+        registerFail(tgId);
+        return say(chatId, 'Код не найден 🤔 Проверьте цифры и отправьте ещё раз.');
+      }
+      const name = [message.from.first_name, message.from.last_name].filter(Boolean).join(' ') || message.from.username || tgId;
+      store.admins[tgId] = { at: new Date().toISOString(), name };
+      delete store.exited[tgId];
+      failsByTg.delete(tgId);
+      await save();
+      try { await tgCall('deleteMessage', { chat_id: chatId, message_id: message.message_id }); } catch { /* не критично */ }
+      try { await tgCall('setChatMenuButton', { chat_id: chatId, menu_button: { type: 'web_app', text: 'Админ', web_app: { url: adminWebAppUrl } } }); } catch (error) { console.warn(error.message); }
+      if (recordAudit) { try { await recordAudit('telegram', 'Вход администратора через Telegram', name); } catch { /* не критично */ } }
+      return say(chatId, `Готово, <b>${esc(name)}</b>! ✅\nВы вошли как <b>администратор</b>. Сюда будут приходить новые записи на пробный урок и новые прохождения теста.\nАдмин-панель открывается кнопкой ниже. Чтобы выйти — /exit.`, { reply_markup: openAdminButton() });
+    }
     const digits = text.replace(/\D/g, '');
     const looksLikeCode = digits.length === STID_LENGTH && /^[\s\d\-–—:]+$/.test(text.replace(/stid/ig, ''));
 
     if (!looksLikeCode) {
+      if (store.admins[tgId]) return say(chatId, 'Вы вошли как <b>администратор</b>. Админ-панель — по кнопке ниже 👇', { reply_markup: openAdminButton() });
       if (linkedAccount) {
         return say(chatId, text.startsWith('/start') ? `С возвращением, <b>${esc(linkedAccount.firstName)}</b>! 👋\nНажмите кнопку, чтобы открыть кабинет — входить заново не нужно.` : (linkedAccount.role === 'parent' ? 'Кабинет родителя — по кнопке ниже 👇\nЕсли нужно привязать другой аккаунт, отправьте его код.' : 'Кабинет ученика — по кнопке ниже 👇\nЕсли нужно привязать другого ученика, отправьте его код.'), { reply_markup: openButton() });
       }
@@ -216,6 +243,17 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
       await say(tgId, text, opt.button ? { reply_markup: openButton(opt.button) } : {});
       return true;
     } catch (error) { console.warn(`Telegram notify failed (${accountId}):`, error.message); return false; }
+  }
+
+  /* уведомление всем авторизованным администраторам; возвращает число доставленных */
+  async function notifyAdmins(text, withButton = true) {
+    if (!token) return 0;
+    let delivered = 0;
+    for (const tgId of Object.keys(store.admins)) {
+      try { await say(tgId, text, withButton ? { reply_markup: openAdminButton() } : {}); delivered += 1; }
+      catch (error) { console.warn(`Telegram admin notify failed (${tgId}):`, error.message); }
+    }
+    return delivered;
   }
 
   /* ───── проверка initData Mini App ───── */
@@ -256,6 +294,36 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
       return res.json({ ok: true, linked: true });
     });
 
+    app.post('/api/tg/admin-auth', async (req, res) => {
+      const user = verifyInitData(req.body?.initData);
+      if (!user?.id) return res.status(401).json({ error: 'Не удалось подтвердить Telegram.' });
+      if (!store.admins[String(user.id)]) return res.status(404).json({ linked: false });
+      setAdminSessionCookie(res);
+      return res.json({ ok: true, linked: true });
+    });
+
+    app.get('/api/admin/telegram-admin', requireAdmin, (_req, res) => {
+      res.json({ code: getAdminCode(), isDefault: !store.adminCode, admins: Object.entries(store.admins).map(([id, v]) => ({ id, name: v?.name || id, at: v?.at || '' })) });
+    });
+    app.put('/api/admin/telegram-admin/code', requireAdmin, async (req, res) => {
+      const code = String(req.body?.code ?? '').replace(/[\s-]/g, '');
+      if (!/^\d{7,12}$/.test(code)) return res.status(400).json({ error: 'Код — от 7 до 12 цифр.' });
+      store.adminCode = code === DEFAULT_ADMIN_CODE ? '' : code;
+      await save();
+      if (recordAudit) await recordAudit(req.adminSession.sub, 'Изменён код входа администратора в Telegram');
+      return res.json({ ok: true, code: getAdminCode() });
+    });
+    app.delete('/api/admin/telegram-admin/:tgId', requireAdmin, async (req, res) => {
+      const tgId = String(req.params.tgId);
+      if (!store.admins[tgId]) return res.status(404).json({ error: 'Администратор не найден.' });
+      const adminName = store.admins[tgId]?.name || tgId;
+      delete store.admins[tgId];
+      await save();
+      try { await tgCall('setChatMenuButton', { chat_id: tgId, menu_button: { type: 'default' } }); await say(tgId, 'Доступ администратора в Telegram отозван.'); } catch { /* не критично */ }
+      if (recordAudit) await recordAudit(req.adminSession.sub, 'Отозван доступ администратора в Telegram', adminName);
+      return res.json({ ok: true });
+    });
+
     app.post('/api/admin/accounts/:id/telegram/unlink', requireAdmin, async (req, res) => {
       const done = await unlink(req.params.id);
       if (done && recordAudit) await recordAudit(req.adminSession.sub, 'Сброшена привязка Telegram', req.params.id);
@@ -272,5 +340,5 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     } catch (error) { console.warn('Telegram setup failed:', error.message); }
   }
 
-  return { load, ensureStid, ensureAll, stidOf, isLinked, register, setupWebhook, sendToAccount };
+  return { load, ensureStid, ensureAll, stidOf, isLinked, register, setupWebhook, sendToAccount, notifyAdmins };
 }

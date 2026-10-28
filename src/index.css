@@ -891,3 +891,32 @@ body {
 .landing-site [class*="to-orange-500"] { background: var(--st-gold) !important; border: 3px solid var(--st-navy); border-radius: var(--st-hand-radius-sm) !important; box-shadow: 4px 4px 0 var(--st-navy) !important; }
 .landing-site [class*="to-orange-500"], .landing-site [class*="to-orange-500"] * { color: var(--st-navy) !important; }
 @media (max-width: 640px) { .landing-site h1 { zoom: 1; } .landing-site h3 { zoom: 1.25; } }
+
+/* Тёмная тема: на светлых плашках и при наведении текст должен быть синим, а не белым/серым. */
+:is(.portal-theme-dark, .admin-dashboard.theme-dark) :is(
+  [class*="bg-emerald-50"], [class*="bg-emerald-100"], [class*="bg-green-50"], [class*="bg-green-100"],
+  [class*="bg-rose-50"], [class*="bg-rose-100"], [class*="bg-red-50"], [class*="bg-red-100"],
+  [class*="bg-amber-50"], [class*="bg-amber-100"], [class*="bg-yellow-50"], [class*="bg-yellow-100"],
+  [class*="bg-orange-50"], [class*="bg-sky-50"], [class*="bg-sky-100"], [class*="bg-indigo-50"], [class*="bg-violet-50"],
+  [class*="bg-blue-100"], .bg-blue-50
+):not(.text-white),
+:is(.portal-theme-dark, .admin-dashboard.theme-dark) :is(
+  [class*="bg-emerald-50"], [class*="bg-emerald-100"], [class*="bg-green-50"], [class*="bg-green-100"],
+  [class*="bg-rose-50"], [class*="bg-rose-100"], [class*="bg-red-50"], [class*="bg-red-100"],
+  [class*="bg-amber-50"], [class*="bg-amber-100"], [class*="bg-yellow-50"], [class*="bg-yellow-100"],
+  [class*="bg-orange-50"], [class*="bg-sky-50"], [class*="bg-sky-100"], [class*="bg-indigo-50"], [class*="bg-violet-50"],
+  [class*="bg-blue-100"], .bg-blue-50
+) *:not(.text-white):not(.text-white *):not([class*="bg-emerald-6"]):not([class*="bg-rose-6"]):not([class*="bg-red-6"]) {
+  color: #1d4ed8 !important;
+}
+/* светлые плашки при наведении (кнопки и ссылки) */
+.portal-theme-dark :is(button, a, [role="button"], label):is(
+  [class*="hover:bg-primary-light"], [class*="hover:bg-slate-50"], [class*="hover:bg-slate-100"], [class*="hover:bg-blue-50"],
+  [class*="hover:bg-white"], [class*="hover:bg-emerald-50"], [class*="hover:bg-rose-50"], [class*="hover:bg-red-50"], [class*="hover:bg-amber-50"]
+):hover:not(:disabled):not(.text-white),
+.portal-theme-dark :is(button, a, [role="button"], label):is(
+  [class*="hover:bg-primary-light"], [class*="hover:bg-slate-50"], [class*="hover:bg-slate-100"], [class*="hover:bg-blue-50"],
+  [class*="hover:bg-white"], [class*="hover:bg-emerald-50"], [class*="hover:bg-rose-50"], [class*="hover:bg-red-50"], [class*="hover:bg-amber-50"]
+):hover:not(:disabled) :not(svg *) {
+  color: #1d4ed8 !important;
+}

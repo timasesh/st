@@ -497,6 +497,28 @@ const reviewQuestion = (question) => ({ ...studentQuestion(question), correct: c
 const answerSetOf = (answer) => (Array.isArray(answer) ? answer : [answer]).filter((value) => Number.isInteger(value));
 const sameSet = (left, right) => left.length === right.length && left.every((value) => right.includes(value));
 
+// Модели нередко пишут настоящие переводы строк и табуляции внутри строк JSON («Unterminated string»): экранируем их и чиним обрыв.
+function repairModelJson(text) {
+  try { JSON.parse(text); return text; } catch { /* чиним ниже */ }
+  let out = '', inString = false, escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) { out += ch; escaped = false; continue; }
+      if (ch === '\\') { out += ch; escaped = true; continue; }
+      if (ch === '"') { inString = false; out += ch; continue; }
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') continue;
+      if (ch === '\t') { out += '\\t'; continue; }
+      if (ch.charCodeAt(0) < 32) continue;
+      out += ch;
+    } else { if (ch === '"') inString = true; out += ch; }
+  }
+  out = out.replace(/,\s*([}\]])/g, '$1');
+  try { JSON.parse(out); return out; } catch { /* ещё одна попытка: неэкранированные кавычки в SVG */ }
+  const svgFixed = out.replace(/"figure"\s*:\s*"(<svg[\s\S]*?<\/svg>)"\s*(?=[,}])/g, (_m, svg) => `"figure":${JSON.stringify(svg.replace(/\\"/g, '"'))}`);
+  try { JSON.parse(svgFixed); return svgFixed; } catch { return out; }
+}
+
 function validateGeneratedQuiz(value) {
   const quiz = typeof value === 'string' ? JSON.parse(value) : value;
   if (!quiz || !Array.isArray(quiz.questions) || quiz.questions.length < 5) throw new Error('Модель вернула меньше 5 вопросов. Попробуйте ещё раз или уточните запрос.');
@@ -1349,22 +1371,101 @@ app.post('/api/public/test-leads/:id/result', async (req, res) => {
     const total = Number(req.body?.total);
     if (!Number.isInteger(score) || !Number.isInteger(total) || total < 1 || total > 50 || score < 0 || score > total) return res.status(400).json({ error: 'Некорректный результат.' });
     const missedTopics = Array.isArray(req.body?.missedTopics) ? req.body.missedTopics.filter((topic) => typeof topic === 'string').slice(0, 12).map((topic) => topic.slice(0, 80)) : [];
+    let leadForNotice = null;
     const found = await mutateTestLeads((leads) => {
       const lead = leads.find((item) => item.id === req.params.id);
       if (!lead) return false;
+      const wasFinished = lead.status === 'finished';
       lead.status = 'finished';
       lead.score = score;
       lead.total = total;
       lead.missedTopics = missedTopics;
       lead.finishedAt = new Date().toISOString();
+      if (!wasFinished) leadForNotice = { ...lead };
       return true;
     });
     if (!found) return res.status(404).json({ error: 'Запись не найдена.' });
+    if (leadForNotice) {
+      const l = leadForNotice;
+      const msg = `📝 <b>Новое прохождение теста</b>\n\n👤 ${tgEsc(l.name)}\n🎓 ${l.grade} класс\n📞 +${tgEsc(l.phone)}\n✅ Результат: <b>${l.score} из ${l.total}</b>${l.missedTopics?.length ? `\n⚠️ Слабые темы: ${tgEsc(l.missedTopics.join(', '))}` : ''}`;
+      void identity.notifyAdmins(msg).catch((error) => console.warn('notify test lead:', error.message));
+    }
     return res.json({ ok: true });
   } catch (error) {
     console.error('[StudyTask] test lead result failed:', error);
     return res.status(500).json({ error: 'Не удалось сохранить результат.' });
   }
+});
+
+// ---- Заявки на пробный урок (страница /trial) ----
+const tgEsc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const TRIAL_REQUESTS_KEY = 'trial_requests';
+let trialRequestsQueue = Promise.resolve();
+const trialRequestLog = new Map();
+async function readTrialRequests() {
+  if (!supabase) return readJsonFileOr(path.join(dataDir, 'trial-requests.json'), []);
+  const result = await supabase.from('app_settings').select('value').eq('key', TRIAL_REQUESTS_KEY).maybeSingle();
+  if (result.error) throw new Error(`Не удалось загрузить заявки: ${result.error.message}`);
+  return result.data?.value ? JSON.parse(result.data.value) : [];
+}
+async function writeTrialRequests(items) {
+  if (supabase) {
+    const result = await supabase.from('app_settings').upsert({ key: TRIAL_REQUESTS_KEY, value: JSON.stringify(items) });
+    if (result.error) throw new Error(`Не удалось сохранить заявку: ${result.error.message}`);
+    return;
+  }
+  await fs.mkdir(dataDir, { recursive: true });
+  const filePath = path.join(dataDir, 'trial-requests.json');
+  const temporaryPath = `${filePath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(items, null, 2), { mode: 0o600 });
+  await fs.rename(temporaryPath, filePath);
+}
+function mutateTrialRequests(change) {
+  const run = trialRequestsQueue.then(async () => { const items = await readTrialRequests(); const result = await change(items); await writeTrialRequests(items); return result; });
+  trialRequestsQueue = run.catch(() => {});
+  return run;
+}
+
+app.post('/api/public/trial-requests', async (req, res) => {
+  try {
+    const clean = (value, max) => (typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, max) : '');
+    const studentName = clean(req.body?.studentName, 80);
+    const parentName = clean(req.body?.parentName, 80);
+    const phone = cleanLeadPhone(req.body?.phone);
+    const grade = Number(req.body?.grade);
+    if (studentName.length < 3 || !studentName.includes(' ')) return res.status(400).json({ error: 'Укажите имя и фамилию ученика.' });
+    if (parentName.length < 2) return res.status(400).json({ error: 'Укажите имя родителя.' });
+    if (!Number.isInteger(grade) || grade < 5 || grade > 9) return res.status(400).json({ error: 'Выберите класс от 5 до 9.' });
+    if (!phone) return res.status(400).json({ error: 'Введите номер телефона полностью, например +7 700 123 45 67.' });
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const cutoff = Date.now() - 60 * 60 * 1000;
+    const recent = (trialRequestLog.get(ip) || []).filter((time) => time > cutoff);
+    if (recent.length >= 5) return res.status(429).json({ error: 'Слишком много заявок. Попробуйте позже или напишите нам в WhatsApp.' });
+    recent.push(Date.now());
+    trialRequestLog.set(ip, recent);
+    const request = { id: crypto.randomUUID(), studentName, parentName, grade, phone, status: 'new', createdAt: new Date().toISOString() };
+    await mutateTrialRequests((items) => { items.push(request); });
+    const msg = `🎯 <b>Новая запись на пробный урок</b>\n\n👤 Ученик: <b>${tgEsc(studentName)}</b>\n🎓 Класс: ${grade}\n👪 Родитель: ${tgEsc(parentName)}\n📞 +${tgEsc(phone)}`;
+    void identity.notifyAdmins(msg).catch((error) => console.warn('notify trial request:', error.message));
+    return res.status(201).json({ ok: true });
+  } catch (error) {
+    console.error('[StudyTask] trial request failed:', error);
+    return res.status(500).json({ error: 'Не удалось отправить заявку. Попробуйте ещё раз.' });
+  }
+});
+
+app.get('/api/admin/trial-requests', requireAdmin, async (_req, res) => {
+  try { return res.json((await readTrialRequests()).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))); }
+  catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить заявки.' }); }
+});
+app.patch('/api/admin/trial-requests/:id', requireAdmin, async (req, res) => {
+  try {
+    const status = req.body?.status;
+    if (!['new', 'contacted', 'done'].includes(status)) return res.status(400).json({ error: 'Неизвестный статус.' });
+    const found = await mutateTrialRequests((items) => { const item = items.find((entry) => entry.id === req.params.id); if (!item) return false; item.status = status; return true; });
+    if (!found) return res.status(404).json({ error: 'Заявка не найдена.' });
+    return res.json({ ok: true });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось обновить заявку.' }); }
 });
 
 app.get('/api/admin/test-leads', requireAdmin, async (_req, res) => {
@@ -2081,7 +2182,16 @@ app.post('/api/teacher/students/:studentId/tests/generate', async (req, res) => 
     if (firstBrace < 0 || lastBrace <= firstBrace) return res.status(502).json({ error: 'Не удалось прочитать JSON теста из ответа модели. Попробуйте ещё раз.' });
     // Модели часто пишут \frac одним слэшем: в JSON это \f (перевод страницы). Удваиваем слэши у известных команд.
     const latexFixed = raw.slice(firstBrace, lastBrace + 1).replace(/(?<!\\)\\(?=(?:frac|dfrac|tfrac|times|cdot|div|neq|ne|leq|le|geq|ge|sqrt|pi|circ|degree|beta|alpha|gamma|right|left|text|mathrm|angle|triangle|perp|parallel|infty|approx|pm|to|ldots|quad)(?![a-zA-Z]))/g, '\\\\');
-    const quiz = validateGeneratedQuiz(latexFixed);
+    if (result?.choices?.[0]?.finish_reason === 'length') console.error('[StudyTask] NVIDIA: ответ обрезан по max_tokens');
+    let quiz;
+    try { quiz = validateGeneratedQuiz(repairModelJson(latexFixed)); }
+    catch (parseError) {
+      if (parseError instanceof SyntaxError) {
+        const m = /position (\d+)/.exec(parseError.message); const at = m ? Number(m[1]) : 0;
+        console.error('[StudyTask] Не удалось разобрать JSON модели:', parseError.message, '| длина', latexFixed.length, '| finish_reason', result?.choices?.[0]?.finish_reason, '| фрагмент:', JSON.stringify(latexFixed.slice(Math.max(0, at - 150), at + 100)));
+      }
+      throw parseError;
+    }
     const durationMinutes = Math.max(3, Math.ceil(quiz.questions.length * 0.4));
     return res.json({ quiz: { ...quiz, studentId: subject.id, studentName: `${subject.firstName} ${subject.lastName}`, studentClass: subject.studentClass, trial: Boolean(subject.trial), kind: quizKind, lessonId: quizKind === 'quiz' ? null : lessonId, lessonDate: lessonSlot?.date ?? null, lessonHour: lessonSlot?.hour ?? null, durationMinutes } });
   } catch (error) {
@@ -2479,6 +2589,7 @@ const identity = createTelegramIdentity({
   getAccounts: () => accounts,
   refreshAccounts,
   setUserSessionCookie,
+  setAdminSessionCookie: setSessionCookie,
   requireAdmin,
   recordAudit: recordAdminAuditSafely,
 });
@@ -2533,7 +2644,7 @@ async function start() {
       },
     }));
     // Telegram Mini App
-    app.get(['/tg', '/tg/'], (_req, res) => {
+    app.get(['/tg', '/tg/', '/tg/admin', '/tg/admin/'], (_req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distDir, 'tg.html'));
     });
@@ -2547,10 +2658,10 @@ async function start() {
       configFile: path.join(ROOT, 'vite.config.ts'),
       server: { middlewareMode: true },
     });
-    app.get(['/tg', '/tg/'], async (_req, res, next) => {
+    app.get(['/tg', '/tg/', '/tg/admin', '/tg/admin/'], async (req, res, next) => {
       try {
         const html = await fs.readFile(path.join(ROOT, 'tg.html'), 'utf-8');
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(await vite.transformIndexHtml('/tg', html));
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(await vite.transformIndexHtml(req.path, html));
       } catch (error) { next(error); }
     });
     app.use(vite.middlewares);
