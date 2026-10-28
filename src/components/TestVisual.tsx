@@ -35,7 +35,13 @@ export type Visual =
   | { type: 'pie'; slices: { label: string; value: number }[]; highlight?: number }
   | { type: 'seq'; boxes: string[]; note?: string }
   | { type: 'ratio'; a: number; b: number; labelA: string; labelB: string; note?: string }
-  | { type: 'coord'; xmin: number; xmax: number; ymin: number; ymax: number; xstep?: number; ystep?: number; points?: { x: number; y: number; label?: string }[]; line?: { x1: number; y1: number; x2: number; y2: number; dashed?: boolean }; xLabel?: string; yLabel?: string }
+  | { type: 'coord'; xmin: number; xmax: number; ymin: number; ymax: number; xstep?: number; ystep?: number; points?: { x: number; y: number; label?: string }[]; line?: { x1: number; y1: number; x2: number; y2: number; dashed?: boolean }; xLabel?: string; yLabel?: string; fn?: (x: number) => number; fn2?: (x: number) => number; area?: { from: number; to: number; top: (x: number) => number; bottom?: (x: number) => number } }
+  | { type: 'rtri'; legA: string; legB: string; hyp: string; angle?: string }
+  | { type: 'similar'; big: { h: string; b: string }; small: { h: string; b: string } }
+  | { type: 'inscribed'; central: string; inscribed: string; deg: number }
+  | { type: 'unit'; deg: number; label: string }
+  | { type: 'cube'; edge: string; diag: string }
+  | { type: 'cyl'; r: string; h: string }
   | { type: 'circle'; label: string; note?: string }
   | { type: 'triangle'; angleA?: string; angleB?: string; angleC?: string; sideAB?: string; sideAC?: string; sideBC?: string; exterior?: string };
 
@@ -150,14 +156,14 @@ function Pie({ v }: { v: Extract<Visual, { type: 'pie' }> }) {
 }
 
 function Seq({ v }: { v: Extract<Visual, { type: 'seq' }> }) {
-  const n = v.boxes.length, w = 90, gap = 18, start = 180 - (n * w + (n - 1) * gap) / 2;
+  const n = v.boxes.length, gap = n > 3 ? 12 : 18, w = Math.min(90, (330 - (n - 1) * gap) / n), start = 180 - (n * w + (n - 1) * gap) / 2;
   return (
     <>
       {v.boxes.map((b, i) => (
         <g key={i}>
           <rect x={start + i * (w + gap)} y={70} width={w} height={64} rx={14} fill={C.light} stroke={C.primary} strokeWidth={4} />
           <T x={start + i * (w + gap) + w / 2} y={110} fontSize={22} fill={C.primary}>{b}</T>
-          {i < n - 1 && <T x={start + i * (w + gap) + w + gap / 2} y={108} fontSize={20}>,</T>}
+          {i < n - 1 && n <= 3 && <T x={start + i * (w + gap) + w + gap / 2} y={108} fontSize={20}>,</T>}
         </g>
       ))}
       {v.note && <T x={180} y={175} fontSize={18} fill={C.rose}>{v.note}</T>}
@@ -201,6 +207,23 @@ function Coord({ v }: { v: Extract<Visual, { type: 'coord' }> }) {
       {gy.filter((y) => y !== 0).map((y) => <T key={`ly${y}`} x={X(ax) - 8} y={Y(y) + 4} fontSize={11} textAnchor="end">{fmt(y)}</T>)}
       <T x={R + 6} y={Y(ay) - 8} fontSize={13} textAnchor="end">{v.xLabel ?? 'x'}</T>
       <T x={X(ax) + 12} y={Tp + 6} fontSize={13}>{v.yLabel ?? 'y'}</T>
+      {v.area && (() => {
+        const n = 80, pts: string[] = [], back: string[] = [];
+        const cl = (y: number) => Math.max(v.ymin, Math.min(v.ymax, y));
+        for (let i = 0; i <= n; i++) { const x = v.area.from + ((v.area.to - v.area.from) * i) / n; pts.push(`${X(x)},${Y(cl(v.area.top(x)))}`); back.push(`${X(x)},${Y(cl(v.area.bottom ? v.area.bottom(x) : 0))}`); }
+        return <polygon points={[...pts, ...back.reverse()].join(' ')} fill={C.amber} opacity={0.35} stroke="none" />;
+      })()}
+      {[v.fn, v.fn2].map((f, k) => {
+        if (!f) return null;
+        let d = '', pen = false;
+        const n = 160;
+        for (let i = 0; i <= n; i++) {
+          const x = v.xmin + ((v.xmax - v.xmin) * i) / n, y = f(x);
+          if (!isFinite(y) || y < v.ymin - 0.2 || y > v.ymax + 0.2) { pen = false; continue; }
+          d += `${pen ? 'L' : 'M'} ${X(x).toFixed(1)} ${Y(y).toFixed(1)} `; pen = true;
+        }
+        return <path key={k} d={d} fill="none" stroke={k ? C.rose : C.primary} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />;
+      })}
       {v.line && <line x1={X(v.line.x1)} y1={Y(v.line.y1)} x2={X(v.line.x2)} y2={Y(v.line.y2)} stroke={C.primary} strokeWidth={4} strokeLinecap="round" strokeDasharray={v.line.dashed ? '8 7' : undefined} />}
       {v.points?.map((p, i) => (
         <g key={i}>
@@ -245,6 +268,111 @@ function Triangle({ v }: { v: Extract<Visual, { type: 'triangle' }> }) {
   );
 }
 
+
+function RTri({ v }: { v: Extract<Visual, { type: 'rtri' }> }) {
+  const A = { x: 70, y: 170 }, B = { x: 290, y: 170 }, Cc = { x: 70, y: 40 };
+  return (
+    <>
+      <path d={`M ${A.x} ${A.y} L ${B.x} ${B.y} L ${Cc.x} ${Cc.y} Z`} fill={C.light} stroke={C.primary} strokeWidth={4} strokeLinejoin="round" />
+      <path d={`M ${A.x} ${A.y - 18} H ${A.x + 18} V ${A.y}`} fill="none" stroke={C.navy} strokeWidth={2.5} />
+      <T x={A.x - 16} y={(A.y + Cc.y) / 2 + 6} fontSize={17}>{v.legA}</T>
+      <T x={(A.x + B.x) / 2} y={A.y + 24} fontSize={17}>{v.legB}</T>
+      <T x={(B.x + Cc.x) / 2 + 22} y={(B.y + Cc.y) / 2 - 8} fontSize={17} fill={C.rose}>{v.hyp}</T>
+      {v.angle && <T x={B.x - 52} y={B.y - 8} fontSize={15} fill={C.primary}>{v.angle}</T>}
+    </>
+  );
+}
+
+function Similar({ v }: { v: Extract<Visual, { type: 'similar' }> }) {
+  const tri = (x: number, w: number, h: number, hl: string, bl: string, col: string) => (
+    <g>
+      <path d={`M ${x} 170 L ${x + w} 170 L ${x} ${170 - h} Z`} fill={col} stroke={C.primary} strokeWidth={4} strokeLinejoin="round" />
+      <path d={`M ${x} 152 H ${x + 14} V 170`} fill="none" stroke={C.navy} strokeWidth={2} />
+      <T x={x - 8} y={170 - h / 2 + 5} fontSize={16} textAnchor="end">{hl}</T>
+      <T x={x + w / 2} y={192} fontSize={16}>{bl}</T>
+    </g>
+  );
+  return (
+    <>
+      {tri(60, 140, 120, v.big.h, v.big.b, C.light)}
+      {tri(260, 70, 60, v.small.h, v.small.b, C.amberLight)}
+      <line x1={20} y1={170} x2={345} y2={170} stroke={C.navy} strokeWidth={2.5} />
+    </>
+  );
+}
+
+function Inscribed({ v }: { v: Extract<Visual, { type: 'inscribed' }> }) {
+  const cx = 180, cy = 108, r = 72, th = (v.deg * Math.PI) / 360;
+  const P = (a: number) => ({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+  const A = P(-Math.PI / 2 - th), B = P(-Math.PI / 2 + th), Cc = P(Math.PI / 2);
+  return (
+    <>
+      <circle cx={cx} cy={cy} r={r} fill={C.light} stroke={C.primary} strokeWidth={4} />
+      <path d={`M ${cx} ${cy} L ${A.x} ${A.y} M ${cx} ${cy} L ${B.x} ${B.y}`} stroke={C.rose} strokeWidth={4} fill="none" strokeLinecap="round" />
+      <path d={`M ${Cc.x} ${Cc.y} L ${A.x} ${A.y} M ${Cc.x} ${Cc.y} L ${B.x} ${B.y}`} stroke={C.navy} strokeWidth={3} fill="none" strokeLinecap="round" />
+      <circle cx={cx} cy={cy} r={4} fill={C.navy} />
+      <T x={cx} y={cy - 22} fontSize={15} fill={C.rose}>{v.central}</T>
+      <T x={Cc.x} y={Cc.y - 14} fontSize={17} fill={C.navy}>{v.inscribed}</T>
+      <T x={A.x - 12} y={A.y - 4} fontSize={15}>A</T><T x={B.x + 12} y={B.y - 4} fontSize={15}>B</T>
+      <T x={Cc.x} y={Cc.y + 20} fontSize={15}>C</T><T x={cx + 14} y={cy + 4} fontSize={14} textAnchor="start">O</T>
+    </>
+  );
+}
+
+function Unit({ v }: { v: Extract<Visual, { type: 'unit' }> }) {
+  const cx = 180, cy = 105, r = 80, a = (v.deg * Math.PI) / 180;
+  const px = cx + r * Math.cos(a), py = cy - r * Math.sin(a);
+  const ex = cx + 26 * Math.cos(0), ey = cy;
+  const ax = cx + 26 * Math.cos(a), ay = cy - 26 * Math.sin(a);
+  return (
+    <>
+      <circle cx={cx} cy={cy} r={r} fill={C.light} stroke={C.primary} strokeWidth={3.5} />
+      <line x1={cx - r - 14} y1={cy} x2={cx + r + 14} y2={cy} stroke={C.navy} strokeWidth={2.5} />
+      <line x1={cx} y1={cy + r + 12} x2={cx} y2={cy - r - 14} stroke={C.navy} strokeWidth={2.5} />
+      <line x1={cx} y1={cy} x2={px} y2={py} stroke={C.rose} strokeWidth={4} strokeLinecap="round" />
+      <path d={`M ${ex} ${ey} A 26 26 0 ${v.deg > 180 ? 1 : 0} 0 ${ax} ${ay}`} fill="none" stroke={C.amber} strokeWidth={3.5} />
+      <circle cx={px} cy={py} r={6} fill={C.rose} stroke="#fff" strokeWidth={2} />
+      <T x={px + (px > cx ? 12 : -12)} y={py - 8} fontSize={15} fill={C.rose} textAnchor={px > cx ? 'start' : 'end'}>{v.label}</T>
+      <T x={cx + r + 8} y={cy + 18} fontSize={12}>1</T><T x={cx + 14} y={cy - r - 4} fontSize={12}>1</T>
+    </>
+  );
+}
+
+function Cube({ v }: { v: Extract<Visual, { type: 'cube' }> }) {
+  const f = 86, ox = 52, oy = -40, x0 = 96, y0 = 172;
+  const fr = [[x0, y0], [x0 + f, y0], [x0 + f, y0 - f], [x0, y0 - f]];
+  const bk = fr.map(([x, y]) => [x + ox, y + oy]);
+  const poly = (pts: number[][]) => pts.map((p) => p.join(',')).join(' ');
+  return (
+    <>
+      <polygon points={poly(bk)} fill="none" stroke={C.primary} strokeWidth={3} strokeDasharray="6 5" opacity={0.7} />
+      {[0, 1, 2, 3].map((i) => <line key={i} x1={fr[i][0]} y1={fr[i][1]} x2={bk[i][0]} y2={bk[i][1]} stroke={C.primary} strokeWidth={3} strokeDasharray={i === 0 ? '6 5' : undefined} />)}
+      <polygon points={poly(fr)} fill={C.light} stroke={C.primary} strokeWidth={4} strokeLinejoin="round" />
+      <polygon points={poly([fr[3], fr[2], bk[2], bk[3]])} fill={C.border} stroke={C.primary} strokeWidth={3} strokeLinejoin="round" opacity={0.8} />
+      <polygon points={poly([fr[1], bk[1], bk[2], fr[2]])} fill={C.light} stroke={C.primary} strokeWidth={3} strokeLinejoin="round" opacity={0.9} />
+      <line x1={fr[0][0]} y1={fr[0][1]} x2={bk[2][0]} y2={bk[2][1]} stroke={C.rose} strokeWidth={4} strokeLinecap="round" />
+      <T x={x0 + f / 2} y={y0 + 20} fontSize={16}>{v.edge}</T>
+      <T x={x0 + f * 0.55 + ox * 0.5 - 22} y={y0 - f * 0.5 + oy * 0.5 - 6} fontSize={17} fill={C.rose}>{v.diag}</T>
+    </>
+  );
+}
+
+function Cyl({ v }: { v: Extract<Visual, { type: 'cyl' }> }) {
+  const cx = 150, rx = 70, ry = 20, top = 52, bot = 158;
+  return (
+    <>
+      <path d={`M ${cx - rx} ${top} V ${bot} A ${rx} ${ry} 0 0 0 ${cx + rx} ${bot} V ${top}`} fill={C.light} stroke={C.primary} strokeWidth={4} />
+      <ellipse cx={cx} cy={top} rx={rx} ry={ry} fill={C.border} stroke={C.primary} strokeWidth={4} />
+      <path d={`M ${cx - rx} ${bot} A ${rx} ${ry} 0 0 0 ${cx + rx} ${bot}`} fill="none" stroke={C.primary} strokeWidth={4} />
+      <line x1={cx} y1={top} x2={cx + rx} y2={top} stroke={C.rose} strokeWidth={4} />
+      <T x={cx + rx / 2} y={top + 20} fontSize={16} fill={C.rose}>{v.r}</T>
+      <line x1={cx + rx + 26} y1={top} x2={cx + rx + 26} y2={bot} stroke={C.navy} strokeWidth={3} />
+      <path d={`M ${cx + rx + 20} ${top + 8} L ${cx + rx + 26} ${top} L ${cx + rx + 32} ${top + 8} M ${cx + rx + 20} ${bot - 8} L ${cx + rx + 26} ${bot} L ${cx + rx + 32} ${bot - 8}`} fill="none" stroke={C.navy} strokeWidth={3} />
+      <T x={cx + rx + 40} y={(top + bot) / 2 + 5} fontSize={17} textAnchor="start">{v.h}</T>
+    </>
+  );
+}
+
 const VIEWBOX: Record<string, string> = { numberline: '0 20 360 140', bar: '0 45 360 145', seq: '0 50 360 150', ratio: '0 30 360 160' };
 
 export function TestVisual({ visual }: { visual: Visual }) {
@@ -260,6 +388,12 @@ export function TestVisual({ visual }: { visual: Visual }) {
       case 'coord': return <Coord v={visual} />;
       case 'circle': return <CircleV v={visual} />;
       case 'triangle': return <Triangle v={visual} />;
+      case 'rtri': return <RTri v={visual} />;
+      case 'similar': return <Similar v={visual} />;
+      case 'inscribed': return <Inscribed v={visual} />;
+      case 'unit': return <Unit v={visual} />;
+      case 'cube': return <Cube v={visual} />;
+      case 'cyl': return <Cyl v={visual} />;
     }
   })();
   return (
