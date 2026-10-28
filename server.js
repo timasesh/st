@@ -1259,6 +1259,104 @@ function getTrialScheduledAt(lesson) {
   return lesson.scheduledAt || nextTrialSlotStart(lesson.day, lesson.hour, new Date(lesson.createdAt || Date.now()));
 }
 
+// ---- Лиды с Instagram: прохождение публичного теста уровня (/test) ----
+const TEST_LEADS_KEY = 'instagram_test_leads';
+let testLeadsQueue = Promise.resolve();
+const testLeadStartLog = new Map();
+
+async function readTestLeads() {
+  if (!supabase) return readJsonFileOr(path.join(dataDir, 'test-leads.json'), []);
+  const result = await supabase.from('app_settings').select('value').eq('key', TEST_LEADS_KEY).maybeSingle();
+  if (result.error) throw new Error(`Не удалось загрузить лиды теста: ${result.error.message}`);
+  return result.data?.value ? JSON.parse(result.data.value) : [];
+}
+
+async function writeTestLeads(leads) {
+  if (supabase) {
+    const result = await supabase.from('app_settings').upsert({ key: TEST_LEADS_KEY, value: JSON.stringify(leads) });
+    if (result.error) throw new Error(`Не удалось сохранить лид теста: ${result.error.message}`);
+    return;
+  }
+  await fs.mkdir(dataDir, { recursive: true });
+  const filePath = path.join(dataDir, 'test-leads.json');
+  const temporaryPath = `${filePath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(leads, null, 2), { mode: 0o600 });
+  await fs.rename(temporaryPath, filePath);
+}
+
+// последовательные изменения, чтобы два ученика одновременно не затёрли друг друга
+function mutateTestLeads(change) {
+  const run = testLeadsQueue.then(async () => {
+    const leads = await readTestLeads();
+    const result = await change(leads);
+    await writeTestLeads(leads);
+    return result;
+  });
+  testLeadsQueue = run.catch(() => {});
+  return run;
+}
+
+function cleanLeadPhone(value) {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
+  if (digits.length === 10) digits = `7${digits}`;
+  return digits.length >= 11 && digits.length <= 15 ? digits : '';
+}
+
+app.post('/api/public/test-leads', async (req, res) => {
+  try {
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
+    const phone = cleanLeadPhone(req.body?.phone);
+    const grade = Number(req.body?.grade);
+    if (name.length < 2 || name.length > 80) return res.status(400).json({ error: 'Введите имя (от 2 до 80 символов).' });
+    if (!phone) return res.status(400).json({ error: 'Введите номер телефона полностью, например +7 700 123 45 67.' });
+    if (!Number.isInteger(grade) || grade < 5 || grade > 11) return res.status(400).json({ error: 'Выберите класс от 5 до 11.' });
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const cutoff = Date.now() - 60 * 60 * 1000;
+    const recent = (testLeadStartLog.get(ip) || []).filter((time) => time > cutoff);
+    if (recent.length >= 30) return res.status(429).json({ error: 'Слишком много попыток. Попробуйте позже.' });
+    recent.push(Date.now());
+    testLeadStartLog.set(ip, recent);
+    const lead = { id: crypto.randomUUID(), name, phone, grade, status: 'started', score: null, total: null, missedTopics: [], startedAt: new Date().toISOString(), finishedAt: null };
+    await mutateTestLeads((leads) => { leads.push(lead); });
+    return res.status(201).json({ id: lead.id });
+  } catch (error) {
+    console.error('[StudyTask] test lead create failed:', error);
+    return res.status(500).json({ error: 'Не удалось сохранить данные. Попробуйте ещё раз.' });
+  }
+});
+
+app.post('/api/public/test-leads/:id/result', async (req, res) => {
+  try {
+    const score = Number(req.body?.score);
+    const total = Number(req.body?.total);
+    if (!Number.isInteger(score) || !Number.isInteger(total) || total < 1 || total > 50 || score < 0 || score > total) return res.status(400).json({ error: 'Некорректный результат.' });
+    const missedTopics = Array.isArray(req.body?.missedTopics) ? req.body.missedTopics.filter((topic) => typeof topic === 'string').slice(0, 12).map((topic) => topic.slice(0, 80)) : [];
+    const found = await mutateTestLeads((leads) => {
+      const lead = leads.find((item) => item.id === req.params.id);
+      if (!lead) return false;
+      lead.status = 'finished';
+      lead.score = score;
+      lead.total = total;
+      lead.missedTopics = missedTopics;
+      lead.finishedAt = new Date().toISOString();
+      return true;
+    });
+    if (!found) return res.status(404).json({ error: 'Запись не найдена.' });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('[StudyTask] test lead result failed:', error);
+    return res.status(500).json({ error: 'Не удалось сохранить результат.' });
+  }
+});
+
+app.get('/api/admin/test-leads', requireAdmin, async (_req, res) => {
+  try {
+    const leads = await readTestLeads();
+    return res.json(leads.slice().sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt))));
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить лиды.' }); }
+});
+
 app.get('/api/admin/trial-lessons', requireAdmin, async (_req, res) => {
   try {
     await refreshAccounts();

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, CheckCircle2, Lock, MessageCircle, RotateCcw, Share2, Sparkles, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Loader2, Lock, MessageCircle, RotateCcw, Share2, Sparkles, XCircle } from 'lucide-react';
 import { ALL_GRADES, DIFFICULTY, PUBLIC_TESTS, PublicQuestion, isGradeAvailable, resultLevel } from '../data/publicTests';
 import { whatsappUrl } from '../constants';
 import { Rich, TestVisual } from './TestVisual';
@@ -33,6 +33,22 @@ const gradeFromPath = () => {
   return m ? Number(m[1]) : null;
 };
 
+const CONTACT_KEY = 'study_task_test_contact';
+const readContact = () => {
+  try { const v = JSON.parse(localStorage.getItem(CONTACT_KEY) || '{}'); return { name: String(v.name || ''), phone: String(v.phone || '') }; }
+  catch { return { name: '', phone: '' }; }
+};
+// +7 (700) 123-45-67 по мере ввода; первая цифра 8 заменяется на 7
+function formatPhone(raw: string) {
+  let d = raw.replace(/\D/g, '');
+  if (d.startsWith('8')) d = `7${d.slice(1)}`;
+  if (d && !d.startsWith('7')) d = `7${d}`;
+  d = d.slice(0, 11);
+  if (!d) return '';
+  const p = [d.slice(1, 4), d.slice(4, 7), d.slice(7, 9), d.slice(9, 11)];
+  return `+7${p[0] ? ` (${p[0]}` : ''}${p[0].length === 3 ? ')' : ''}${p[1] ? ` ${p[1]}` : ''}${p[2] ? `-${p[2]}` : ''}${p[3] ? `-${p[3]}` : ''}`;
+}
+
 export default function PublicTest() {
   const initial = gradeFromPath();
   const [grade, setGrade] = useState<number | null>(initial && isGradeAvailable(initial) ? initial : null);
@@ -42,6 +58,11 @@ export default function PublicTest() {
   const [picked, setPicked] = useState<number | null>(null);
   const [answers, setAnswers] = useState<(number | null)[]>([]);
   const [copied, setCopied] = useState(false);
+  const [name, setName] = useState(() => readContact().name);
+  const [phone, setPhone] = useState(() => formatPhone(readContact().phone));
+  const [formError, setFormError] = useState('');
+  const [sending, setSending] = useState(false);
+  const [leadId, setLeadId] = useState<string | null>(null);
 
   useEffect(() => { document.title = 'Тест по математике 5–11 класс — Study Task'; }, []);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [stage, index]);
@@ -55,7 +76,7 @@ export default function PublicTest() {
     setStage('intro');
     window.history.pushState({}, '', `/test/${g}`);
   };
-  const start = () => {
+  const begin = () => {
     if (!grade) return;
     const prepared = prepare(grade);
     setQuestions(prepared);
@@ -63,6 +84,27 @@ export default function PublicTest() {
     setIndex(0);
     setPicked(null);
     setStage('quiz');
+  };
+  // проверка контактов + создание записи на сервере, затем запуск теста
+  const start = async (silent = false) => {
+    if (!grade || sending) return;
+    const cleanName = name.trim().replace(/\s+/g, ' ');
+    const digits = phone.replace(/\D/g, '');
+    if (cleanName.length < 2) { setFormError('Введите ваше имя.'); return; }
+    if (digits.length !== 11) { setFormError('Введите номер телефона полностью — 11 цифр, например +7 700 123 45 67.'); return; }
+    setFormError('');
+    setSending(true);
+    try {
+      const response = await fetch('/api/public/test-leads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, phone: digits, grade }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Не удалось сохранить данные. Попробуйте ещё раз.');
+      setLeadId(data.id);
+      try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ name: cleanName, phone: digits })); } catch { /* хранилище недоступно */ }
+      begin();
+    } catch (error) {
+      if (silent) { begin(); return; }
+      setFormError(error instanceof Error ? error.message : 'Не удалось сохранить данные. Попробуйте ещё раз.');
+    } finally { setSending(false); }
   };
   const back = () => {
     setGrade(null);
@@ -86,6 +128,13 @@ export default function PublicTest() {
       else { await navigator.clipboard.writeText(url); setCopied(true); window.setTimeout(() => setCopied(false), 2000); }
     } catch { /* пользователь закрыл окно */ }
   };
+
+  useEffect(() => {
+    if (stage !== 'result' || !leadId) return;
+    const topics = Array.from(new Set(questions.filter((item, i) => answers[i] !== item.correct).map((item) => item.topic)));
+    void fetch(`/api/public/test-leads/${leadId}/result`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score, total: questions.length, missedTopics: topics }), keepalive: true }).catch(() => undefined);
+    setLeadId(null); // результат отправляется один раз; повторное прохождение создаёт новую запись
+  }, [stage, leadId, score, questions, answers]);
 
   const q = questions[index];
   const level = resultLevel(score, total || 10);
@@ -136,7 +185,25 @@ export default function PublicTest() {
                   <li key={a} className="rounded-2xl border-2 border-border bg-primary-light px-4 py-3 text-center"><p className="font-display text-lg font-extrabold text-navy">{a}</p><p className="text-xs font-bold text-muted">вопросы {b}</p></li>
                 ))}
               </ul>
-              <button onClick={start} className="clay-btn inline-flex w-full items-center justify-center gap-2 bg-primary px-6 py-4 text-lg font-extrabold text-white hover:bg-primary-dark">Начать тест <ArrowRight className="h-5 w-5" /></button>
+              <form noValidate onSubmit={(e) => { e.preventDefault(); void start(); }} className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-extrabold text-navy">Ваше имя</span>
+                    <input value={name} onChange={(e) => { setName(e.target.value); setFormError(''); }} autoComplete="given-name" maxLength={80} placeholder="Например, Айдар" aria-invalid={Boolean(formError) && name.trim().length < 2}
+                      className="w-full rounded-2xl border-2 border-border bg-white px-4 py-3 text-lg font-bold text-foreground outline-none transition placeholder:font-semibold placeholder:text-muted/60 focus:border-primary" />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-extrabold text-navy">Номер телефона</span>
+                    <input value={phone} onChange={(e) => { setPhone(formatPhone(e.target.value)); setFormError(''); }} type="tel" inputMode="tel" autoComplete="tel" placeholder="+7 (700) 123-45-67" aria-invalid={Boolean(formError) && phone.replace(/\D/g, '').length !== 11}
+                      className="w-full rounded-2xl border-2 border-border bg-white px-4 py-3 text-lg font-bold text-foreground outline-none transition placeholder:font-semibold placeholder:text-muted/60 focus:border-primary" />
+                  </label>
+                </div>
+                {formError && <p role="alert" className="rounded-xl border-2 border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700">{formError}</p>}
+                <button type="submit" disabled={sending} className="clay-btn inline-flex w-full items-center justify-center gap-2 bg-primary px-6 py-4 text-lg font-extrabold text-white hover:bg-primary-dark disabled:cursor-wait disabled:opacity-70">
+                  {sending ? <><Loader2 className="h-5 w-5 animate-spin" /> Сохраняем…</> : <>Начать тест <ArrowRight className="h-5 w-5" /></>}
+                </button>
+                <p className="text-center text-xs leading-relaxed text-muted">Указывая имя и номер телефона, вы соглашаетесь на обработку персональных данных.</p>
+              </form>
             </motion.section>
           )}
 
@@ -227,7 +294,7 @@ export default function PublicTest() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <button onClick={start} className="clay-card-sm inline-flex flex-1 items-center justify-center gap-2 px-5 py-3 font-extrabold text-navy hover:border-primary"><RotateCcw className="h-5 w-5" /> Пройти заново</button>
+                <button onClick={() => void start(true)} className="clay-card-sm inline-flex flex-1 items-center justify-center gap-2 px-5 py-3 font-extrabold text-navy hover:border-primary"><RotateCcw className="h-5 w-5" /> Пройти заново</button>
                 <button onClick={share} className="clay-card-sm inline-flex flex-1 items-center justify-center gap-2 px-5 py-3 font-extrabold text-navy hover:border-primary"><Share2 className="h-5 w-5" /> {copied ? 'Ссылка скопирована' : 'Поделиться тестом'}</button>
               </div>
             </motion.section>

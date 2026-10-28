@@ -6,6 +6,7 @@ import StarFlight from './StarFlight';
 import PortalSettings from './PortalSettings';
 import { ParentChildrenView, ParentPrizesView } from './ParentPortalSections';
 import AdminDataCleanup from './AdminDataCleanup';
+import InstagramLeadsTab from './InstagramLeadsTab';
 import TeacherTestsTab, { StartTestArgs } from './TeacherTestsTab';
 import MathText, { QuestionFigure } from '../shared/MathText';
 import { LoginLayout, LoginField, LoginError, LoginSubmit } from './LoginLayout';
@@ -607,7 +608,7 @@ function EmptyTrialState({ message }: { message: string }) {
 export function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
   const [activeRole, setActiveRole] = useState<AccountRole>('student');
-  const [activeView, setActiveView] = useState<'dashboard' | 'accounts' | 'withdrawn' | 'crm' | 'settings' | 'schedule' | 'history' | 'trial' | 'tests' | 'cleanup'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'accounts' | 'withdrawn' | 'crm' | 'settings' | 'schedule' | 'history' | 'trial' | 'tests' | 'leads' | 'cleanup'>('dashboard');
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ManagedAccount | null>(null);
@@ -1073,6 +1074,7 @@ export function AdminDashboardPage() {
             <button type="button" onClick={() => { setActiveView('schedule'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'schedule' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><CalendarDays className="h-5 w-5" /> Расписание</button>
             <button type="button" onClick={() => { setActiveView('tests'); setError(''); setSuccess(''); void loadAdminTests(); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'tests' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><FileQuestion className="h-5 w-5" /> Тесты</button>
             <button type="button" onClick={() => { setActiveView('trial'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'trial' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><UserPlus className="h-5 w-5" /> Пробный урок <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeView === 'trial' ? 'bg-white/20' : 'bg-primary-light'}`}>{trialLessons.length}</span></button>
+            <button type="button" onClick={() => { setActiveView('leads'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'leads' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><Star className="h-5 w-5" /> Лиды с инстаграма</button>
             <button type="button" onClick={() => { setActiveView('crm'); setError(''); setSuccess(''); }} className={`crm-tab flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-extrabold transition ${activeView === 'crm' ? 'bg-blue-700 text-white shadow-md ring-2 ring-blue-300' : 'bg-blue-600 text-white shadow-sm hover:bg-blue-700'}`}><Settings className="h-5 w-5" /> Настройка CRM</button>
             <button type="button" onClick={() => { setActiveView('cleanup'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'cleanup' ? 'bg-rose-600 text-white shadow-md' : 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'}`}><Trash2 className="h-5 w-5" /> Управление данными</button>
           </nav>
@@ -1080,11 +1082,11 @@ export function AdminDashboardPage() {
 
         <section className="min-w-0 flex-1 p-5 sm:p-8">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
-            <div><p className="text-sm font-bold text-primary">{activeView === 'cleanup' ? 'Отдельные объекты хранилища' : activeView === 'dashboard' ? 'Ключевые показатели центра' : activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : activeView === 'schedule' ? 'Планирование занятий' : activeView === 'trial' ? 'Знакомство с центром' : activeView === 'history' ? 'Аудит действий' : activeView === 'tests' ? 'Журнал тестов' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'cleanup' ? 'Управление данными' : activeView === 'dashboard' ? 'Дэшборд' : activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : activeView === 'schedule' ? 'Расписание' : activeView === 'trial' ? 'Пробный урок' : activeView === 'history' ? 'История действий' : activeView === 'withdrawn' ? 'Выбывшие' : activeView === 'tests' ? 'Тесты' : ROLE_LABELS[activeRole]}</h1></div>
+            <div><p className="text-sm font-bold text-primary">{activeView === 'leads' ? 'Заявки из соцсетей' : activeView === 'cleanup' ? 'Отдельные объекты хранилища' : activeView === 'dashboard' ? 'Ключевые показатели центра' : activeView === 'settings' ? 'Параметры панели' : activeView === 'crm' ? 'Управление системой' : activeView === 'schedule' ? 'Планирование занятий' : activeView === 'trial' ? 'Знакомство с центром' : activeView === 'history' ? 'Аудит действий' : activeView === 'tests' ? 'Журнал тестов' : 'Управление аккаунтами'}</p><h1 className="mt-1 font-display text-3xl font-extrabold">{activeView === 'leads' ? 'Лиды с инстаграма' : activeView === 'cleanup' ? 'Управление данными' : activeView === 'dashboard' ? 'Дэшборд' : activeView === 'settings' ? 'Настройки' : activeView === 'crm' ? 'Настройка CRM' : activeView === 'schedule' ? 'Расписание' : activeView === 'trial' ? 'Пробный урок' : activeView === 'history' ? 'История действий' : activeView === 'withdrawn' ? 'Выбывшие' : activeView === 'tests' ? 'Тесты' : ROLE_LABELS[activeRole]}</h1></div>
             {(activeView === 'accounts' || activeView === 'withdrawn') && <span className="rounded-full bg-white px-4 py-2 text-sm font-bold text-muted shadow-sm">Всего: {roleAccounts.length}</span>}
           </div>
 
-          {activeView === 'cleanup' ? <AdminDataCleanup /> : activeView === 'dashboard' ? (
+          {activeView === 'leads' ? <InstagramLeadsTab /> : activeView === 'cleanup' ? <AdminDataCleanup /> : activeView === 'dashboard' ? (
             <section className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <article className="admin-card rounded-2xl border border-border bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><span className="text-sm font-bold text-muted">Пробные на этой неделе</span><span className="rounded-xl bg-blue-50 p-2 text-blue-700"><CalendarDays className="h-5 w-5" /></span></div><p className="mt-3 font-display text-3xl font-extrabold">{dashboardTrials.length}</p><p className="mt-1 text-xs text-muted">По дате занятия · неделя {dashboardWeek.start} — {dashboardWeek.end}</p></article>
