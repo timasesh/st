@@ -12,8 +12,8 @@ export type StartTestArgs = { student: TestsPerson; kind: 'lesson_quiz' | 'quiz'
 type TeacherTest = {
   id: string; kind: 'lesson_quiz' | 'quiz'; title: string; state: 'upcoming' | 'open' | 'completed' | 'expired' | 'skipped';
   createdAt?: string; lessonId?: string | null; lessonDate?: string | null; lessonHour?: number | null; availableAt?: string; deadlineAt?: string;
-  durationMinutes?: number; reason?: string; score?: number; total: number; submittedAt?: string; answers?: number[];
-  questions: Array<{ question: string; choices: string[]; correctIndex?: number; figure?: string }>;
+  durationMinutes?: number; reason?: string; score?: number; total: number; submittedAt?: string; answers?: Array<number | number[]>;
+  questions: Array<{ question: string; choices: string[]; correctIndex?: number; correctIndexes?: number[]; explanation?: string; figure?: string }>;
 };
 type Summary = Record<string, { total: number; completed: number; open: number; expired: number; lastAt: string | null }>;
 
@@ -56,7 +56,9 @@ async function patchTest(url: string, body: unknown) {
   if (!response.ok) throw new Error(data.error || 'Не удалось сохранить изменения.');
   return data;
 }
-type EditQuestion = { question: string; choices: string[]; correctIndex: number; figure?: string };
+type EditQuestion = { question: string; choices: string[]; correctIndex: number; correctIndexes?: number[]; need?: number; explanation?: string; figure?: string };
+const correctOf = (q: { correctIndex?: number; correctIndexes?: number[] }) => (q.correctIndexes?.length ? q.correctIndexes : q.correctIndex !== undefined ? [q.correctIndex] : []);
+const mineOf = (a: number | number[] | undefined) => (Array.isArray(a) ? a : typeof a === 'number' ? [a] : []);
 type Editing = { id: string; kind: 'lesson_quiz' | 'quiz'; title: string; questions: EditQuestion[]; deadline: string; deadlineOrig: string };
 const isoToAstanaInput = (iso?: string) => { if (!iso) return ''; const d = new Date(iso); return `${dateKeyOf(d)}T${hhmm(d)}`; };
 
@@ -146,16 +148,18 @@ export default function TeacherTestsTab({ students, lessons, refreshKey, onStart
     );
   }
 
-  const startEdit = (t: TeacherTest) => { setEditError(''); setEditing({ id: t.id, kind: t.kind, title: t.title, questions: t.questions.map((q) => ({ question: q.question, choices: [...q.choices], correctIndex: q.correctIndex ?? 0, ...(q.figure ? { figure: q.figure } : {}) })), deadline: isoToAstanaInput(t.deadlineAt), deadlineOrig: isoToAstanaInput(t.deadlineAt) }); };
+  const startEdit = (t: TeacherTest) => { setEditError(''); setEditing({ id: t.id, kind: t.kind, title: t.title, questions: t.questions.map((q) => ({ question: q.question, choices: [...q.choices], correctIndex: q.correctIndex ?? 0, ...(q.correctIndexes?.length ? { correctIndexes: q.correctIndexes, need: q.correctIndexes.length } : {}), ...(q.explanation ? { explanation: q.explanation } : {}), ...(q.figure ? { figure: q.figure } : {}) })), deadline: isoToAstanaInput(t.deadlineAt), deadlineOrig: isoToAstanaInput(t.deadlineAt) }); };
   const updateQuestion = (index: number, patch: Partial<EditQuestion>) => setEditing((cur) => cur ? { ...cur, questions: cur.questions.map((q, i) => i === index ? { ...q, ...patch } : q) } : cur);
   const saveEdit = async () => {
     if (!editing || !student) return;
     const bad = editing.questions.findIndex((q) => !q.question.trim() || q.choices.some((c) => !c.trim()));
     if (editing.questions.length < 5) { setEditError('В тесте должно быть не меньше 5 вопросов.'); return; }
-    if (bad >= 0) { setEditError(`Заполните вопрос ${bad + 1} и все четыре варианта ответа.`); return; }
+    if (bad >= 0) { setEditError(`Заполните вопрос ${bad + 1} и все варианты ответа.`); return; }
+    const badKey = editing.questions.findIndex((q) => q.need && (q.correctIndexes?.length ?? 0) !== q.need);
+    if (badKey >= 0) { setEditError(`Вопрос ${badKey + 1}: нужно отметить правильных ответов — ${editing.questions[badKey].need}.`); return; }
     setEditSaving(true); setEditError('');
     try {
-      const body: Record<string, unknown> = { title: editing.title.trim() || 'Тест', questions: editing.questions.map((q) => ({ question: q.question.trim(), choices: q.choices.map((c) => c.trim()), correctIndex: q.correctIndex, ...(q.figure ? { figure: q.figure } : {}) })) };
+      const body: Record<string, unknown> = { title: editing.title.trim() || 'Тест', questions: editing.questions.map((q) => ({ question: q.question.trim(), choices: q.choices.map((c) => c.trim()), correctIndex: q.need ? Math.min(...(q.correctIndexes as number[])) : q.correctIndex, ...(q.need ? { correctIndexes: q.correctIndexes } : {}), ...(q.explanation?.trim() ? { explanation: q.explanation.trim() } : {}), ...(q.figure ? { figure: q.figure } : {}) })) };
       if (editing.kind === 'quiz' && editing.deadline && editing.deadline !== editing.deadlineOrig) body.deadlineAt = toAstanaIso(editing.deadline);
       const result = await patchTest(`/api/teacher/students/${student.id}/tests/${editing.id}`, body);
       setTests((cur) => cur.map((t) => t.id === editing.id ? { ...t, ...result.test } : t));
@@ -202,18 +206,22 @@ export default function TeacherTestsTab({ students, lessons, refreshKey, onStart
             </div>
           </div>
           {open && <ol className="mt-3 space-y-2 border-t border-border pt-3">{t.questions.map((q, qi) => {
-            const mine = t.answers?.[qi];
-            return <li key={qi} className="rounded-lg bg-primary-light/50 p-3 text-sm">
+            const mine = mineOf(t.answers?.[qi]);
+            const right_ = correctOf(q);
+            const questionOk = t.state === 'completed' && right_.length === mine.length && right_.every((i) => mine.includes(i));
+            return <li key={qi} className={`rounded-lg p-3 text-sm ${t.state === 'completed' ? (questionOk ? 'bg-emerald-50/60' : 'border border-rose-200 bg-rose-50') : 'bg-primary-light/50'}`}>
               <div className="font-bold"><span className="text-primary">{qi + 1}.</span> <MathText text={q.question} /></div>
               <QuestionFigure figure={q.figure} />
               <div className="mt-2 grid gap-1.5 sm:grid-cols-2">{q.choices.map((c, ci) => {
-                const right = q.correctIndex === ci, wrong = t.state === 'completed' && mine === ci && !right;
+                const right = right_.includes(ci), wrong = t.state === 'completed' && mine.includes(ci) && !right;
                 return <div key={ci} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${right ? 'border-emerald-300 bg-emerald-50' : wrong ? 'border-rose-300 bg-rose-50' : 'border-border bg-white'}`}>
                   <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-extrabold ${right ? 'bg-emerald-600 text-white' : wrong ? 'bg-rose-600 text-white' : 'border border-border text-muted'}`}>{String.fromCharCode(65 + ci)}</span>
                   <span className="min-w-0 break-words"><MathText text={c} /></span>
-                  {t.state === 'completed' && mine === ci && <span className="ml-auto text-[10px] font-bold text-muted">ответ ученика</span>}
+                  {t.state === 'completed' && mine.includes(ci) && <span className="ml-auto text-[10px] font-bold text-muted">ответ ученика</span>}
                 </div>;
               })}</div>
+              {right_.length > 1 && <p className="mt-1 text-[11px] font-bold text-muted">Нужно выбрать {right_.length} ответа</p>}
+              {q.explanation && <div className="mt-2 rounded-md border border-border bg-white p-2 text-xs text-slate-700"><b className="text-slate-500">Решение: </b><span className="whitespace-pre-line"><MathText text={q.explanation} /></span></div>}
             </li>;
           })}</ol>}
         </article>;
@@ -237,12 +245,16 @@ export default function TeacherTestsTab({ students, lessons, refreshKey, onStart
               <button type="button" onClick={() => setEditing({ ...editing, questions: editing.questions.filter((_, i) => i !== qi) })} disabled={editing.questions.length <= 5} title={editing.questions.length <= 5 ? 'Минимум 5 вопросов' : 'Удалить вопрос'} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />Удалить</button></div>
             <textarea value={q.question} rows={2} maxLength={700} onChange={(e) => updateQuestion(qi, { question: e.target.value })} className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
             {q.figure && <div className="mt-2 flex items-center gap-3"><div className="max-w-[160px] overflow-hidden rounded-lg border border-border bg-white p-1"><QuestionFigure figure={q.figure} /></div><button type="button" onClick={() => updateQuestion(qi, { figure: undefined })} className="text-xs font-bold text-rose-700 hover:underline">Убрать рисунок</button></div>}
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">{q.choices.map((c, ci) => <label key={ci} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${q.correctIndex === ci ? 'border-emerald-300 bg-emerald-50' : 'border-border bg-white'}`}>
-              <input type="radio" name={`correct-${qi}`} checked={q.correctIndex === ci} onChange={() => updateQuestion(qi, { correctIndex: ci })} aria-label={`Правильный ответ: вариант ${String.fromCharCode(65 + ci)}`} className="h-4 w-4 shrink-0 accent-emerald-600" />
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">{q.choices.map((c, ci) => <label key={ci} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${(q.need ? q.correctIndexes?.includes(ci) : q.correctIndex === ci) ? 'border-emerald-300 bg-emerald-50' : 'border-border bg-white'}`}>
+              {q.need ? <input type="checkbox" checked={Boolean(q.correctIndexes?.includes(ci))} onChange={() => { const cur = q.correctIndexes ?? []; const next = cur.includes(ci) ? cur.filter((x) => x !== ci) : cur.length >= q.need! ? [...cur.slice(1), ci] : [...cur, ci]; updateQuestion(qi, { correctIndexes: next.sort((a, b) => a - b) }); }} aria-label={`Правильный ответ: вариант ${String.fromCharCode(65 + ci)}`} className="h-4 w-4 shrink-0 accent-emerald-600" />
+                : <input type="radio" name={`correct-${qi}`} checked={q.correctIndex === ci} onChange={() => updateQuestion(qi, { correctIndex: ci })} aria-label={`Правильный ответ: вариант ${String.fromCharCode(65 + ci)}`} className="h-4 w-4 shrink-0 accent-emerald-600" />}
               <span className="text-[11px] font-extrabold text-muted">{String.fromCharCode(65 + ci)}</span>
               <input value={c} maxLength={300} onChange={(e) => updateQuestion(qi, { choices: q.choices.map((x, i) => i === ci ? e.target.value : x) })} className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
             </label>)}</div>
-            <p className="mt-1 text-[11px] text-muted">Отметьте кружком правильный ответ. Формулы можно писать в LaTeX, как в сгенерированном тесте.</p>
+            <p className="mt-1 text-[11px] text-muted">{q.need ? `Отметьте галочками правильные ответы — ровно ${q.need}.` : 'Отметьте кружком правильный ответ.'} Формулы можно писать в LaTeX, как в сгенерированном тесте.</p>
+            <label className="mt-2 block text-[11px] font-bold text-muted">Объяснение решения (ученик увидит после теста)
+              <textarea value={q.explanation ?? ''} rows={2} maxLength={2500} onChange={(e) => updateQuestion(qi, { explanation: e.target.value })} className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-primary" />
+            </label>
           </li>)}</ol>
           <button type="button" onClick={() => setEditing({ ...editing, questions: [...editing.questions, { question: '', choices: ['', '', '', ''], correctIndex: 0 }] })} disabled={editing.questions.length >= 30} className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-dashed border-primary/50 px-4 py-2 text-sm font-bold text-primary hover:bg-primary-light disabled:opacity-40"><Plus className="h-4 w-4" />Добавить вопрос</button>
           {editError && <p role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{editError}</p>}

@@ -96,6 +96,8 @@ p { margin: 0; }
 .choice .k { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid var(--navy); display: grid; place-items: center; font-family: "Caveat", cursive; font-size: 22px; background: var(--soft); }
 .choice.on { background: #FFF3BF; box-shadow: 3px 3px 0 var(--gold); } .choice.on .k { background: var(--ink); color: #fff; }
 .choice:active { transform: translate(2px, 2px); }
+.choice.right { background: #E8F8EF; border-color: var(--green); box-shadow: 3px 3px 0 #bfe9d1; } .choice.right .k { background: var(--green); color: #fff; border-color: var(--green); }
+.choice.wrong { background: #FFECEC; border-color: var(--red); box-shadow: 3px 3px 0 #f6c3c5; } .choice.wrong .k { background: var(--red); color: #fff; border-color: var(--red); }
 
 /* расписание */
 .day-title { display: flex; align-items: center; gap: 8px; margin: 18px 2px 8px; }

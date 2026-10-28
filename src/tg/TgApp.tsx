@@ -1,4 +1,5 @@
 import MathText, { QuestionFigure } from '../shared/MathText';
+import { answerList, isAnswerCorrect, type AnswerValue, type ReviewQuestion } from '../shared/quizReview';
 import { levelFor, earnedStars, LEVEL_NAMES, LEVEL_STARS, RANKS, MAX_LEVEL, levelImage, isMilestone, rankOf } from '../shared/levels.js';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -27,8 +28,9 @@ type PTab = 'kids' | 'plan' | 'hist' | 'prizes';
 type Lesson = { id: string; day: number; hour: number; title: string; lessonLink?: string; lessonDescription?: string; attendance?: boolean; studentId?: string; student?: { firstName?: string } | null };
 type Child = { id: string; firstName: string; lastName: string; studentClass?: string; teacher?: { firstName: string; lastName: string } | null; progress?: { stars?: number } };
 type HistoryEntry = { id: string; date: string; time: string; topic?: string; homeworkGrade?: string; testGrade?: string; nextHomework?: string; attendance?: boolean; attendanceReason?: string; attachment?: { filename: string } | null };
-type Question = { question: string; choices: string[]; figure?: string };
-type Test = { id: string; kind?: 'lesson_quiz' | 'quiz'; title: string; studentClass: string; lessonHour?: number; deadlineAt?: string; durationMinutes: number; questions: Question[]; status: 'assigned' | 'completed' | 'expired'; score?: number };
+type Question = ReviewQuestion;
+type Test = { id: string; kind?: 'lesson_quiz' | 'quiz'; title: string; studentClass: string; lessonHour?: number; deadlineAt?: string; durationMinutes: number; questions: Question[]; status: 'assigned' | 'completed' | 'expired'; score?: number; answers?: AnswerValue[] };
+type Done = { score: number; total: number; title: string; review: Question[]; answers: AnswerValue[] };
 type Homework = { id: string; date: string; time: string; topic: string; nextHomework: string; attachment?: { filename: string; mimeType?: string } | null };
 type Message = { id: string; at: string; sender: string; body: string; read: boolean };
 type Portal = {
@@ -212,7 +214,7 @@ function Plan({ portal, now }: { portal: Portal; now: Date }) {
 }
 
 /* ───────── Тесты ───────── */
-function Tests({ portal, start }: { portal: Portal; start: (t: Test) => void }) {
+function Tests({ portal, start, explain }: { portal: Portal; start: (t: Test) => void; explain: (t: Test) => void }) {
   const tests = [...(portal.studentTests || [])].sort((a, b) => (a.status === b.status ? 0 : a.status === 'assigned' ? -1 : 1));
   const waiting = tests.filter((t) => t.status === 'assigned').length;
   return <div>
@@ -227,38 +229,75 @@ function Tests({ portal, start }: { portal: Portal; start: (t: Test) => void }) 
             {t.status === 'completed' && <p className="small" style={{ marginTop: 4 }}>Результат: <b>{t.score ?? 0} из {t.questions.length}</b></p>}
           </div></div>
         {t.status === 'assigned' && <button className="btn gold block" style={{ marginTop: 12 }} onClick={() => { tap('medium'); start(t); }}>Начать тест <ArrowRight size={18} /></button>}
+        {t.status === 'completed' && <button className="btn ghost block" style={{ marginTop: 12 }} onClick={() => { tap(); explain(t); }}>Показать объяснение</button>}
       </div>)}</div>}
   </div>;
 }
 
-function TestRunner({ test, onExit, onDone }: { test: Test; onExit: () => void; onDone: (score: number, total: number) => void }) {
+function TestRunner({ test, onExit, onDone }: { test: Test; onExit: () => void; onDone: (r: Done) => void }) {
   const [i, setI] = useState(0);
-  const [answers, setAnswers] = useState<number[]>(() => test.questions.map(() => -1));
+  const [answers, setAnswers] = useState<number[][]>(() => test.questions.map(() => []));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const total = test.questions.length;
   const q = test.questions[i];
-  const confirmExit = useCallback(() => { if (answers.some((a) => a >= 0) && !window.confirm('Выйти из теста? Ответы не сохранятся.')) return; onExit(); }, [answers, onExit]);
+  const need = (idx: number) => test.questions[idx].pick || 1;
+  const done = (idx: number) => answers[idx].length === need(idx);
+  const confirmExit = useCallback(() => { if (answers.some((a) => a.length > 0) && !window.confirm('Выйти из теста? Ответы не сохранятся.')) return; onExit(); }, [answers, onExit]);
   useEffect(() => { tg?.BackButton.show(); tg?.BackButton.onClick(confirmExit); tg?.enableClosingConfirmation?.(); return () => { tg?.BackButton.offClick(confirmExit); tg?.BackButton.hide(); tg?.disableClosingConfirmation?.(); }; }, [confirmExit]);
-  const pick = (k: number) => { tap(); setAnswers((a) => a.map((v, idx) => (idx === i ? k : v))); };
+  const pick = (k: number) => {
+    tap();
+    setAnswers((all) => all.map((cur, idx) => {
+      if (idx !== i) return cur;
+      const n = need(idx);
+      if (n === 1) return [k];
+      if (cur.includes(k)) return cur.filter((v) => v !== k);
+      return cur.length >= n ? [...cur.slice(1), k] : [...cur, k];
+    }));
+  };
   const finish = async () => {
     setBusy(true); setError('');
-    try { const r = await api<{ score: number; total: number }>(`/api/student/tests/${test.id}/submit`, { method: 'POST', body: JSON.stringify({ answers }) }); notify('success'); onDone(r.score, r.total); }
+    try {
+      const body = answers.map((a, idx) => (need(idx) > 1 ? a : a[0]));
+      const r = await api<{ score: number; total: number; review?: Question[]; answers?: AnswerValue[] }>(`/api/student/tests/${test.id}/submit`, { method: 'POST', body: JSON.stringify({ answers: body }) });
+      notify('success'); onDone({ score: r.score, total: r.total, title: test.title, review: r.review ?? [], answers: r.answers ?? [] });
+    }
     catch (x) { notify('error'); setError(errText(x, 'Не удалось отправить ответы.')); setBusy(false); }
   };
   return <div className="stack">
-    <div className="row"><button className="iconbtn" onClick={confirmExit} aria-label="Выйти"><X size={20} /></button><div className="grow"><div className="q-progress"><i style={{ width: `${((i + (answers[i] >= 0 ? 1 : 0)) / total) * 100}%` }} /></div></div><span className="hand" style={{ fontSize: 24 }}>{i + 1}/{total}</span></div>
+    <div className="row"><button className="iconbtn" onClick={confirmExit} aria-label="Выйти"><X size={20} /></button><div className="grow"><div className="q-progress"><i style={{ width: `${((i + (done(i) ? 1 : 0)) / total) * 100}%` }} /></div></div><span className="hand" style={{ fontSize: 24 }}>{i + 1}/{total}</span></div>
     <p className="tiny muted">{test.title}</p>
     <div className="card" key={i}><h2 style={{ fontSize: 30, lineHeight: 1.1, whiteSpace: 'pre-wrap' }}><MathText text={q.question} /></h2><QuestionFigure figure={q.figure} /></div>
-    <div className="stack">{q.choices.map((c, k) => <button key={k} className={`choice ${answers[i] === k ? 'on' : ''}`} onClick={() => pick(k)}><span className="k">{'АБВГДЕ'[k]}</span><span><MathText text={c} /></span></button>)}</div>
+    {need(i) > 1 && <p className="small" style={{ fontWeight: 800 }}>Выбери {need(i)} {need(i) < 5 ? 'ответа' : 'ответов'} · выбрано {answers[i].length}</p>}
+    <div className="stack">{q.choices.map((c, k) => <button key={k} className={`choice ${answers[i].includes(k) ? 'on' : ''}`} onClick={() => pick(k)}><span className="k">{'АБВГДЕ'[k]}</span><span><MathText text={c} /></span></button>)}</div>
     {error && <p className="err" role="alert">{error}</p>}
     <div className="row">
       <button className="btn ghost" disabled={i === 0} onClick={() => setI(i - 1)}><ChevronLeft size={18} /></button>
       {i < total - 1
-        ? <button className="btn block gold" disabled={answers[i] < 0} onClick={() => { tap(); setI(i + 1); }}>Дальше <ArrowRight size={18} /></button>
-        : <button className="btn block" disabled={busy || answers.some((a) => a < 0)} onClick={() => void finish()}>{busy ? 'Отправляем…' : 'Завершить тест'}</button>}
+        ? <button className="btn block gold" disabled={!done(i)} onClick={() => { tap(); setI(i + 1); }}>Дальше <ArrowRight size={18} /></button>
+        : <button className="btn block" disabled={busy || !answers.every((_, idx) => done(idx))} onClick={() => void finish()}>{busy ? 'Отправляем…' : 'Завершить тест'}</button>}
     </div>
-    {i === total - 1 && answers.some((a) => a < 0) && <p className="tiny muted" style={{ textAlign: 'center' }}>Ответь на все вопросы — вернись назад к пропущенным.</p>}
+    {i === total - 1 && !answers.every((_, idx) => done(idx)) && <p className="tiny muted" style={{ textAlign: 'center' }}>Ответь на все вопросы — вернись назад к пропущенным.</p>}
+  </div>;
+}
+
+/* Разбор теста: к каждому заданию верные ответы, ответ ученика и подробное решение */
+function Explain({ title, questions, answers, onClose }: { title: string; questions: Question[]; answers?: AnswerValue[]; onClose: () => void }) {
+  useEffect(() => { tg?.BackButton.show(); tg?.BackButton.onClick(onClose); return () => { tg?.BackButton.offClick(onClose); tg?.BackButton.hide(); }; }, [onClose]);
+  const ok = questions.map((q, idx) => isAnswerCorrect(q, answers?.[idx]));
+  return <div className="stack">
+    <div className="row"><button className="iconbtn" onClick={onClose} aria-label="Закрыть разбор"><X size={20} /></button><div className="grow"><p className="tiny muted">Разбор · верно {ok.filter(Boolean).length} из {questions.length}</p><h3>{title}</h3></div></div>
+    {questions.map((q, idx) => {
+      const mine = answerList(answers?.[idx]); const right = q.correct ?? [];
+      return <div key={idx} className={`card ${ok[idx] ? 'ok' : 'bad'}`}>
+        <p className="small" style={{ fontWeight: 800 }}>{idx + 1}. {ok[idx] ? '✓ Верно' : '✗ Неверно'}</p>
+        <h3 style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}><MathText text={q.question} /></h3><QuestionFigure figure={q.figure} />
+        <div className="stack" style={{ marginTop: 10 }}>{q.choices.map((c, k) => { const r = right.includes(k); const w = mine.includes(k) && !r; return <div key={k} className={`choice ${r ? 'right' : w ? 'wrong' : ''}`} style={{ fontSize: 16, cursor: 'default' }}><span className="k">{'АБВГДЕ'[k]}</span><span className="grow"><MathText text={c} /></span>{(mine.includes(k) || r) && <span className="tiny" style={{ fontWeight: 800 }}>{mine.includes(k) && r ? 'твой · верно' : mine.includes(k) ? 'твой ответ' : 'верный'}</span>}</div>; })}</div>
+        {!mine.length && <p className="tiny" style={{ marginTop: 6, color: 'var(--red)', fontWeight: 800 }}>Ответ не выбран.</p>}
+        <div className="card flat" style={{ marginTop: 10 }}><p className="tiny muted" style={{ fontWeight: 800, textTransform: 'uppercase' }}>Решение</p>{q.explanation ? <p className="small" style={{ whiteSpace: 'pre-line', marginTop: 4 }}><MathText text={q.explanation} /></p> : <p className="small muted" style={{ marginTop: 4 }}>Подробное объяснение не добавлено. Верный ответ: {right.map((k) => 'АБВГДЕ'[k]).join(', ') || '—'}.</p>}</div>
+      </div>;
+    })}
+    <button className="btn block" onClick={onClose}>Закрыть</button>
   </div>;
 }
 
@@ -668,7 +707,8 @@ export default function TgApp() {
   const [tab, setTab] = useState<Tab>('home');
   const [now, setNow] = useState(() => new Date());
   const [testRun, setTestRun] = useState<Test | null>(null);
-  const [result, setResult] = useState<{ score: number; total: number } | null>(null);
+  const [result, setResult] = useState<Done | null>(null);
+  const [explainData, setExplainData] = useState<{ title: string; questions: Question[]; answers?: AnswerValue[] } | null>(null);
   const [hw, setHw] = useState<Homework | null>(null);
   const [showMsg, setShowMsg] = useState(false);
   const [showSet, setShowSet] = useState(false);
@@ -719,13 +759,16 @@ export default function TgApp() {
     {toast && <Toast text={toast.t} kind={toast.k} onDone={() => setToast(null)} />}
   </>;
 
+  if (explainData) return <div className="app"><Explain title={explainData.title} questions={explainData.questions} answers={explainData.answers} onClose={() => setExplainData(null)} /></div>;
+
   if (result) return <div className="app"><div className="login" style={{ minHeight: '80dvh', textAlign: 'center' }}>
     <div className="card ok pop"><Sparkles size={40} /><h1 style={{ marginTop: 6 }}>Тест завершён!</h1>
       <p className="hand" style={{ fontSize: 56, margin: '8px 0' }}>{result.score} <span className="muted">из {result.total}</span></p>
       <p className="small muted">{result.score === result.total ? 'Отлично, без единой ошибки!' : result.score >= result.total / 2 ? 'Хороший результат, так держать!' : 'Не расстраивайся — разберите ошибки на следующем занятии.'}</p>
-      <button className="btn gold block" style={{ marginTop: 16 }} onClick={() => { setResult(null); setTab('tests'); }}>Готово</button></div></div></div>;
+      <button className="btn ghost block" style={{ marginTop: 16 }} onClick={() => { tap(); setExplainData({ title: result.title, questions: result.review, answers: result.answers }); }}>Показать объяснение</button>
+      <button className="btn gold block" style={{ marginTop: 10 }} onClick={() => { setResult(null); setTab('tests'); }}>Готово</button></div></div></div>;
 
-  if (testRun) return <div className="app"><TestRunner test={testRun} onExit={() => setTestRun(null)} onDone={(score, total) => { setTestRun(null); setResult({ score, total }); void load(true); }} /></div>;
+  if (testRun) return <div className="app"><TestRunner test={testRun} onExit={() => setTestRun(null)} onDone={(r) => { setTestRun(null); setResult(r); void load(true); }} /></div>;
 
   const stars = portal.progress?.stars ?? 0;
   const unread = portal.messages.filter((m) => !m.read).length;
@@ -750,7 +793,7 @@ export default function TgApp() {
       <main key={tab}>
         {tab === 'home' && <Home portal={portal} now={now} go={setTab} openHw={setHw} startTest={startTest} />}
         {tab === 'plan' && <Plan portal={portal} now={now} />}
-        {tab === 'tests' && <Tests portal={portal} start={startTest} />}
+        {tab === 'tests' && <Tests portal={portal} start={startTest} explain={(t) => setExplainData({ title: t.title, questions: t.questions, answers: t.answers })} />}
         {tab === 'hw' && <HomeworkList portal={portal} open={setHw} />}
         {tab === 'levels' && <Levels portal={portal} refresh={() => load(true)} say={say} />}
         {tab === 'sky' && <SkyQuest />}

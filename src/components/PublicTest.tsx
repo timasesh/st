@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, CheckCircle2, Loader2, Lock, MessageCircle, RotateCcw, Share2, Sparkles, XCircle } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckCircle2, Loader2, Lock, MessageCircle, RotateCcw, Share2, SkipForward, Sparkles, XCircle } from 'lucide-react';
 import { ALL_GRADES, DIFFICULTY, PUBLIC_TESTS, PublicQuestion, isGradeAvailable, resultLevel } from '../data/publicTests';
 import { whatsappUrl } from '../constants';
 import { Rich, TestVisual } from './TestVisual';
@@ -63,6 +63,7 @@ export default function PublicTest() {
   const [formError, setFormError] = useState('');
   const [sending, setSending] = useState(false);
   const [leadId, setLeadId] = useState<string | null>(null);
+  const [showSolutions, setShowSolutions] = useState(false);
 
   useEffect(() => { document.title = 'Тест по математике 5–11 класс — Study Task'; }, []);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [stage, index]);
@@ -83,6 +84,7 @@ export default function PublicTest() {
     setAnswers(Array(prepared.length).fill(null));
     setIndex(0);
     setPicked(null);
+    setShowSolutions(false);
     setStage('quiz');
   };
   // проверка контактов + создание записи на сервере, затем запуск теста
@@ -120,6 +122,12 @@ export default function PublicTest() {
     if (index + 1 >= total) { setStage('result'); return; }
     setIndex(index + 1);
     setPicked(null);
+  };
+  // «Пропустить»: вопрос сразу засчитывается как неверный (ответ −1), переходим дальше
+  const skip = () => {
+    if (picked !== null) return;
+    setAnswers((prev) => prev.map((v, k) => (k === index ? -1 : v)));
+    next();
   };
   const share = async () => {
     const url = `${window.location.origin}/test`;
@@ -242,15 +250,22 @@ export default function PublicTest() {
                 </div>
 
                 {picked !== null && (
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`rounded-2xl border-2 p-4 text-sm sm:text-base ${picked === q.correct ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-                    <p className="font-extrabold text-navy">{picked === q.correct ? 'Верно!' : 'Не совсем.'} <span className="font-semibold text-muted">{q.topic}</span></p>
-                    <p className="mt-1 text-foreground"><Rich text={q.explanation} /></p>
-                  </motion.div>
+                  <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`rounded-2xl border-2 px-4 py-3 text-sm font-extrabold sm:text-base ${picked === q.correct ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                    {picked === q.correct ? 'Верно!' : 'Не совсем.'} <span className="font-semibold text-muted">{q.topic} · подробный разбор — после теста</span>
+                  </motion.p>
                 )}
 
-                <button onClick={next} disabled={picked === null} className="clay-btn inline-flex w-full items-center justify-center gap-2 bg-primary px-6 py-4 text-lg font-extrabold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40">
-                  {index + 1 >= total ? 'Узнать результат' : 'Дальше'} <ArrowRight className="h-5 w-5" />
-                </button>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button onClick={next} disabled={picked === null} className="clay-btn inline-flex w-full items-center justify-center gap-2 bg-primary px-6 py-4 text-lg font-extrabold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40 sm:flex-1">
+                    {index + 1 >= total ? 'Узнать результат' : 'Дальше'} <ArrowRight className="h-5 w-5" />
+                  </button>
+                  {picked === null && (
+                    <button onClick={skip} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-border bg-white px-6 py-4 text-base font-extrabold text-muted transition hover:border-primary hover:text-primary sm:w-auto" title="Вопрос будет засчитан как неверный">
+                      <SkipForward className="h-5 w-5" /> Пропустить
+                    </button>
+                  )}
+                </div>
+                {picked === null && <p className="-mt-3 text-center text-xs text-muted">Пропущенный вопрос засчитывается как неверный.</p>}
               </div>
             </motion.section>
           )}
@@ -279,12 +294,51 @@ export default function PublicTest() {
                     return (
                       <li key={i} className="flex items-start gap-3 rounded-xl bg-primary-light px-3 py-2">
                         {ok ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" /> : <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />}
-                        <div className="text-sm"><p className="font-bold text-navy">{i + 1}. {item.topic}</p>{!ok && <p className="text-muted">Верный ответ: <Rich text={item.options[item.answer]} /></p>}</div>
+                        <div className="text-sm"><p className="font-bold text-navy">{i + 1}. {item.topic}</p>{answers[i] === -1 && <p className="font-bold text-amber-700">Пропущен — засчитан как неверный</p>}{!ok && <p className="text-muted">Верный ответ: <Rich text={item.options[item.answer]} /></p>}</div>
                       </li>
                     );
                   })}
                 </ol>
               </div>
+
+              <div className="clay-card space-y-4 p-6 text-center sm:p-8">
+                <button onClick={() => setShowSolutions((v) => !v)} aria-expanded={showSolutions} className="clay-btn inline-flex w-full items-center justify-center gap-2 bg-primary px-6 py-4 text-lg font-extrabold text-white hover:bg-primary-dark sm:w-auto"><BookOpen className="h-5 w-5" /> {showSolutions ? 'Скрыть объяснение' : 'Показать объяснение'}</button>
+                <p className="text-sm text-muted">Подробное решение каждого задания — даже тех, что вы решили верно. Неверные и пропущенные выделены красным.</p>
+              </div>
+
+              {showSolutions && (
+                <section aria-label="Подробное объяснение" className="space-y-4">
+                  {questions.map((item, i) => {
+                    const ok = answers[i] === item.correct;
+                    const skipped = answers[i] === -1;
+                    return (
+                      <article key={i} className={`clay-card space-y-4 p-5 sm:p-7 ${ok ? '' : '!border-rose-300 !bg-rose-50'}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <h4 className="whitespace-pre-line font-display text-xl font-extrabold leading-snug text-navy"><span className={ok ? 'text-emerald-600' : 'text-rose-600'}>{i + 1}.</span> <Rich text={item.text} /></h4>
+                          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-extrabold text-white ${ok ? 'bg-emerald-600' : 'bg-rose-600'}`}>{ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}{ok ? 'Верно' : skipped ? 'Пропущен' : 'Неверно'}</span>
+                        </div>
+                        {item.visual && <TestVisual visual={item.visual} />}
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {item.order.map((optIndex, k) => {
+                            const right = k === item.correct;
+                            const wrongPick = answers[i] === k && !right;
+                            return (
+                              <div key={k} className={`flex items-center justify-between gap-2 rounded-xl border-2 px-4 py-2.5 text-base font-extrabold ${right ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : wrongPick ? 'border-rose-400 bg-rose-100 text-rose-800' : 'border-border bg-white text-muted'}`}>
+                                <span><Rich text={item.options[optIndex]} /></span>
+                                <span className="shrink-0 text-[11px] font-extrabold uppercase">{right ? (answers[i] === k ? 'ваш ответ · верно' : 'верный') : wrongPick ? 'ваш ответ' : ''}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className={`rounded-2xl border-2 p-4 ${ok ? 'border-emerald-200 bg-emerald-50/60' : 'border-rose-200 bg-white'}`}>
+                          <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-muted">Решение · {item.topic}</p>
+                          <p className="whitespace-pre-line text-sm leading-relaxed text-foreground sm:text-base"><Rich text={item.solution} /></p>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </section>
+              )}
 
               <div className="clay-card space-y-4 bg-primary p-7 text-center sm:p-9" style={{ background: 'var(--color-primary)', borderColor: 'var(--color-primary-dark)' }}>
                 <h3 className="font-display text-2xl font-extrabold text-white">Закрыть пробелы вместе с Study Task</h3>
