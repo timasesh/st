@@ -20,7 +20,7 @@ export default function Footer() {
             </div>
 
             <p className="text-sm text-blue-200/70 max-w-sm leading-relaxed">
-              Математический образовательный центр для 5–9 классов: живые уроки, квизы и система звёзд с реальными призами.
+              Математический образовательный центр для 1–11 классов: живые уроки, квизы и система звёзд с реальными призами.
             </p>
             <div className="flex items-center gap-3 pt-1">
               <img

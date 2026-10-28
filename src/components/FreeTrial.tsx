@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Gift, BookOpen, Award, CheckCircle, ArrowRight, Heart } from 'lucide-react';
-import { GRADE_OPTIONS, whatsappUrl } from '../constants';
+import { TRIAL_GRADE_OPTIONS, whatsappUrl } from '../constants';
 
 interface FreeTrialProps {
   onUnlockDiagnosticAchievement: () => void;
@@ -69,7 +69,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                     <div>
                       <h4 className="font-display font-bold text-base">1 пробный урок</h4>
                       <p className="opacity-80 text-xs mt-0.5">
-                        60 минут с преподавателем. Математика, 5–9 классы, онлайн.
+                        60 минут с преподавателем. Математика, 1–11 классы, онлайн.
                       </p>
                     </div>
                   </div>
@@ -157,7 +157,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                             onChange={(e) => setFormData({ ...formData, studentClass: e.target.value })}
                             className="w-full bg-primary-light border-2 border-border text-sm rounded-xl px-4 py-3 min-h-12 focus:outline-none focus:border-primary focus:bg-white transition-colors cursor-pointer font-medium"
                           >
-                            {GRADE_OPTIONS.map((grade) => (
+                            {TRIAL_GRADE_OPTIONS.map((grade) => (
                               <option key={grade} value={grade}>
                                 {grade}
                               </option>
@@ -182,7 +182,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                         />
                       </div>
 
-                      <p className="text-xs text-muted">Предмет: математика. Набор открыт для 5–9 классов.</p>
+                      <p className="text-xs text-muted">Предмет: математика. Набор открыт для 1–11 классов.</p>
 
                       <button
                         type="submit"

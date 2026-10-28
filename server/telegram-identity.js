@@ -117,7 +117,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
   const fileIdPath = path.join(dataDir, 'welcome-video-file-id.json');
   let welcomeFileId = null;
   let welcomeLoaded = false;
-  const welcomeCaption = `Привет! 👋 Это <b>StudyTask</b> — математический центр для 5–9 классов.\n\n📚 Живые уроки с учителем, тесты и домашка по фото\n⭐ Звёзды, рейтинг и призы\n\nЧтобы начать, отправьте сюда <b>свой код</b> (${STID_LENGTH} цифр) — ученика или родителя. Его выдаёт администратор. Мы привяжем кабинет к вашему Telegram, и входить заново не придётся.`;
+  const welcomeCaption = `Привет! 👋 Это <b>StudyTask</b> — математический центр для 1–11 классов.\n\n📚 Живые уроки с учителем, тесты и домашка по фото\n⭐ Звёзды, рейтинг и призы\n\nЧтобы начать, отправьте сюда <b>свой код</b> (${STID_LENGTH} цифр) — ученика или родителя. Его выдаёт администратор. Мы привяжем кабинет к вашему Telegram, и входить заново не придётся.`;
   async function sendWelcome(chatId) {
     try {
       if (!welcomeLoaded) {
@@ -178,7 +178,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
       await save();
       try { await tgCall('setChatMenuButton', { chat_id: chatId, menu_button: { type: 'default' } }); } catch { /* не критично */ }
       if (await sendWelcome(chatId)) return;
-      return say(chatId, `Привет! 👋 Это бот <b>StudyTask</b> — математический центр для 5–9 классов.\n\nОтправьте <b>код ученика (STID)</b> — ${STID_LENGTH} цифр. Его выдал администратор.`, { reply_markup: { remove_keyboard: true } });
+      return say(chatId, `Привет! 👋 Это бот <b>StudyTask</b> — математический центр для 1–11 классов.\n\nОтправьте <b>код ученика (STID)</b> — ${STID_LENGTH} цифр. Его выдал администратор.`, { reply_markup: { remove_keyboard: true } });
     }
     // /exit — выход из аккаунта: снимаем привязку Telegram, при следующем открытии мини-приложения сессия сбрасывается
     if (/^\/exit(@\w+)?$/i.test(text)) {
@@ -218,7 +218,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
         return say(chatId, text.startsWith('/start') ? `С возвращением, <b>${esc(linkedAccount.firstName)}</b>! 👋\nНажмите кнопку, чтобы открыть кабинет — входить заново не нужно.` : (linkedAccount.role === 'parent' ? 'Кабинет родителя — по кнопке ниже 👇\nЕсли нужно привязать другой аккаунт, отправьте его код.' : 'Кабинет ученика — по кнопке ниже 👇\nЕсли нужно привязать другого ученика, отправьте его код.'), { reply_markup: openButton() });
       }
       if (text.startsWith('/start') && await sendWelcome(chatId)) return;
-      return say(chatId, `Привет! 👋 Это бот <b>StudyTask</b> — математический центр для 5–9 классов.\n\nОтправьте <b>код ученика (STID)</b> — ${STID_LENGTH} цифр. Его выдал администратор.`);
+      return say(chatId, `Привет! 👋 Это бот <b>StudyTask</b> — математический центр для 1–11 классов.\n\nОтправьте <b>код ученика (STID)</b> — ${STID_LENGTH} цифр. Его выдал администратор.`);
     }
     if (blocked(tgId)) return say(chatId, 'Слишком много неверных попыток. Попробуйте через 15 минут или напишите администратору.');
     const account = accountByStid(digits);

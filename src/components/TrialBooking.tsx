@@ -1,19 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { CheckCircle2, MessageCircle } from 'lucide-react';
 import '../tg/tg.css';
+import PhoneInput from '../shared/PhoneInput';
+import { fullPhone, phoneProblem, prefixOk } from '../shared/phone';
 
 /* Страница записи на пробный урок (study-task.kz/trial) — в стиле мини-приложения StudyTask («доска»). */
-const GRADES = [5, 6, 7, 8, 9];
+const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 const WHATSAPP = 'https://wa.me/77000373431';
-
-function formatPhone(value: string) {
-  let d = value.replace(/\D/g, '');
-  if (d.startsWith('8')) d = `7${d.slice(1)}`;
-  if (d && !d.startsWith('7')) d = `7${d}`;
-  d = d.slice(0, 11);
-  if (!d) return '';
-  return `+7${d.length > 1 ? ` ${d.slice(1, 4)}` : ''}${d.length > 4 ? ` ${d.slice(4, 7)}` : ''}${d.length > 7 ? ` ${d.slice(7, 9)}` : ''}${d.length > 9 ? ` ${d.slice(9, 11)}` : ''}`;
-}
 
 export default function TrialBooking() {
   const [studentName, setStudentName] = useState('');
@@ -30,9 +23,11 @@ export default function TrialBooking() {
     event.preventDefault();
     setError('');
     if (grade === null) { setError('Выберите класс.'); return; }
+    const problem = phoneProblem(phone);
+    if (problem) { if (prefixOk(phone)) setError(problem); return; }
     setBusy(true);
     try {
-      const response = await fetch('/api/public/trial-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentName, parentName, grade, phone }) });
+      const response = await fetch('/api/public/trial-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentName, parentName, grade, phone: fullPhone(phone) }) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || 'Не удалось отправить заявку.');
       setDone(true);
@@ -45,7 +40,7 @@ export default function TrialBooking() {
     <div className="app" style={{ paddingBottom: 40 }}>
       <div className="row" style={{ margin: '6px 0 14px' }}>
         <img src="/static/ST.webp" alt="StudyTask" width={46} height={46} style={{ borderRadius: 12, border: '2.5px solid var(--navy)' }} />
-        <div className="grow"><h3>StudyTask</h3><p className="muted small">математика 5–9 классы · Алматы</p></div>
+        <div className="grow"><h3>StudyTask</h3><p className="muted small">математика 1–11 классы · Алматы</p></div>
       </div>
 
       {done ? (
@@ -68,9 +63,9 @@ export default function TrialBooking() {
             <label className="field"><span>Имя и фамилия ученика</span><input className="input" autoComplete="name" maxLength={80} value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Например, Алия Серикова" required /></label>
             <label className="field"><span>Имя родителя</span><input className="input" autoComplete="off" maxLength={80} value={parentName} onChange={(e) => setParentName(e.target.value)} placeholder="Например, Мадина" required /></label>
             <div className="field"><span>Класс</span>
-              <div className="seg" role="radiogroup" aria-label="Класс">{GRADES.map((g) => <button key={g} type="button" role="radio" aria-checked={grade === g} className={grade === g ? 'on' : ''} onClick={() => setGrade(g)}>{g}</button>)}</div>
+              <div className="seg" role="radiogroup" aria-label="Класс" style={{ gridAutoFlow: 'row', gridTemplateColumns: 'repeat(6, 1fr)' }}>{GRADES.map((g) => <button key={g} type="button" role="radio" aria-checked={grade === g} className={grade === g ? 'on' : ''} onClick={() => setGrade(g)}>{g}</button>)}</div>
             </div>
-            <label className="field"><span>Номер телефона для связи</span><input className="input" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(formatPhone(e.target.value))} placeholder="+7 700 123 45 67" required minLength={16} /></label>
+            <label className="field"><span>Номер телефона для связи</span><PhoneInput className="input" value={phone} onChange={(d) => { setPhone(d); setError(''); }} invalid={Boolean(phoneProblem(phone, Boolean(error)))} /></label>
             {error && <div className="card bad" role="alert" style={{ padding: '10px 12px' }}>{error}</div>}
             <button className="btn gold block" disabled={busy}>{busy ? 'Отправляем…' : 'Записаться на пробный урок'}</button>
             <p className="tiny muted" style={{ textAlign: 'center' }}>Нажимая кнопку, вы соглашаетесь на обработку персональных данных.</p>

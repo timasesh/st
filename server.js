@@ -1335,11 +1335,13 @@ function mutateTestLeads(change) {
   return run;
 }
 
+const LEAD_PHONE_CODES = new Set(['700', '701', '702', '703', '704', '705', '706', '707', '708', '709', '747', '771', '775', '776', '777', '778']);
+// только +7 и разрешённый код оператора: 11 цифр вида 77001234567
 function cleanLeadPhone(value) {
   let digits = String(value || '').replace(/\D/g, '');
   if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
   if (digits.length === 10) digits = `7${digits}`;
-  return digits.length >= 11 && digits.length <= 15 ? digits : '';
+  return digits.length === 11 && digits.startsWith('7') && LEAD_PHONE_CODES.has(digits.slice(1, 4)) ? digits : '';
 }
 
 app.post('/api/public/test-leads', async (req, res) => {
@@ -1348,7 +1350,7 @@ app.post('/api/public/test-leads', async (req, res) => {
     const phone = cleanLeadPhone(req.body?.phone);
     const grade = Number(req.body?.grade);
     if (name.length < 2 || name.length > 80) return res.status(400).json({ error: 'Введите имя (от 2 до 80 символов).' });
-    if (!phone) return res.status(400).json({ error: 'Введите номер телефона полностью, например +7 700 123 45 67.' });
+    if (!phone) return res.status(400).json({ error: 'Введите номер полностью: +7 и код 700–709, 747, 771, 775–778, например +7 700 123 45 67.' });
     if (!Number.isInteger(grade) || grade < 5 || grade > 11) return res.status(400).json({ error: 'Выберите класс от 5 до 11.' });
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const cutoff = Date.now() - 60 * 60 * 1000;
@@ -1435,8 +1437,8 @@ app.post('/api/public/trial-requests', async (req, res) => {
     const grade = Number(req.body?.grade);
     if (studentName.length < 3 || !studentName.includes(' ')) return res.status(400).json({ error: 'Укажите имя и фамилию ученика.' });
     if (parentName.length < 2) return res.status(400).json({ error: 'Укажите имя родителя.' });
-    if (!Number.isInteger(grade) || grade < 5 || grade > 9) return res.status(400).json({ error: 'Выберите класс от 5 до 9.' });
-    if (!phone) return res.status(400).json({ error: 'Введите номер телефона полностью, например +7 700 123 45 67.' });
+    if (!Number.isInteger(grade) || grade < 1 || grade > 11) return res.status(400).json({ error: 'Выберите класс от 1 до 11.' });
+    if (!phone) return res.status(400).json({ error: 'Введите номер полностью: +7 и код 700–709, 747, 771, 775–778, например +7 700 123 45 67.' });
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const cutoff = Date.now() - 60 * 60 * 1000;
     const recent = (trialRequestLog.get(ip) || []).filter((time) => time > cutoff);

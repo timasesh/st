@@ -20,7 +20,7 @@ export default function ContactForm() {
                 Напишите — ответим
               </h2>
               <p className="text-muted">
-                Расскажем про расписание, геймификацию и тарифы по математике для 5–9 классов.
+                Расскажем про расписание, геймификацию и тарифы по математике для 1–11 классов.
                 Обычно отвечаем в WhatsApp за пару минут.
               </p>
             </div>
@@ -84,7 +84,7 @@ export default function ContactForm() {
               <div className="space-y-2 text-xs">
                 <div className="bg-white p-3 rounded-2xl border-2 border-border/50 max-w-[85%] rounded-tl-sm">
                   <p className="text-foreground/80 leading-relaxed">
-                    Здравствуйте! Расскажите, в каком классе (5–9) учится ребёнок — подберём время для пробного урока математики.
+                    Здравствуйте! Расскажите, в каком классе (1–11) учится ребёнок — подберём время для пробного урока математики.
                   </p>
                 </div>
                 <div className="bg-white p-3 rounded-2xl border-2 border-border/50 max-w-[85%] rounded-tl-sm">

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import PhoneInput from '../shared/PhoneInput';
+import { fullPhone, nationalDigits, phoneProblem, prefixOk } from '../shared/phone';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowRight, BookOpen, CheckCircle2, Loader2, Lock, MessageCircle, RotateCcw, Share2, SkipForward, Sparkles, XCircle } from 'lucide-react';
 import { ALL_GRADES, DIFFICULTY, PUBLIC_TESTS, PublicQuestion, isGradeAvailable, resultLevel } from '../data/publicTests';
@@ -38,17 +40,6 @@ const readContact = () => {
   try { const v = JSON.parse(localStorage.getItem(CONTACT_KEY) || '{}'); return { name: String(v.name || ''), phone: String(v.phone || '') }; }
   catch { return { name: '', phone: '' }; }
 };
-// +7 (700) 123-45-67 по мере ввода; первая цифра 8 заменяется на 7
-function formatPhone(raw: string) {
-  let d = raw.replace(/\D/g, '');
-  if (d.startsWith('8')) d = `7${d.slice(1)}`;
-  if (d && !d.startsWith('7')) d = `7${d}`;
-  d = d.slice(0, 11);
-  if (!d) return '';
-  const p = [d.slice(1, 4), d.slice(4, 7), d.slice(7, 9), d.slice(9, 11)];
-  return `+7${p[0] ? ` (${p[0]}` : ''}${p[0].length === 3 ? ')' : ''}${p[1] ? ` ${p[1]}` : ''}${p[2] ? `-${p[2]}` : ''}${p[3] ? `-${p[3]}` : ''}`;
-}
-
 export default function PublicTest() {
   const initial = gradeFromPath();
   const [grade, setGrade] = useState<number | null>(initial && isGradeAvailable(initial) ? initial : null);
@@ -59,7 +50,7 @@ export default function PublicTest() {
   const [answers, setAnswers] = useState<(number | null)[]>([]);
   const [copied, setCopied] = useState(false);
   const [name, setName] = useState(() => readContact().name);
-  const [phone, setPhone] = useState(() => formatPhone(readContact().phone));
+  const [phone, setPhone] = useState(() => nationalDigits(readContact().phone)); // 10 цифр после +7
   const [formError, setFormError] = useState('');
   const [sending, setSending] = useState(false);
   const [leadId, setLeadId] = useState<string | null>(null);
@@ -91,9 +82,10 @@ export default function PublicTest() {
   const start = async (silent = false) => {
     if (!grade || sending) return;
     const cleanName = name.trim().replace(/\s+/g, ' ');
-    const digits = phone.replace(/\D/g, '');
+    const digits = fullPhone(phone);
     if (cleanName.length < 2) { setFormError('Введите ваше имя.'); return; }
-    if (digits.length !== 11) { setFormError('Введите номер телефона полностью — 11 цифр, например +7 700 123 45 67.'); return; }
+    const problem = phoneProblem(phone);
+    if (problem) { if (prefixOk(phone)) setFormError(problem); return; }
     setFormError('');
     setSending(true);
     try {
@@ -202,7 +194,7 @@ export default function PublicTest() {
                   </label>
                   <label className="block space-y-1.5">
                     <span className="text-sm font-extrabold text-navy">Номер телефона</span>
-                    <input value={phone} onChange={(e) => { setPhone(formatPhone(e.target.value)); setFormError(''); }} type="tel" inputMode="tel" autoComplete="tel" placeholder="+7 (700) 123-45-67" aria-invalid={Boolean(formError) && phone.replace(/\D/g, '').length !== 11}
+                    <PhoneInput value={phone} onChange={(d) => { setPhone(d); setFormError(''); }} invalid={Boolean(phoneProblem(phone, Boolean(formError)))}
                       className="w-full rounded-2xl border-2 border-border bg-white px-4 py-3 text-lg font-bold text-foreground outline-none transition placeholder:font-semibold placeholder:text-muted/60 focus:border-primary" />
                   </label>
                 </div>
