@@ -11,6 +11,7 @@ const Footer = lazy(() => import('./components/Footer'));
 const StudentLoginPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.StudentLoginPage })));
 const AdminLoginPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.AdminLoginPage })));
 const UserPortalPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.UserPortalPage })));
+const PublicTest = lazy(() => import('./components/PublicTest'));
 const AdminDashboardPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.AdminDashboardPage })));
 
 // Секции ниже первого экрана подгружаются после первой отрисовки, чтобы Hero появлялся сразу.
@@ -235,6 +236,9 @@ export default function App() {
     handleAddRewards(15, 100); // 100 XP triggers high progress
   };
 
+  if (window.location.pathname === '/test' || window.location.pathname.startsWith('/test/')) {
+    return withPageLoading(<PublicTest />);
+  }
   if (window.location.pathname === '/login') {
     return withPageLoading(<StudentLoginPage onLoginSuccess={handleLoginSuccess} />);
   }
