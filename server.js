@@ -1470,6 +1470,93 @@ app.patch('/api/admin/trial-requests/:id', requireAdmin, async (req, res) => {
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось обновить заявку.' }); }
 });
 
+// ---- Интенсив (страница /intensive): записи 5 и 9 классов ----
+// Темы и даты меняются ТОЛЬКО здесь.
+const INTENSIVE = {
+  startDate: '04.11.2026',
+  tracks: [
+    { grade: 5, topic: 'Дроби', headline: 'Дроби за 3 дня', blurb: 'Научишься уверенно решать дроби: сокращать, складывать, вычитать, умножать и делить.', days: ['Что такое дробь, сокращение и сравнение', 'Сложение и вычитание дробей', 'Умножение, деление и задачи на дроби'] },
+    { grade: 9, topic: 'Квадратные уравнения', headline: 'Квадратные уравнения за 3 дня', blurb: 'Разберёмся с квадратными уравнениями так, чтобы решать их без ошибок.', days: ['Неполные уравнения и разложение на множители', 'Дискриминант и формула корней', 'Теорема Виета и задачи'] },
+  ],
+};
+const INTENSIVE_REQUESTS_KEY = 'intensive_requests';
+let intensiveRequestsQueue = Promise.resolve();
+const intensiveRequestLog = new Map();
+async function readIntensiveRequests() {
+  if (!supabase) return readJsonFileOr(path.join(dataDir, 'intensive-requests.json'), []);
+  const result = await supabase.from('app_settings').select('value').eq('key', INTENSIVE_REQUESTS_KEY).maybeSingle();
+  if (result.error) throw new Error(`Не удалось загрузить записи: ${result.error.message}`);
+  return result.data?.value ? JSON.parse(result.data.value) : [];
+}
+async function writeIntensiveRequests(items) {
+  if (supabase) {
+    const result = await supabase.from('app_settings').upsert({ key: INTENSIVE_REQUESTS_KEY, value: JSON.stringify(items) });
+    if (result.error) throw new Error(`Не удалось сохранить запись: ${result.error.message}`);
+    return;
+  }
+  await fs.mkdir(dataDir, { recursive: true });
+  const filePath = path.join(dataDir, 'intensive-requests.json');
+  const temporaryPath = `${filePath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(items, null, 2), { mode: 0o600 });
+  await fs.rename(temporaryPath, filePath);
+}
+function mutateIntensiveRequests(change) {
+  const run = intensiveRequestsQueue.then(async () => { const items = await readIntensiveRequests(); const result = await change(items); await writeIntensiveRequests(items); return result; });
+  intensiveRequestsQueue = run.catch(() => {});
+  return run;
+}
+
+app.get('/api/public/intensive', (_req, res) => res.json(INTENSIVE));
+
+app.post('/api/public/intensive-requests', async (req, res) => {
+  try {
+    const clean = (value, max) => (typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, max) : '');
+    const studentName = clean(req.body?.studentName, 80);
+    const parentName = clean(req.body?.parentName, 80);
+    const phone = cleanLeadPhone(req.body?.phone);
+    const grade = Number(req.body?.grade);
+    const track = INTENSIVE.tracks.find((item) => item.grade === grade);
+    if (studentName.length < 3 || !studentName.includes(' ')) return res.status(400).json({ error: 'Укажите имя и фамилию ученика.' });
+    if (parentName.length < 2) return res.status(400).json({ error: 'Укажите имя родителя.' });
+    if (!track) return res.status(400).json({ error: 'Выберите 5 или 9 класс.' });
+    if (!phone) return res.status(400).json({ error: 'Введите номер полностью: +7 и код 700–709, 747, 771, 775–778, например +7 700 123 45 67.' });
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const cutoff = Date.now() - 60 * 60 * 1000;
+    const recent = (intensiveRequestLog.get(ip) || []).filter((time) => time > cutoff);
+    if (recent.length >= 8) return res.status(429).json({ error: 'Слишком много заявок. Попробуйте позже или напишите нам в WhatsApp.' });
+    recent.push(Date.now());
+    intensiveRequestLog.set(ip, recent);
+    const request = { id: crypto.randomUUID(), studentName, parentName, grade, phone, status: 'new', createdAt: new Date().toISOString() };
+    const outcome = await mutateIntensiveRequests((items) => {
+      if (items.some((item) => item.grade === grade && item.phone === phone && item.studentName.toLowerCase() === studentName.toLowerCase())) return { already: true, total: items.filter((item) => item.grade === grade).length };
+      items.push(request);
+      return { already: false, total: items.filter((item) => item.grade === grade).length };
+    });
+    if (!outcome.already) {
+      const msg = `🚀 <b>Новая запись на интенсив</b>\n\n🎓 Класс: <b>${grade}</b> · ${tgEsc(track.topic)}\n👤 Ученик: <b>${tgEsc(studentName)}</b>\n👪 Родитель: ${tgEsc(parentName)}\n📞 <a href="https://wa.me/${tgEsc(phone)}">+${tgEsc(phone)}</a>\n\n📋 Уже записано в ${grade} классе: <b>${outcome.total}</b>`;
+      void identity.notifyAdmins(msg).catch((error) => console.warn('notify intensive request:', error.message));
+    }
+    return res.status(outcome.already ? 200 : 201).json({ ok: true, already: outcome.already });
+  } catch (error) {
+    console.error('[StudyTask] intensive request failed:', error);
+    return res.status(500).json({ error: 'Не удалось отправить заявку. Попробуйте ещё раз.' });
+  }
+});
+
+app.get('/api/admin/intensive-requests', requireAdmin, async (_req, res) => {
+  try { return res.json((await readIntensiveRequests()).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))); }
+  catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить записи.' }); }
+});
+app.patch('/api/admin/intensive-requests/:id', requireAdmin, async (req, res) => {
+  try {
+    const status = req.body?.status;
+    if (!['new', 'contacted', 'done'].includes(status)) return res.status(400).json({ error: 'Неизвестный статус.' });
+    const found = await mutateIntensiveRequests((items) => { const item = items.find((entry) => entry.id === req.params.id); if (!item) return false; item.status = status; return true; });
+    if (!found) return res.status(404).json({ error: 'Запись не найдена.' });
+    return res.json({ ok: true });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось обновить запись.' }); }
+});
+
 app.get('/api/admin/test-leads', requireAdmin, async (_req, res) => {
   try {
     const leads = await readTestLeads();
