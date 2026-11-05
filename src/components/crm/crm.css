@@ -333,3 +333,8 @@
 .crm-emoji-grid button { padding: 4px 0; border: 0; border-radius: 8px; background: transparent; font-size: 22px; line-height: 1.2; cursor: pointer; }
 .crm-emoji-grid button:hover { background: var(--soft); }
 @media (max-width: 760px) { .crm-listtoggle { display: none; } }
+
+/* чат не растёт от длины переписки: колонки ограничены высотой блока, прокручивается только лента сообщений */
+.crm-inbox { grid-template-rows: minmax(0, 1fr); }
+.crm-inbox > section { min-height: 0; height: 100%; }
+.crm-conv-list, .crm-thread { min-height: 0; }
