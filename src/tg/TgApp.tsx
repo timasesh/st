@@ -358,7 +358,7 @@ function Levels({ portal, refresh, say }: { portal: Portal; refresh: () => Promi
   const [sel, setSel] = useState(lv.level);
   const n = sel, reached = n <= lv.level, rank = rankOf(n);
   return <div>
-    <Head kicker="Твой путь" title="Уровни" sub="Звёзды за тесты и домашки поднимают тебя от Земли до Вселенной. Потраченные на призы звёзды уровень не снижают." />
+    <Head kicker="Твой путь" title="Уровни" sub="Звёзды за тесты и домашки поднимают тебя от Земли до Вселенной." />
     <div className="stack">
       <div className="card" style={{ textAlign: 'center' }}>
         <img src={levelImage(lv.level)} alt={lv.name} width={150} height={150} style={{ borderRadius: 18, margin: '0 auto' }} />
@@ -390,8 +390,6 @@ function Levels({ portal, refresh, say }: { portal: Portal; refresh: () => Promi
           </div>
         </div>;
       })}
-      <div style={{ height: 2, background: 'var(--line)', margin: '10px 0 0' }} />
-      <Prizes portal={portal} refresh={refresh} say={say} />
     </div>
   </div>;
 }
