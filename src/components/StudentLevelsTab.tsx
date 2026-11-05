@@ -12,7 +12,7 @@ export default function StudentLevelsTab({ lv }: { lv: LevelInfo }) {
       <div>
         <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Твой путь</p>
         <h2 id="levels-title" className="mt-1 font-display text-2xl font-extrabold">Уровни</h2>
-        <p className="mt-1 text-sm text-slate-500">Звёзды за тесты и домашки поднимают тебя от Земли до Вселенной. Потраченные на призы звёзды уровень не снижают.</p>
+        <p className="mt-1 text-sm text-slate-500">Звёзды за тесты и домашки поднимают тебя от Земли до Вселенной.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
