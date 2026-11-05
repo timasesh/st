@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCheck, ExternalLink, FileText, MessageCircle, Mic, Paperclip, PanelLeftClose, PanelLeftOpen, Search, Send, Smile, Zap } from 'lucide-react';
 import { crmApi } from './api';
 import { useCrm } from './store';
@@ -110,10 +110,25 @@ export function InboxView() {
   const [listHidden, setListHidden] = useState(() => { try { return localStorage.getItem('crm.inbox.listHidden') === '1'; } catch { return false; } });
   const toggleList = () => setListHidden((v) => { const next = !v; try { localStorage.setItem('crm.inbox.listHidden', next ? '1' : '0'); } catch { /* не критично */ } return next; });
   const threadRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [boxH, setBoxH] = useState<number | undefined>(undefined);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickRef = useRef(true);
   const selectedId = nav.convId && convMap[nav.convId]?.channel === channel ? nav.convId : undefined;
   const selected = selectedId ? convMap[selectedId] : undefined;
+  /* высота чата = всё место до низа окна, чтобы переписка и поле ввода помещались без прокрутки страницы */
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = boxRef.current;
+      if (!el || window.innerWidth <= 760) { setBoxH(undefined); return; }
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setBoxH(Math.max(420, Math.floor(window.innerHeight - top - 20)));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    const t = window.setTimeout(fit, 300);
+    return () => { window.removeEventListener('resize', fit); window.clearTimeout(t); };
+  });
   /* уведомления не показываем, пока этот чат открыт на экране */
   useEffect(() => { setOpenConv(selectedId || null); return () => setOpenConv(null); }, [selectedId]);
 
@@ -217,7 +232,7 @@ export function InboxView() {
           <p style={{ margin: 0 }}>Адрес вебхука: <code>{window.location.origin}{SETUP[channel as 'whatsapp' | 'instagram'].webhook}</code></p>
         </div>
       ) : (
-        <div className="crm-card crm-inbox" data-ch={channel} data-sel={selected ? '1' : '0'} data-list={listHidden ? '0' : '1'}>
+        <div ref={boxRef} className="crm-card crm-inbox" style={boxH ? { height: boxH, minHeight: 0 } : undefined} data-ch={channel} data-sel={selected ? '1' : '0'} data-list={listHidden && selected ? '0' : '1'}>
           <section className="crm-conv-col">
             <div className="crm-conv-head">
               <div className="crm-row" style={{ justifyContent: 'space-between' }}>
