@@ -322,3 +322,14 @@
 .crm-popup.task.end { --pc: #e11d48; background: var(--bad-soft); border-color: var(--bad); }
 .crm-popup-done { align-self: center; margin-right: 34px; display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border: 0; border-radius: 8px; background: var(--ok); color: #fff; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .crm-msg-pending { opacity: .6; }
+
+/* смайлики */
+.crm-emoji { position: absolute; bottom: 52px; left: 0; z-index: 6; width: 300px; padding: 8px; }
+.crm-emoji-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.crm-emoji-tabs button { flex: 1; padding: 5px 0; border: 0; border-radius: 8px; background: transparent; font-size: 19px; cursor: pointer; }
+.crm-emoji-tabs button[aria-pressed="true"] { background: var(--soft); box-shadow: inset 0 -2px 0 var(--ch-strong, var(--brand)); }
+.crm-emoji-title { margin: 8px 4px 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.crm-emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; max-height: 190px; overflow-y: auto; }
+.crm-emoji-grid button { padding: 4px 0; border: 0; border-radius: 8px; background: transparent; font-size: 22px; line-height: 1.2; cursor: pointer; }
+.crm-emoji-grid button:hover { background: var(--soft); }
+@media (max-width: 760px) { .crm-listtoggle { display: none; } }

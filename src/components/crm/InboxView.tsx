@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCheck, ExternalLink, FileText, MessageCircle, Mic, Paperclip, Search, Send, Zap } from 'lucide-react';
+import { ArrowLeft, CheckCheck, ExternalLink, FileText, MessageCircle, Mic, Paperclip, PanelLeftClose, PanelLeftOpen, Search, Send, Smile, Zap } from 'lucide-react';
 import { crmApi } from './api';
 import { useCrm } from './store';
 import type { ChannelId, Contact, Conversation, Lead, Message } from './types';
 import { Avatar, Chip, PhoneLink, StatusChip, TypeChip } from './ui';
-import { CHANNEL_LABEL, TEMPLATES, displayName, fmtDate, fmtTime, formatPhone, matchesQuery, sameDay, waUrl } from './util';
+import { CHANNEL_LABEL, TEMPLATES, displayName, fmtDate, fmtTime, formatPhone, matchesQuery, sameDay } from './util';
+import { setOpenConv } from './notify';
+import { EmojiPicker } from './EmojiPicker';
 
-const CHANNELS: ChannelId[] = ['telegram', 'whatsapp', 'instagram'];
+const CHANNELS: ChannelId[] = ['whatsapp', 'instagram', 'telegram'];
 
 const SETUP: Record<'whatsapp' | 'instagram', { title: string; steps: string[]; vars: string[]; webhook: string }> = {
   whatsapp: {
@@ -73,7 +75,6 @@ function SidePanel({ conv, contact, leads, phone }: { conv: Conversation; contac
         <strong>{displayName(contact)}</strong>
         <span className="crm-muted">{contact ? (contact.kind === 'parent' ? 'Родитель' : 'Ученик') : 'Новый контакт'}{conv.username ? ` · @${conv.username}` : ''}</span>
         <div className="crm-side-phones">{phones.map((p) => <PhoneLink key={p} phone={p} className="pill" />)}</div>
-        {phones[0] && waUrl(phones[0]) && <a className="crm-btn wa" href={waUrl(phones[0])} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Открыть в WhatsApp</a>}
         {contact && <button type="button" className="crm-btn sm" onClick={() => go({ tab: 'contacts', contactId: contact.id })}><ExternalLink size={14} /> Карточка контакта</button>}
         <span className="crm-muted" style={{ fontSize: 12 }}>В диалоге с {fmtDate(conv.createdAt)}</span>
       </div>
@@ -97,7 +98,7 @@ function SidePanel({ conv, contact, leads, phone }: { conv: Conversation; contac
 
 export function InboxView() {
   const { convs, convMap, contactMap, leads, channels, nav, go, upsertConv, subscribeMessages, toast } = useCrm();
-  const channel: ChannelId = nav.channel || (nav.convId && convMap[nav.convId]?.channel) || 'telegram';
+  const channel: ChannelId = nav.channel || (nav.convId && convMap[nav.convId]?.channel) || 'whatsapp';
   const [query, setQuery] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -105,11 +106,16 @@ export function InboxView() {
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [listHidden, setListHidden] = useState(() => { try { return localStorage.getItem('crm.inbox.listHidden') === '1'; } catch { return false; } });
+  const toggleList = () => setListHidden((v) => { const next = !v; try { localStorage.setItem('crm.inbox.listHidden', next ? '1' : '0'); } catch { /* не критично */ } return next; });
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickRef = useRef(true);
   const selectedId = nav.convId && convMap[nav.convId]?.channel === channel ? nav.convId : undefined;
   const selected = selectedId ? convMap[selectedId] : undefined;
+  /* уведомления не показываем, пока этот чат открыт на экране */
+  useEffect(() => { setOpenConv(selectedId || null); return () => setOpenConv(null); }, [selectedId]);
 
   const unreadBy = useMemo(() => Object.fromEntries(CHANNELS.map((c) => [c, convs.filter((x) => x.channel === c).reduce((n, x) => n + (x.unread || 0), 0)])), [convs]);
   const list = useMemo(() => convs.filter((c) => c.channel === channel && !c.archived && (!unreadOnly || c.unread > 0) && matchesQuery([c.title, c.username, c.phone, c.lastText, displayName(contactMap[c.contactId])], query)), [convs, channel, query, unreadOnly, contactMap]);
@@ -211,7 +217,7 @@ export function InboxView() {
           <p style={{ margin: 0 }}>Адрес вебхука: <code>{window.location.origin}{SETUP[channel as 'whatsapp' | 'instagram'].webhook}</code></p>
         </div>
       ) : (
-        <div className="crm-card crm-inbox" data-ch={channel} data-sel={selected ? '1' : '0'}>
+        <div className="crm-card crm-inbox" data-ch={channel} data-sel={selected ? '1' : '0'} data-list={listHidden ? '0' : '1'}>
           <section className="crm-conv-col">
             <div className="crm-conv-head">
               <div className="crm-row" style={{ justifyContent: 'space-between' }}>
@@ -254,6 +260,7 @@ export function InboxView() {
               <>
                 <header className="crm-chat-head">
                   <button type="button" className="crm-btn icon sm crm-back" aria-label="К списку диалогов" onClick={() => go({ convId: undefined })}><ArrowLeft size={16} /></button>
+                  <button type="button" className="crm-btn icon sm crm-listtoggle" title={listHidden ? 'Показать список диалогов' : 'Скрыть список диалогов'} aria-label={listHidden ? 'Показать список диалогов' : 'Скрыть список диалогов'} onClick={toggleList}>{listHidden ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</button>
                   <span className="crm-av"><Avatar contact={contact} name={contact?.name || selected.title} /><i className={`dot ${channel}`} /></span>
                   <div className="who">
                     <strong>{contact?.name || selected.title}</strong>
@@ -264,7 +271,6 @@ export function InboxView() {
                     </span>
                   </div>
                   <span className="crm-spacer" />
-                  {phone && waUrl(phone) && <a className="crm-btn wa sm" href={waUrl(phone)} target="_blank" rel="noreferrer" title="Открыть этот чат в приложении WhatsApp"><MessageCircle size={15} /> <span className="lbl">WhatsApp</span></a>}
                   {contact && <button type="button" className="crm-btn icon sm" title="Карточка контакта" aria-label="Карточка контакта" onClick={() => go({ tab: 'contacts', contactId: contact.id })}><ExternalLink size={15} /></button>}
                 </header>
                 <div className="crm-thread" ref={threadRef} onScroll={(e) => { const el = e.currentTarget; stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
@@ -284,12 +290,20 @@ export function InboxView() {
                 </div>
                 <div className="crm-composer">
                   <div style={{ position: 'relative' }}>
-                    <button type="button" className="crm-quick" title="Быстрые ответы" aria-label="Быстрые ответы" onClick={() => setShowTemplates((v) => !v)}><Zap size={18} /></button>
+                    <button type="button" className="crm-quick" title="Быстрые ответы" aria-label="Быстрые ответы" onClick={() => { setShowTemplates((v) => !v); setShowEmoji(false); }}><Zap size={18} /></button>
                     {showTemplates && (
                       <div className="crm-card crm-templates">
                         {TEMPLATES.map((t) => <button key={t.title} type="button" className="crm-item" onClick={() => { setText(t.text); setShowTemplates(false); inputRef.current?.focus(); }}><span><strong>{t.title}</strong><span className="crm-muted" style={{ display: 'block', fontSize: 12 }}>{t.text.slice(0, 70)}…</span></span></button>)}
                       </div>
                     )}
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <button type="button" className="crm-quick" title="Смайлики" aria-label="Смайлики" onClick={() => { setShowEmoji((v) => !v); setShowTemplates(false); }}><Smile size={19} /></button>
+                    {showEmoji && <EmojiPicker onClose={() => setShowEmoji(false)} onPick={(emoji) => {
+                      const el = inputRef.current; const at = el?.selectionStart ?? text.length; const end = el?.selectionEnd ?? at;
+                      setText(text.slice(0, at) + emoji + text.slice(end));
+                      requestAnimationFrame(() => { if (el) { el.focus(); el.setSelectionRange(at + emoji.length, at + emoji.length); } });
+                    }} />}
                   </div>
                   <div className="field">
                     <textarea ref={inputRef} rows={1} placeholder={connected ? 'Сообщение…' : 'Канал не подключён — отправка недоступна'} value={text} disabled={!connected}
