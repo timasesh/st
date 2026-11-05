@@ -85,5 +85,19 @@ export function createChannels({ env = process.env, telegram, fetchImpl = (...ar
     throw new HttpError(400, 'Неизвестный канал.');
   }
 
-  return { status, verifySignature, verifyChallenge, parseWhatsApp, parseInstagram, send, waVerify: wa.verify, igVerify: ig.verify };
+  /* Какие переменные заданы — для диагностики (значения не раскрываются). */
+  const diagnose = () => ({
+    WHATSAPP_TOKEN: Boolean(wa.token), WHATSAPP_PHONE_NUMBER_ID: wa.phoneId || false, WHATSAPP_VERIFY_TOKEN: Boolean(wa.verify), META_APP_SECRET: Boolean(appSecret),
+    INSTAGRAM_TOKEN: Boolean(ig.token), graphVersion: version,
+    webhookUrl: '/api/crm/webhooks/whatsapp',
+  });
+  const hasAppSecret = () => Boolean(appSecret);
+  async function checkMeta() {
+    const response = await fetchImpl(`https://graph.facebook.com/${version}/${wa.phoneId}?fields=display_phone_number,verified_name,quality_rating,code_verification_status`, { headers: { Authorization: `Bearer ${wa.token}` } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    return data;
+  }
+
+  return { diagnose, hasAppSecret, checkMeta, status, verifySignature, verifyChallenge, parseWhatsApp, parseInstagram, send, waVerify: wa.verify, igVerify: ig.verify };
 }

@@ -37,6 +37,8 @@ export function createCrm(deps) {
       await syncNow().catch((e) => console.warn('CRM trial sync:', e.message));
       setInterval(() => { for (const res of clients) { try { res.write(': ping\n\n'); } catch { clients.delete(res); } } }, 25000).unref();
       console.log(`CRM: загружено заявок ${core.maps.lead.size}, контактов ${core.maps.contact.size}, диалогов ${core.maps.conv.size}`);
+      const d = channels.diagnose();
+      console.log(`[CRM:whatsapp] переменные: TOKEN=${d.WHATSAPP_TOKEN ? 'ok' : 'НЕТ'}, PHONE_NUMBER_ID=${d.WHATSAPP_PHONE_NUMBER_ID || 'НЕТ'}, VERIFY_TOKEN=${d.WHATSAPP_VERIFY_TOKEN ? 'ok' : 'НЕТ'}, APP_SECRET=${d.META_APP_SECRET ? 'ok' : 'НЕТ'}; вебхук: ${d.webhookUrl}`);
     } catch (error) {
       initError = error;
       console.error('CRM не запустилась:', error.message);
@@ -327,6 +329,21 @@ export function createCrm(deps) {
         duplicates: core.findDuplicates().length,
       });
     }));
+    /* Диагностика WhatsApp: открыть в браузере под админом → /api/admin/crm/whatsapp-check */
+    r.get('/whatsapp-check', requireAdmin, wrap(async (_req, res) => {
+      const d = channels.diagnose();
+      const out = { variables: d, problems: [], meta: null };
+      if (!d.WHATSAPP_TOKEN) out.problems.push('Не задан WHATSAPP_TOKEN');
+      if (!d.WHATSAPP_PHONE_NUMBER_ID) out.problems.push('Не задан WHATSAPP_PHONE_NUMBER_ID');
+      if (!d.WHATSAPP_VERIFY_TOKEN) out.problems.push('Не задан WHATSAPP_VERIFY_TOKEN');
+      if (!d.META_APP_SECRET) out.problems.push('Не задан META_APP_SECRET — вебхук будет отвечать 403');
+      if (d.WHATSAPP_TOKEN && d.WHATSAPP_PHONE_NUMBER_ID) {
+        try { out.meta = await channels.checkMeta(); }
+        catch (error) { out.problems.push(`Meta не принимает токен/ID номера: ${error.message}`); }
+      }
+      out.hint = 'Если проблем нет, а сообщения не приходят: в Meta → Сценарии использования → Конфигурация проверьте Callback URL (https://study-task.kz/api/crm/webhooks/whatsapp), совпадение Verify token и подписку на поле messages. Затем смотрите логи Render по метке [CRM:whatsapp].';
+      res.json(out);
+    }));
     r.get('/stream', requireAdmin, (req, res) => {
       res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.flushHeaders?.();
@@ -421,14 +438,43 @@ export function createCrm(deps) {
 
     /* вебхуки Meta (без админ-сессии — только подпись Meta) */
     const hook = (channel, parse, verifyToken) => {
+      const tag = `[CRM:${channel}]`;
       app.get(`/api/crm/webhooks/${channel}`, (req, res) => {
-        const challenge = channels.verifyChallenge(req.query, verifyToken());
-        return challenge === null ? res.sendStatus(403) : res.status(200).type('text/plain').send(challenge);
+        const expected = verifyToken();
+        const challenge = channels.verifyChallenge(req.query, expected);
+        if (challenge === null) {
+          const why = !expected ? `не задан verify-токен (${channel === 'whatsapp' ? 'WHATSAPP_VERIFY_TOKEN' : 'INSTAGRAM_VERIFY_TOKEN'})`
+            : req.query['hub.mode'] !== 'subscribe' ? `hub.mode=${req.query['hub.mode']}, ожидалось subscribe`
+            : 'verify-токен в Meta не совпадает с переменной на сервере';
+          console.warn(`${tag} проверка вебхука ОТКЛОНЕНА: ${why}`);
+          return res.sendStatus(403);
+        }
+        console.log(`${tag} проверка вебхука пройдена — Meta подтвердила адрес`);
+        return res.status(200).type('text/plain').send(challenge);
       });
       app.post(`/api/crm/webhooks/${channel}`, (req, res) => {
-        if (!channels.verifySignature(req.rawBody, req.get('x-hub-signature-256'))) return res.sendStatus(403);
+        const sig = req.get('x-hub-signature-256');
+        console.log(`${tag} POST от Meta: ${req.rawBody ? req.rawBody.length : 0} байт, подпись ${sig ? 'есть' : 'ОТСУТСТВУЕТ'}, object=${req.body?.object || '?'}`);
+        if (!channels.verifySignature(req.rawBody, sig)) {
+          const why = !channels.hasAppSecret() ? 'не задан META_APP_SECRET'
+            : !req.rawBody ? 'нет тела запроса'
+            : !sig ? 'нет заголовка X-Hub-Signature-256 (запрос не от Meta)'
+            : 'подпись не совпала: META_APP_SECRET не от того приложения или с лишним пробелом';
+          console.warn(`${tag} запрос ОТКЛОНЁН (403): ${why}`);
+          return res.sendStatus(403);
+        }
         res.sendStatus(200);
-        void handleInbound(channel, parse(req.body)).catch((error) => console.error(`CRM ${channel} webhook:`, error.message));
+        let items;
+        try { items = parse(req.body); } catch (error) { console.error(`${tag} не удалось разобрать тело:`, error.message); return; }
+        if (!items.length) {
+          const kinds = (req.body?.entry || []).flatMap((e) => (e.changes || []).map((c) => c.field + (c.value?.statuses ? ':statuses' : '')));
+          console.log(`${tag} сообщений в запросе нет (${kinds.join(', ') || 'пусто'}) — например, статусы доставки`);
+          return;
+        }
+        console.log(`${tag} входящих сообщений: ${items.length}, от ${items.map((i) => i.phone || i.externalId).join(', ')}`);
+        void handleInbound(channel, items)
+          .then(() => console.log(`${tag} сохранено в CRM: ${items.length}`))
+          .catch((error) => console.error(`${tag} ошибка сохранения в CRM:`, error.message));
       });
     };
     hook('whatsapp', (body) => channels.parseWhatsApp(body), () => channels.waVerify);
