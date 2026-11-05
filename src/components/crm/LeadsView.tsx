@@ -3,9 +3,9 @@ import { CalendarClock, LayoutGrid, List, MessageCircle, Plus, Search } from 'lu
 import { crmApi } from './api';
 import { useCrm } from './store';
 import type { Lead, StatusId } from './types';
-import { Chip, Empty, Field, Modal, SourceChip, StatusChip, TypeChip } from './ui';
+import { Chip, Empty, Field, Modal, PhoneLink, SourceChip, StatusChip, TypeChip } from './ui';
 import { LeadDrawer } from './LeadDrawer';
-import { LOST_REASONS, STATUS_COLOR, TYPE_LABEL, fmtDateTime, formatPhone, leadTitle, matchesQuery, sourceLabel, timeAgo, trialLabel } from './util';
+import { LOST_REASONS, STATUS_COLOR, TYPE_LABEL, fmtDateTime, leadTitle, matchesQuery, sourceLabel, timeAgo, trialLabel } from './util';
 
 const PERIODS = [['all', 'Всё время'], ['7', '7 дней'], ['30', '30 дней']] as const;
 
@@ -79,7 +79,7 @@ function LeadCard({ lead, unread, dragging, onDragStart, onDragEnd, onOpen }: { 
       </div>
       {lead.trial && !lead.trial.removed && <div className="crm-row" style={{ marginTop: 8, fontSize: 12, color: 'var(--violet)', fontWeight: 700 }}><CalendarClock size={13} /> {trialLabel(lead.trial)}{lead.trial.teacherName ? ` · ${lead.trial.teacherName}` : ''}</div>}
       {lead.status === 'lost' && lead.lostReason && <div className="crm-muted" style={{ marginTop: 6, fontSize: 12 }}>Причина: {lead.lostReason}</div>}
-      <div className="foot"><span>{lead.phone ? formatPhone(lead.phone) : 'без телефона'}</span><span title={fmtDateTime(lead.createdAt)}>{timeAgo(lead.createdAt)}</span></div>
+      <div className="foot"><PhoneLink phone={lead.phone} /><span title={fmtDateTime(lead.createdAt)}>{timeAgo(lead.createdAt)}</span></div>
     </button>
   );
 }
@@ -170,7 +170,7 @@ export function LeadsView() {
                 <tr key={l.id} onClick={() => go({ leadId: l.id })}>
                   <td>{l.number}</td>
                   <td><strong>{leadTitle(l)}</strong>{l.parentName && l.studentName && <div className="crm-muted" style={{ fontSize: 12 }}>{l.parentName}</div>}</td>
-                  <td>{formatPhone(l.phone)}</td><td><TypeChip type={l.type} /></td>
+                  <td><PhoneLink phone={l.phone} empty="—" /></td><td><TypeChip type={l.type} /></td>
                   <td><SourceChip source={l.source} />{l.campaign && <div className="crm-muted" style={{ fontSize: 12 }}>{l.campaign}</div>}</td>
                   <td><StatusChip status={l.status} /></td>
                   <td>{l.trial && !l.trial.removed ? trialLabel(l.trial) : '—'}</td>

@@ -3,9 +3,9 @@ import { Archive, CalendarCheck, ExternalLink, MessageCircle, Phone, Send, User 
 import { crmApi } from './api';
 import { useCrm } from './store';
 import type { Lead, StatusId, TrialSlots } from './types';
-import { Chip, Drawer, Field, SourceChip, StatusChip, TypeChip } from './ui';
+import { Chip, Drawer, Field, PhoneLink, SourceChip, StatusChip, TypeChip } from './ui';
 import { LostDialog } from './LeadsView';
-import { DAYS, TYPE_LABEL, digits, fmtDateTime, formatPhone, leadTitle, sourceLabel, trialLabel } from './util';
+import { DAYS, TYPE_LABEL, fmtDateTime, formatPhone, leadTitle, sourceLabel, trialLabel, waDigits, waUrl } from './util';
 
 const TRIAL_STATUS: Record<string, string> = { scheduled: 'Запланирован', trial: 'Запланирован', attended: 'Проведён', no_show: 'Не пришёл', enrolled: 'Записался на занятия', declined: 'Отказ' };
 
@@ -98,6 +98,7 @@ export function LeadDrawer({ lead, onClose }: { lead: Lead; onClose: () => void 
       <>
         <div className="crm-muted" style={{ fontSize: 12 }}>Заявка №{lead.number} · {fmtDateTime(lead.createdAt)}</div>
         <h3 style={{ fontSize: 20, margin: '2px 0 8px' }}>{leadTitle(lead)}</h3>
+        {lead.phone && <div style={{ margin: '0 0 8px' }}><PhoneLink phone={lead.phone} className="pill" /></div>}
         <div className="crm-row crm-wrap"><TypeChip type={lead.type} /><StatusChip status={lead.status} /><SourceChip source={lead.source} />{lead.archived && <Chip tone="warn">В архиве</Chip>}</div>
       </>
     }>
@@ -115,8 +116,8 @@ export function LeadDrawer({ lead, onClose }: { lead: Lead; onClose: () => void 
       <section className="crm-sec">
         <h4>Связаться</h4>
         <div className="crm-row crm-wrap">
-          {lead.phone && <a className="crm-btn primary" href={`tel:+${lead.phone}`}><Phone size={16} /> {formatPhone(lead.phone)}</a>}
-          {lead.phone && <a className="crm-btn" href={`https://wa.me/${digits(lead.phone)}`} target="_blank" rel="noreferrer"><MessageCircle size={16} /> WhatsApp</a>}
+          {lead.phone && waUrl(lead.phone) && <a className="crm-btn wa" href={waUrl(lead.phone)} target="_blank" rel="noreferrer" title="Открыть чат в WhatsApp"><MessageCircle size={16} /> {formatPhone(lead.phone)}</a>}
+          {lead.phone && <a className="crm-btn" href={`tel:+${waDigits(lead.phone)}`}><Phone size={16} /> Позвонить</a>}
           {tgUser && <a className="crm-btn" href={`https://t.me/${tgUser}`} target="_blank" rel="noreferrer"><Send size={16} /> @{tgUser}</a>}
           {conv && <button type="button" className="crm-btn" onClick={() => { onClose(); go({ tab: 'inbox', convId: conv.id, channel: conv.channel }); }}><MessageCircle size={16} /> Переписка{conv.unread ? ` (${conv.unread})` : ''}</button>}
           {lead.phone && <button type="button" className="crm-btn" onClick={() => { void navigator.clipboard?.writeText(`+${lead.phone}`); toast('Номер скопирован'); }}>Копировать</button>}

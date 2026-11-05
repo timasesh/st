@@ -3,8 +3,8 @@ import { GitMerge, X } from 'lucide-react';
 import { crmApi } from './api';
 import { useCrm } from './store';
 import type { Contact, DuplicatePair } from './types';
-import { Avatar, Empty } from './ui';
-import { displayName, formatPhone } from './util';
+import { Avatar, Empty, PhoneLink } from './ui';
+import { displayName } from './util';
 
 const REASON: Record<string, string> = { phone: 'Одинаковый телефон', telegram: 'Один Telegram', instagram: 'Один Instagram', name: 'Похожее имя' };
 
@@ -13,7 +13,7 @@ function Card({ contact, keep, onKeep }: { contact: Contact; keep: boolean; onKe
     <button type="button" className="crm-card crm-pad" aria-pressed={keep} onClick={onKeep} style={{ textAlign: 'left', cursor: 'pointer', outline: keep ? '2px solid var(--brand)' : 'none' }}>
       <div className="crm-row"><Avatar contact={contact} name={displayName(contact)} /><div><strong>{displayName(contact)}</strong><span className="crm-muted" style={{ display: 'block', fontSize: 12 }}>{contact.kind === 'parent' ? 'Родитель' : 'Ученик'}</span></div></div>
       <div className="crm-muted" style={{ marginTop: 8, fontSize: 13, display: 'grid', gap: 2 }}>
-        {contact.phones.map((p) => <span key={p}>{formatPhone(p)}</span>)}
+        {contact.phones.map((p) => <PhoneLink key={p} phone={p} />)}
         {contact.telegram?.username && <span>Telegram @{contact.telegram.username}</span>}
         {contact.instagram && <span>Instagram {contact.instagram}</span>}
       </div>

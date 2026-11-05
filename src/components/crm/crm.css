@@ -133,27 +133,117 @@
 .crm-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: stretch; }
 .crm-pair .side { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
 
-/* Inbox */
-.crm-inbox { display: grid; grid-template-columns: 320px minmax(0, 1fr) 300px; height: calc(100vh - 250px); min-height: 480px; overflow: hidden; }
+/* ссылка на WhatsApp у любого номера в CRM */
+.crm-app { --wa: #0b7a5e; --wa-bright: #25d366; --wa-ink: #06402e; }
+.theme-dark .crm-app { --wa: #34d399; --wa-ink: #06281c; }
+.crm-phone { display: inline-flex; align-items: center; gap: 4px; padding: 0 3px; border-radius: 6px; color: var(--wa); font-weight: 700; white-space: nowrap; cursor: pointer; text-decoration: none; transition: background .12s; }
+.crm-phone:hover, .crm-phone:focus-visible { background: var(--ok-soft); text-decoration: underline; outline: none; }
+.crm-phone.pill { padding: 4px 11px; border-radius: 999px; background: var(--ok-soft); }
+.crm-phone.pill:hover { filter: brightness(.96); text-decoration: none; }
+.crm-btn.wa { background: var(--wa-bright); border-color: var(--wa-bright); color: var(--wa-ink); }
+.crm-btn.wa:hover:not(:disabled) { background: var(--wa-bright); filter: brightness(1.06); }
+.crm-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+.crm-dot.whatsapp, .crm-av .dot.whatsapp { background: #25d366; }
+.crm-dot.telegram, .crm-av .dot.telegram { background: #2aabee; }
+.crm-dot.instagram, .crm-av .dot.instagram { background: linear-gradient(135deg, #f58529, #dd2a7b 55%, #8134af); }
+.crm-tab[aria-selected="true"] .crm-dot { box-shadow: 0 0 0 2px rgba(255, 255, 255, .55); }
+
+/* Inbox: три колонки — диалоги / переписка / карточка */
+.crm-inbox { --ch: #2563eb; --ch-strong: #2563eb; --in-bg: var(--card); --in-ink: var(--ink); --out-bg: #dbeafe; --out-ink: #12315f; --thread-bg: #eef2f8; --thread-dot: rgba(100, 116, 139, .16);
+  display: grid; grid-template-columns: 330px minmax(0, 1fr) 300px; height: calc(100vh - 210px); min-height: 520px; overflow: hidden; padding: 0; }
+.crm-inbox[data-ch="whatsapp"] { --ch: #25d366; --ch-strong: #128c7e; --out-bg: #d9fdd3; --out-ink: #0b3d2e; --thread-bg: #efeae2; --thread-dot: rgba(120, 100, 70, .13); }
+.crm-inbox[data-ch="telegram"] { --ch: #2aabee; --ch-strong: #229ed9; --out-bg: #d4ecfb; --out-ink: #0c3a58; --thread-bg: #e6edf5; }
+.crm-inbox[data-ch="instagram"] { --ch: #a855f7; --ch-strong: #9333ea; --out-bg: #ede4ff; --out-ink: #2e1065; --thread-bg: #f1ecf8; }
+.theme-dark .crm-inbox { --thread-bg: #0b1220; --thread-dot: rgba(148, 163, 184, .08); --out-bg: #1e3a6e; --out-ink: #e6edf7; }
+.theme-dark .crm-inbox[data-ch="whatsapp"] { --out-bg: #005c4b; --out-ink: #e9fff5; --thread-bg: #0b141a; }
+.theme-dark .crm-inbox[data-ch="telegram"] { --out-bg: #2b5278; --out-ink: #f1f8ff; --thread-bg: #0e1621; }
+.theme-dark .crm-inbox[data-ch="instagram"] { --out-bg: #4c1d95; --out-ink: #f5f0ff; --thread-bg: #130d22; }
 .crm-inbox > section { min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
 .crm-inbox > section:last-child { border-right: 0; overflow-y: auto; }
+
+/* список диалогов */
+.crm-conv-head { display: grid; gap: 10px; padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
+.crm-conv-head h3 { font-size: 18px; }
 .crm-conv-list { flex: 1; overflow-y: auto; }
-.crm-thread { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 6px; background: var(--bg); }
-.crm-day { align-self: center; margin: 8px 0; padding: 2px 10px; border-radius: 99px; background: var(--soft); color: var(--muted); font-size: 12px; font-weight: 700; }
-.crm-msg { max-width: 72%; padding: 8px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; }
-.crm-msg.out { align-self: flex-end; background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
-.crm-msg.auto { background: var(--soft); border-style: dashed; color: var(--muted); }
-.crm-msg time { display: block; margin-top: 3px; font-size: 11px; opacity: .7; text-align: right; }
-.crm-att { display: inline-flex; align-items: center; gap: 5px; margin: 2px 0; padding: 3px 9px; border-radius: 8px; background: rgba(127, 127, 127, .15); color: inherit; font-size: 13px; text-decoration: none; }
+.crm-conv { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 14px; border: 0; border-left: 3px solid transparent; border-bottom: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; transition: background .12s; }
+.crm-conv:hover { background: var(--soft); }
+.crm-conv[aria-current="true"] { background: color-mix(in srgb, var(--ch) 13%, transparent); border-left-color: var(--ch-strong); }
+.crm-av { position: relative; flex: none; display: inline-flex; }
+.crm-av .crm-avatar { width: 44px; height: 44px; font-size: 15px; }
+.crm-av .dot { position: absolute; right: -1px; bottom: -1px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--card); }
+.crm-conv .body { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.crm-conv .top, .crm-conv .bot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.crm-conv .top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.crm-conv .top time { flex: none; color: var(--muted); font-size: 12px; }
+.crm-conv .top time.new { color: var(--ch-strong); font-weight: 800; }
+.crm-conv .preview { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 13px; }
+.crm-conv .preview svg { flex: none; color: var(--ch-strong); }
+.crm-unread { flex: none; min-width: 20px; padding: 1px 7px; border-radius: 99px; background: var(--ch-strong); color: #fff; font-size: 11px; font-weight: 800; text-align: center; }
+
+/* шапка переписки */
+.crm-chat-head { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+.crm-chat-head .who { min-width: 0; display: grid; gap: 2px; }
+.crm-chat-head .who > strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crm-chat-head .sub { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.crm-back { display: none; }
+
+/* переписка */
+.crm-thread { flex: 1; overflow-y: auto; padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 2px; background-color: var(--thread-bg); background-image: radial-gradient(var(--thread-dot) 1.2px, transparent 1.3px); background-size: 22px 22px; scroll-behavior: smooth; }
+.crm-day { align-self: center; position: sticky; top: 0; z-index: 1; margin: 12px 0 8px; padding: 3px 12px; border-radius: 99px; background: var(--card); color: var(--muted); font-size: 12px; font-weight: 700; box-shadow: 0 1px 2px rgba(15, 23, 42, .12); }
+.crm-msg { position: relative; align-self: flex-start; max-width: min(74%, 540px); margin-top: 7px; padding: 7px 11px 6px; border-radius: 14px; border-top-left-radius: 4px; background: var(--in-bg); color: var(--in-ink); box-shadow: 0 1px 1px rgba(15, 23, 42, .14); white-space: pre-wrap; word-break: break-word; animation: crm-pop .16s ease-out; }
+.crm-msg.out { align-self: flex-end; background: var(--out-bg); color: var(--out-ink); border-radius: 14px; border-top-right-radius: 4px; }
+.crm-msg.cont { margin-top: 0; border-top-left-radius: 14px; }
+.crm-msg.out.cont { border-top-right-radius: 14px; }
+.crm-msg.auto { background: var(--soft); border: 1px dashed var(--line-strong); color: var(--muted); box-shadow: none; }
+.crm-msg::after { content: ''; display: block; clear: both; }
+.crm-msg a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.crm-msg time { float: right; display: inline-flex; align-items: center; gap: 3px; margin: 6px 0 -3px 12px; font-size: 11px; line-height: 1; opacity: .62; white-space: nowrap; }
+.crm-msg.out time svg { color: var(--ch-strong); opacity: 1; }
+.crm-att { display: inline-flex; align-items: center; gap: 5px; margin: 2px 4px 2px 0; padding: 4px 10px; border-radius: 9px; background: rgba(127, 127, 127, .16); color: inherit; font-size: 13px; text-decoration: none; }
 .crm-msg img.att { display: block; max-width: 260px; max-height: 260px; margin-bottom: 4px; border-radius: 10px; }
-.crm-composer { display: flex; align-items: flex-end; gap: 8px; padding: 12px; border-top: 1px solid var(--line); background: var(--card); }
-.crm-composer textarea { min-height: 44px; max-height: 160px; }
-.crm-unread { margin-left: auto; padding: 1px 7px; border-radius: 99px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 800; }
+@keyframes crm-pop { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* поле ввода */
+.crm-composer { display: flex; align-items: flex-end; gap: 10px; padding: 10px 14px 12px; border-top: 1px solid var(--line); background: var(--card); }
+.crm-composer .field { flex: 1; display: flex; padding: 0 6px 0 16px; border: 1px solid var(--line-strong); border-radius: 22px; background: var(--soft); transition: border-color .12s, box-shadow .12s; }
+.crm-composer .field:focus-within { border-color: var(--ch-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ch-strong) 20%, transparent); background: var(--card); }
+.crm-composer textarea { width: 100%; min-height: 42px; max-height: 160px; padding: 10px 4px; border: 0; outline: none; resize: none; background: transparent; line-height: 1.4; }
+.crm-send, .crm-quick { flex: none; display: grid; place-items: center; width: 42px; height: 42px; border: 0; border-radius: 50%; cursor: pointer; transition: transform .1s, filter .12s; }
+.crm-send { background: var(--ch-strong); color: #fff; box-shadow: 0 2px 8px color-mix(in srgb, var(--ch-strong) 40%, transparent); }
+.crm-send:hover:not(:disabled) { filter: brightness(1.08); transform: scale(1.05); }
+.crm-send:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
+.crm-quick { background: var(--soft); color: var(--muted); }
+.crm-quick:hover { background: var(--warn-soft); color: var(--warn); }
+.crm-templates { position: absolute; bottom: 52px; left: 0; z-index: 5; width: 320px; padding: 6px; }
+.crm-templates .crm-item { border-radius: 10px; border-bottom: 0; }
+
+/* пустые состояния */
+.crm-inbox .crm-empty { display: grid; justify-items: center; gap: 4px; align-content: center; }
+.crm-inbox .crm-empty svg { color: var(--line-strong); margin-bottom: 6px; }
+.crm-chat-empty { flex: 1; background-color: var(--thread-bg); background-image: radial-gradient(var(--thread-dot) 1.2px, transparent 1.3px); background-size: 22px 22px; }
+
+/* правая карточка */
+.crm-side { display: grid; gap: 14px; align-content: start; padding: 16px; }
+.crm-side-hero { display: grid; justify-items: center; gap: 6px; padding: 18px 12px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--ch) 12%, var(--card)), var(--card)); text-align: center; }
+.crm-side-hero .crm-avatar { width: 64px; height: 64px; font-size: 22px; }
+.crm-side-hero > strong { font-size: 17px; }
+.crm-side-phones { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.crm-side-hero .crm-btn { width: 100%; }
+.crm-side-block { display: grid; gap: 6px; }
+.crm-lead-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); text-align: left; cursor: pointer; }
+.crm-lead-row:hover { border-color: var(--ch-strong); }
 .crm-setup { padding: 20px; }
 .crm-setup code { padding: 1px 6px; border-radius: 6px; background: var(--soft); font-size: 12px; }
 
 @media (max-width: 1100px) {
-  .crm-inbox { grid-template-columns: 280px minmax(0, 1fr); }
+  .crm-inbox { grid-template-columns: 290px minmax(0, 1fr); }
   .crm-inbox > section:last-child { display: none; }
   .crm-split { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .crm-inbox { grid-template-columns: 1fr; height: calc(100vh - 170px); }
+  .crm-inbox[data-sel="1"] > .crm-conv-col, .crm-inbox[data-sel="0"] > .crm-chat-col { display: none; }
+  .crm-back { display: inline-flex; }
+  .crm-chat-head .lbl { display: none; }
+  .crm-msg { max-width: 86%; }
 }

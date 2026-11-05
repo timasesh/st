@@ -3,7 +3,7 @@ import { Link2, Plus, Search, Trash2, UserPlus } from 'lucide-react';
 import { crmApi } from './api';
 import { useCrm } from './store';
 import type { Contact } from './types';
-import { Avatar, Chip, Empty, Field, Modal, StatusChip, TypeChip } from './ui';
+import { Avatar, Chip, Empty, Field, Modal, PhoneLink, StatusChip, TypeChip } from './ui';
 import { CHANNEL_LABEL, displayName, fmtDate, formatPhone, matchesQuery } from './util';
 
 function NewContactDialog({ kind, parent, onClose }: { kind: 'parent' | 'student'; parent?: Contact; onClose: () => void }) {
@@ -76,6 +76,7 @@ function ContactDetail({ contact }: { contact: Contact }) {
           ? <Field label="Класс"><select className="crm-select" value={draft.grade} onChange={(e) => { setDraft({ ...draft, grade: e.target.value }); void save({ grade: e.target.value ? Number(e.target.value) : null }); }}><option value="">—</option>{Array.from({ length: 11 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1} класс</option>)}</select></Field>
           : <Field label="Телефоны (через запятую)"><input className="crm-input" value={draft.phones} onChange={(e) => setDraft({ ...draft, phones: e.target.value })} onBlur={() => void save({ phones: draft.phones.split(',').map((p) => p.trim()).filter(Boolean) })} /></Field>}
       </div>
+      {contact.phones.length > 0 && <div className="crm-row crm-wrap" style={{ gap: 8 }}>{contact.phones.map((ph) => <PhoneLink key={ph} phone={ph} className="pill" />)}</div>}
       <div className="crm-row crm-wrap">
         {contact.telegram && <Chip tone="sky">Telegram {contact.telegram.username ? `@${contact.telegram.username}` : contact.telegram.id}</Chip>}
         {contact.whatsapp && <Chip tone="ok">WhatsApp +{contact.whatsapp}</Chip>}
@@ -98,7 +99,7 @@ function ContactDetail({ contact }: { contact: Contact }) {
       ) : (
         <section>
           <h4 className="crm-label">Родители</h4>
-          {parents.length ? parents.map((p) => <div key={p.id} className="crm-row" style={{ padding: '6px 0' }}><Link2 size={14} /> <span>{displayName(p)}</span><span className="crm-muted">{p.phones.map(formatPhone).join(', ')}</span></div>) : <p className="crm-muted" style={{ margin: 0 }}>Родитель не привязан.</p>}
+          {parents.length ? parents.map((p) => <div key={p.id} className="crm-row" style={{ padding: '6px 0' }}><Link2 size={14} /> <span>{displayName(p)}</span><span className="crm-row crm-wrap" style={{ gap: 10 }}>{p.phones.map((ph) => <PhoneLink key={ph} phone={ph} />)}</span></div>) : <p className="crm-muted" style={{ margin: 0 }}>Родитель не привязан.</p>}
         </section>
       )}
 
@@ -148,7 +149,7 @@ export function ContactsView() {
               {list.map((c) => (
                 <button key={c.id} type="button" className="crm-item" aria-current={selected?.id === c.id} onClick={() => go({ contactId: c.id })}>
                   <Avatar contact={c} name={displayName(c)} />
-                  <span style={{ minWidth: 0, flex: 1 }}><strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(c)}</strong><span className="crm-muted" style={{ fontSize: 12 }}>{c.kind === 'student' ? `Ученик${c.grade ? `, ${c.grade} кл.` : ''}` : `${c.phones.map(formatPhone)[0] || 'без телефона'}${c.childIds.length ? ` · детей: ${c.childIds.length}` : ''}`}</span></span>
+                  <span style={{ minWidth: 0, flex: 1 }}><strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(c)}</strong><span className="crm-muted" style={{ fontSize: 12 }}>{c.kind === 'student' ? `Ученик${c.grade ? `, ${c.grade} кл.` : ''}` : <><PhoneLink phone={c.phones[0]} />{c.childIds.length ? ` · детей: ${c.childIds.length}` : ''}</>}</span></span>
                 </button>
               ))}
             </div>

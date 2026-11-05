@@ -24,6 +24,14 @@ export function formatPhone(value: string): string {
   const d = digits(value || '');
   return d.length === 11 ? `+${d[0]} ${d.slice(1, 4)} ${d.slice(4, 7)} ${d.slice(7, 9)} ${d.slice(9)}` : d ? `+${d}` : '';
 }
+/* Номер для ссылки wa.me: только цифры, 8XXXXXXXXXX → 7XXXXXXXXXX, 10 цифр → +7. */
+export function waDigits(value: string): string {
+  let d = digits(value || '');
+  if (d.length === 11 && d.startsWith('8')) d = `7${d.slice(1)}`;
+  else if (d.length === 10) d = `7${d}`;
+  return d;
+}
+export const waUrl = (value: string): string => { const d = waDigits(value); return d.length >= 10 ? `https://wa.me/${d}` : ''; };
 export const displayName = (c: Pick<Contact, 'name' | 'phones'> | undefined): string => c?.name || (c?.phones?.[0] ? `Родитель ${formatPhone(c.phones[0])}` : 'Без имени');
 export const leadTitle = (lead: Lead): string => lead.studentName || lead.parentName || (lead.phone ? formatPhone(lead.phone) : `Заявка №${lead.number}`);
 export const initials = (name: string): string => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('') || '?';
