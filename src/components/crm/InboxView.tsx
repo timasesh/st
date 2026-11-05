@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCheck, ExternalLink, FileText, MessageCircle, Mic, Paperclip, PanelLeftClose, PanelLeftOpen, Search, Send, Zap } from 'lucide-react';
+import { ArrowLeft, CheckCheck, ExternalLink, FileText, MessageCircle, Mic, Paperclip, Search, Send, Zap } from 'lucide-react';
 import { crmApi } from './api';
 import { useCrm } from './store';
 import type { ChannelId, Contact, Conversation, Lead, Message } from './types';
 import { Avatar, Chip, PhoneLink, StatusChip, TypeChip } from './ui';
-import { setOpenConv } from './notify';
-import { CHANNEL_LABEL, TEMPLATES, displayName, fmtDate, fmtTime, formatPhone, matchesQuery, sameDay } from './util';
+import { CHANNEL_LABEL, TEMPLATES, displayName, fmtDate, fmtTime, formatPhone, matchesQuery, sameDay, waUrl } from './util';
 
-const CHANNELS: ChannelId[] = ['whatsapp', 'instagram', 'telegram'];
-const LIST_KEY = 'crm.inbox.listHidden';
+const CHANNELS: ChannelId[] = ['telegram', 'whatsapp', 'instagram'];
 
 const SETUP: Record<'whatsapp' | 'instagram', { title: string; steps: string[]; vars: string[]; webhook: string }> = {
   whatsapp: {
@@ -41,7 +39,7 @@ function Bubble({ message, convId, channel, cont }: { message: Message; convId: 
   const fileUrl = `/api/admin/crm/conversations/${convId}/messages/${message.id}/file`;
   const out = message.dir === 'out';
   return (
-    <div className={`crm-msg ${out ? 'out' : 'in'} ${message.auto ? 'auto' : ''} ${cont ? 'cont' : ''}`} title={message.auto ? 'Автоматическое сообщение бота' : undefined}>
+    <div className={`crm-msg ${out ? 'out' : 'in'} ${message.auto ? 'auto' : ''} ${cont ? 'cont' : ''} ${message.id.startsWith('tmp-') ? 'crm-msg-pending' : ''}`} title={message.auto ? 'Автоматическое сообщение бота' : undefined}>
       {message.attachments.map((a, i) => {
         const downloadable = channel === 'telegram' && a.fileId;
         if (downloadable && a.type === 'photo') return <a key={i} href={fileUrl} target="_blank" rel="noreferrer"><img className="att" src={fileUrl} alt={a.label || 'Фото'} loading="lazy" /></a>;
@@ -75,6 +73,7 @@ function SidePanel({ conv, contact, leads, phone }: { conv: Conversation; contac
         <strong>{displayName(contact)}</strong>
         <span className="crm-muted">{contact ? (contact.kind === 'parent' ? 'Родитель' : 'Ученик') : 'Новый контакт'}{conv.username ? ` · @${conv.username}` : ''}</span>
         <div className="crm-side-phones">{phones.map((p) => <PhoneLink key={p} phone={p} className="pill" />)}</div>
+        {phones[0] && waUrl(phones[0]) && <a className="crm-btn wa" href={waUrl(phones[0])} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Открыть в WhatsApp</a>}
         {contact && <button type="button" className="crm-btn sm" onClick={() => go({ tab: 'contacts', contactId: contact.id })}><ExternalLink size={14} /> Карточка контакта</button>}
         <span className="crm-muted" style={{ fontSize: 12 }}>В диалоге с {fmtDate(conv.createdAt)}</span>
       </div>
@@ -98,25 +97,19 @@ function SidePanel({ conv, contact, leads, phone }: { conv: Conversation; contac
 
 export function InboxView() {
   const { convs, convMap, contactMap, leads, channels, nav, go, upsertConv, subscribeMessages, toast } = useCrm();
-  const channel: ChannelId = nav.channel || (nav.convId && convMap[nav.convId]?.channel) || 'whatsapp';
+  const channel: ChannelId = nav.channel || (nav.convId && convMap[nav.convId]?.channel) || 'telegram';
   const [query, setQuery] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [listHidden, setListHidden] = useState(() => { try { return window.localStorage.getItem(LIST_KEY) === '1'; } catch { return false; } });
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickRef = useRef(true);
   const selectedId = nav.convId && convMap[nav.convId]?.channel === channel ? nav.convId : undefined;
   const selected = selectedId ? convMap[selectedId] : undefined;
-
-  useEffect(() => { try { window.localStorage.setItem(LIST_KEY, listHidden ? '1' : '0'); } catch { /* хранилище недоступно — не страшно */ } }, [listHidden]);
-  /* уведомления о новых сообщениях не показываются для чата, который сейчас открыт на экране */
-  useEffect(() => { setOpenConv(selectedId || null); return () => setOpenConv(null); }, [selectedId]);
 
   const unreadBy = useMemo(() => Object.fromEntries(CHANNELS.map((c) => [c, convs.filter((x) => x.channel === c).reduce((n, x) => n + (x.unread || 0), 0)])), [convs]);
   const list = useMemo(() => convs.filter((c) => c.channel === channel && !c.archived && (!unreadOnly || c.unread > 0) && matchesQuery([c.title, c.username, c.phone, c.lastText, displayName(contactMap[c.contactId])], query)), [convs, channel, query, unreadOnly, contactMap]);
@@ -140,7 +133,12 @@ export function InboxView() {
 
   useEffect(() => subscribeMessages((convId, message) => {
     if (convId !== selectedId) return;
-    setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === message.id)) return prev;
+      /* настоящее исходящее пришло раньше ответа сервера — убираем его временную копию */
+      const tmp = message.dir === 'out' ? prev.findIndex((m) => m.id.startsWith('tmp-') && m.text === message.text) : -1;
+      return tmp >= 0 ? [...prev.slice(0, tmp), ...prev.slice(tmp + 1), message] : [...prev, message];
+    });
     if (message.dir === 'in') void markRead(convId);
   }), [subscribeMessages, selectedId, markRead]);
 
@@ -169,13 +167,22 @@ export function InboxView() {
   };
   const send = async () => {
     const body = text.trim();
-    if (!body || !selectedId || sending) return;
-    setSending(true);
+    if (!body || !selectedId) return;
+    /* сообщение появляется в чате мгновенно; когда Meta подтвердит — подменяем его настоящим */
+    const tempId = `tmp-${Date.now()}`;
+    const temp: Message = { id: tempId, seq: Number.MAX_SAFE_INTEGER, dir: 'out', text: body, attachments: [], at: new Date().toISOString(), auto: false, author: '' };
+    stickRef.current = true;
+    setMessages((prev) => [...prev, temp]); setText('');
     try {
       const message = await crmApi<Message>(`/conversations/${selectedId}/messages`, { body: { text: body } });
-      stickRef.current = true;
-      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message])); setText('');
-    } catch (reason) { toast(reason instanceof Error ? reason.message : 'Не удалось отправить', 'bad'); } finally { setSending(false); }
+      setMessages((prev) => {
+        const rest = prev.filter((m) => m.id !== tempId);
+        return rest.some((m) => m.id === message.id) ? rest : [...rest, message];
+      });
+    } catch (reason) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId)); setText(body);
+      toast(reason instanceof Error ? reason.message : 'Не удалось отправить', 'bad');
+    }
   };
 
   const contact = selected ? contactMap[selected.contactId] : undefined;
@@ -204,7 +211,7 @@ export function InboxView() {
           <p style={{ margin: 0 }}>Адрес вебхука: <code>{window.location.origin}{SETUP[channel as 'whatsapp' | 'instagram'].webhook}</code></p>
         </div>
       ) : (
-        <div className="crm-card crm-inbox" data-ch={channel} data-sel={selected ? '1' : '0'} data-list={listHidden && selected ? '0' : '1'}>
+        <div className="crm-card crm-inbox" data-ch={channel} data-sel={selected ? '1' : '0'}>
           <section className="crm-conv-col">
             <div className="crm-conv-head">
               <div className="crm-row" style={{ justifyContent: 'space-between' }}>
@@ -247,10 +254,6 @@ export function InboxView() {
               <>
                 <header className="crm-chat-head">
                   <button type="button" className="crm-btn icon sm crm-back" aria-label="К списку диалогов" onClick={() => go({ convId: undefined })}><ArrowLeft size={16} /></button>
-                  <button type="button" className="crm-btn icon sm crm-list-toggle" aria-pressed={listHidden} title={listHidden ? 'Показать список диалогов' : 'Скрыть список диалогов'} aria-label={listHidden ? 'Показать список диалогов' : 'Скрыть список диалогов'} onClick={() => setListHidden((v) => !v)}>
-                    {listHidden ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-                    {listHidden && totalUnread > 0 && <span className="crm-badge">{totalUnread}</span>}
-                  </button>
                   <span className="crm-av"><Avatar contact={contact} name={contact?.name || selected.title} /><i className={`dot ${channel}`} /></span>
                   <div className="who">
                     <strong>{contact?.name || selected.title}</strong>
@@ -261,6 +264,7 @@ export function InboxView() {
                     </span>
                   </div>
                   <span className="crm-spacer" />
+                  {phone && waUrl(phone) && <a className="crm-btn wa sm" href={waUrl(phone)} target="_blank" rel="noreferrer" title="Открыть этот чат в приложении WhatsApp"><MessageCircle size={15} /> <span className="lbl">WhatsApp</span></a>}
                   {contact && <button type="button" className="crm-btn icon sm" title="Карточка контакта" aria-label="Карточка контакта" onClick={() => go({ tab: 'contacts', contactId: contact.id })}><ExternalLink size={15} /></button>}
                 </header>
                 <div className="crm-thread" ref={threadRef} onScroll={(e) => { const el = e.currentTarget; stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
@@ -291,7 +295,7 @@ export function InboxView() {
                     <textarea ref={inputRef} rows={1} placeholder={connected ? 'Сообщение…' : 'Канал не подключён — отправка недоступна'} value={text} disabled={!connected}
                       onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
                   </div>
-                  <button type="button" className="crm-send" aria-label="Отправить" title="Отправить (Enter)" disabled={!text.trim() || sending || !connected} onClick={() => void send()}><Send size={18} /></button>
+                  <button type="button" className="crm-send" aria-label="Отправить" title="Отправить (Enter)" disabled={!text.trim() || !connected} onClick={() => void send()}><Send size={18} /></button>
                 </div>
               </>
             ) : (

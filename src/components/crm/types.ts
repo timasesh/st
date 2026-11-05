@@ -33,3 +33,6 @@ export type DuplicatePair = { key: string; a: Contact; b: Contact; reasons: stri
 export type AnalyticsRow = { key: string; leads: number; booked: number; done: number; paid: number; lost: number; conversion: number };
 export type Analytics = { groupBy: string; total: AnalyticsRow; series: { day: string; leads: number }[]; rows: AnalyticsRow[] };
 export type TrialSlots = { teachers: { id: string; name: string }[]; occupied: { teacherId: string; day: number; hour: number }[]; hours: number[] };
+
+export type TaskStatus = 'open' | 'done' | 'failed';
+export type Task = { id: string; text: string; date: string; start: string; end: string; status: TaskStatus; doneAt: string | null; createdBy: string; createdAt: string; updatedAt: string };

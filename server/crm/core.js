@@ -13,7 +13,7 @@ const TZ = 'Asia/Almaty';
 const dayKey = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
 
 export async function createCrmCore({ kv, emit = () => {} }) {
-  const maps = { contact: new Map(), lead: new Map(), conv: new Map() };
+  const maps = { contact: new Map(), lead: new Map(), conv: new Map(), task: new Map() };
   let meta = { leadSeq: 0, dismissed: [], importedAt: null };
   const chunkCache = new Map();
   let queue = Promise.resolve();
@@ -30,12 +30,24 @@ export async function createCrmCore({ kv, emit = () => {} }) {
     if (maxSeq > meta.leadSeq) meta.leadSeq = maxSeq;
   }
   const saveMeta = () => kv.set('crm:meta', meta);
-  async function put(coll, entity) {
+  /* pending — список «фоновых» записей: сначала шлём событие клиентам, а запись в базу идёт параллельно */
+  async function put(coll, entity, pending) {
     entity.updatedAt = now();
     maps[coll].set(entity.id, entity);
+    if (pending) {
+      pending.push(kv.set(`crm:${coll}:${entity.id}`, entity));
+      emit('upsert', { coll, entity: view(coll, entity) });
+      return entity;
+    }
     await kv.set(`crm:${coll}:${entity.id}`, entity);
     emit('upsert', { coll, entity: view(coll, entity) });
     return entity;
+  }
+  async function drop(coll, id) {
+    if (!maps[coll].delete(id)) return false;
+    await kv.del(`crm:${coll}:${id}`);
+    emit('delete', { coll, id });
+    return true;
   }
   function view(coll, entity) {
     if (coll === 'conv') { const { recentExt, ...rest } = entity; return rest; }
@@ -53,13 +65,14 @@ export async function createCrmCore({ kv, emit = () => {} }) {
     if (chunkCache.size > 60) chunkCache.delete(chunkCache.keys().next().value);
     return data;
   }
-  async function appendMessage(conv, message) {
+  async function appendMessage(conv, message, pending) {
     let n = conv.msgChunk || 0;
     let chunk = await readChunk(conv.id, n);
     if (chunk.length >= CHUNK) { n += 1; chunk = []; conv.msgChunk = n; chunkCache.set(chunkKey(conv.id, n), chunk); }
     message.seq = (conv.msgSeq = (conv.msgSeq || 0) + 1);
     chunk.push(message);
-    await kv.set(chunkKey(conv.id, n), chunk);
+    const write = kv.set(chunkKey(conv.id, n), [...chunk]);
+    if (pending) pending.push(write); else await write;
     return message;
   }
   async function getMessages(convId, { before = Infinity, limit = 80 } = {}) {
@@ -329,7 +342,8 @@ export async function createCrmCore({ kv, emit = () => {} }) {
 
   /* ───── диалоги ───── */
   const convByExternal = (channel, externalId) => [...maps.conv.values()].find((c) => c.channel === channel && c.externalId === String(externalId));
-  async function ingest({ channel, externalId, profile = {}, linked = null, dir = 'in', message, auto = false, author = '', createLead = true }) {
+  async function ingest({ channel, externalId, profile = {}, linked = null, dir = 'in', message, auto = false, author = '', createLead = true, fast = false }) {
+    const pending = [];
     externalId = String(externalId);
     let conv = convByExternal(channel, externalId);
     let isNewConv = false; let isNewLead = false;
@@ -375,14 +389,16 @@ export async function createCrmCore({ kv, emit = () => {} }) {
     const saved = await appendMessage(conv, {
       id: uuid(), dir, text: String(message.text ?? '').slice(0, 4000), attachments: message.attachments || [],
       externalId: message.externalId ? String(message.externalId) : '', at: message.at || now(), auto, author,
-    });
+    }, pending);
     if (saved.externalId) conv.recentExt = [...conv.recentExt, saved.externalId].slice(-60);
     conv.lastAt = saved.at; conv.lastDir = dir; conv.lastAuto = auto;
     conv.lastText = saved.text || (saved.attachments[0] ? `[${saved.attachments[0].label || saved.attachments[0].type}]` : '');
     if (dir === 'in') conv.unread = (conv.unread || 0) + 1; else if (!auto) conv.unread = 0;
     if (profile.username && !conv.username) conv.username = clip(profile.username, 60);
-    await put('conv', conv);
+    await put('conv', conv, pending);
     emit('message', { convId: conv.id, message: saved, conv: { id: conv.id, channel: conv.channel, title: conv.title, phone: conv.phone || '', username: conv.username || '' } });
+    const persisted = Promise.all(pending);
+    if (fast) persisted.catch((error) => console.warn('CRM: не удалось сохранить сообщение:', error.message)); else await persisted;
     return { conv, message: saved, isNewConv, isNewLead };
   }
 
@@ -427,7 +443,7 @@ export async function createCrmCore({ kv, emit = () => {} }) {
   }
 
   return {
-    init, exclusive, put, maps, meta: () => meta, saveMeta, view,
+    init, exclusive, put, drop, maps, meta: () => meta, saveMeta, view,
     blankContact, resolveContacts, findParentByPhone, findAnyByPhone,
     newLead, getLead, applyStatus, timeline,
     findDuplicates, mergeContacts, pairKey, syncTrials, ingest, appendMessage, getMessages, findMessage, convByExternal, analytics,

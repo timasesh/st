@@ -16,3 +16,9 @@ export function requestOpenChat(target: OpenChat) {
   window.dispatchEvent(new CustomEvent<OpenChat>(OPEN_CHAT_EVENT, { detail: target }));
 }
 export function takePendingChat(): OpenChat | null { const target = pending; pending = null; return target; }
+
+/* «Открой вкладку CRM» (например, задачи) от всплывающего уведомления */
+export const OPEN_TAB_EVENT = 'crm:open-tab';
+let pendingTab: string | null = null;
+export function requestOpenTab(tab: string) { pendingTab = tab; window.dispatchEvent(new CustomEvent<string>(OPEN_TAB_EVENT, { detail: tab })); }
+export function takePendingTab(): string | null { const tab = pendingTab; pendingTab = null; return tab; }

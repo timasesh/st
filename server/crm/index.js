@@ -2,6 +2,7 @@
    Все маршруты /api/admin/crm/* защищены админ-сессией; вебхуки Meta — проверкой подписи. */
 import express from 'express';
 import { Readable } from 'node:stream';
+import crypto from 'node:crypto';
 import { createKv } from './kv.js';
 import { createCrmCore } from './core.js';
 import { createChannels } from './channels.js';
@@ -21,6 +22,7 @@ export function createCrm(deps) {
   };
   const kv = createKv({ getSupabase: deps.getSupabase, dataDir: deps.dataDir });
   const channels = createChannels({ env: deps.env || process.env, telegram: deps.telegram });
+  channels.warm();
   let core = null;
   let initError = null;
   let readyResolve;
@@ -173,7 +175,7 @@ export function createCrm(deps) {
       const result = await core.exclusive(() => core.ingest({
         channel, externalId: item.externalId, dir: item.echo ? 'out' : 'in', author: item.echo ? 'Instagram' : '',
         profile: { name: item.name || '', phone: item.phone || '' },
-        message: { text: item.text, attachments: item.attachments, externalId: item.messageId, at: item.at },
+        message: { text: item.text, attachments: item.attachments, externalId: item.messageId, at: item.at }, fast: true,
       }));
       if (result?.isNewConv && !item.echo) void notifyNew(channel, item.name || item.phone || item.externalId, item.text);
     }
@@ -188,15 +190,15 @@ export function createCrm(deps) {
     if (!text) throw err(400, 'Введите сообщение.');
     if (text.length > 4000) throw err(400, 'Сообщение длиннее 4000 символов.');
     const sent = await channels.send(conv, text);
-    const result = await core.exclusive(async () => {
-      const saved = await core.ingest({ channel: conv.channel, externalId: conv.externalId, dir: 'out', author: actor, message: { text, externalId: sent.externalId } });
+    const result = await core.exclusive(() => core.ingest({ channel: conv.channel, externalId: conv.externalId, dir: 'out', author: actor, message: { text, externalId: sent.externalId }, fast: true }));
+    /* статус заявки обновляем уже после ответа менеджеру */
+    void core.exclusive(async () => {
       const lead = [...core.maps.lead.values()].find((l) => l.contactId === conv.contactId && !l.archived && l.status === 'new');
       if (lead) {
         await core.applyStatus(lead, 'contacted', { text: `Ответили в ${CHANNEL_NAME[conv.channel]}` });
         await core.put('lead', lead);
       }
-      return saved;
-    });
+    }).catch((error) => console.warn('CRM: статус заявки:', error.message));
     return result?.message;
   }
 
@@ -316,6 +318,29 @@ export function createCrm(deps) {
   const actorOf = (req) => String(req.adminSession?.sub || 'admin');
   const sortedLeads = () => [...core.maps.lead.values()].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
+
+  /* ───── задачи: проверка полей и срок хранения (архив живёт 30 дней) ───── */
+  const TASK_TZ = 'Asia/Almaty';
+  const todayKey = (offsetDays = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: TASK_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + offsetDays * 86400000));
+  const slotOk = (v, allow24) => { const m = /^(\d{2}):(\d{2})$/.exec(String(v)); if (!m) return false; const h = +m[1]; const mi = +m[2]; if (mi % 15) return false; return allow24 && h === 24 ? mi === 0 : h <= 23; };
+  const toMin = (v) => { const [h, m] = String(v).split(':').map(Number); return h * 60 + m; };
+  function cleanTask(body, existing) {
+    const text = clip(body.text, 300);
+    if (!text) throw err(400, 'Напишите, что нужно сделать.');
+    const date = String(body.date || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw err(400, 'Укажите дату задачи.');
+    if (!existing && date < todayKey()) throw err(400, 'Дата задачи уже прошла.');
+    if (date > todayKey(31)) throw err(400, 'Задачу можно поставить не дальше чем на месяц вперёд.');
+    if (!slotOk(body.start, false) || !slotOk(body.end, true)) throw err(400, 'Время выбирается с шагом 15 минут.');
+    if (toMin(body.end) <= toMin(body.start)) throw err(400, 'Конец задачи должен быть позже начала.');
+    return { text, date, start: body.start, end: body.end };
+  }
+  async function purgeTasks() {
+    const limit = todayKey(-31);
+    const old = [...core.maps.task.values()].filter((t) => t.date < limit);
+    for (const t of old) await core.exclusive(() => core.drop('task', t.id));
+  }
+
   function register(app) {
     const r = express.Router();
     r.use(requireAdmin);
@@ -362,6 +387,34 @@ export function createCrm(deps) {
       clients.add(res);
       req.on('close', () => clients.delete(res));
     });
+
+    /* ───── задачи ───── */
+    r.get('/tasks', wrap(async (_req, res) => {
+      await ensureFresh();
+      await purgeTasks();
+      res.json({ tasks: [...core.maps.task.values()].sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`)), serverTime: now() });
+    }));
+    r.post('/tasks', wrap(async (req, res) => res.status(201).json(await core.exclusive(async () => {
+      const f = cleanTask(req.body || {});
+      const t = now();
+      return core.put('task', { id: crypto.randomUUID(), ...f, status: 'open', doneAt: null, createdBy: actorOf(req), createdAt: t, updatedAt: t });
+    }))));
+    r.patch('/tasks/:id', wrap(async (req, res) => res.json(await core.exclusive(async () => {
+      const task = core.maps.task.get(req.params.id);
+      if (!task) throw err(404, 'Задача не найдена.');
+      const body = req.body || {};
+      const f = cleanTask({ text: task.text, date: task.date, start: task.start, end: task.end, ...body }, task);
+      Object.assign(task, f);
+      if (body.status !== undefined) {
+        if (!['open', 'done', 'failed'].includes(body.status)) throw err(400, 'Неизвестный статус задачи.');
+        task.status = body.status; task.doneAt = body.status === 'open' ? null : now();
+      } else if (body.date !== undefined || body.start !== undefined || body.end !== undefined) { task.status = 'open'; task.doneAt = null; }
+      return core.put('task', task);
+    }))));
+    r.delete('/tasks/:id', wrap(async (req, res) => {
+      await core.exclusive(() => core.drop('task', req.params.id));
+      res.json({ ok: true });
+    }));
 
     r.post('/leads', wrap(async (req, res) => res.status(201).json(await createManualLead(req.body || {}))));
     r.patch('/leads/:id', wrap(async (req, res) => res.json(await updateLead(req.params.id, req.body || {}))));

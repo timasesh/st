@@ -10,6 +10,16 @@ export function createKv({ getSupabase, dataDir }) {
   let local = null;
   let timer = null;
   let chain = Promise.resolve();
+  /* записи одного ключа идут строго по очереди: поздняя версия не может быть затёрта ранней */
+  const keyChains = new Map();
+  const ordered = (key, fn) => {
+    const prev = keyChains.get(key) || Promise.resolve();
+    const run = prev.then(fn, fn);
+    const tail = run.catch(() => {});
+    keyChains.set(key, tail);
+    tail.then(() => { if (keyChains.get(key) === tail) keyChains.delete(key); });
+    return run;
+  };
 
   async function loadLocal() {
     if (local) return local;
@@ -46,9 +56,11 @@ export function createKv({ getSupabase, dataDir }) {
     async set(key, value) {
       const supabase = getSupabase();
       if (supabase) {
-        const r = await supabase.from('app_settings').upsert({ key, value: JSON.stringify(value) });
-        if (r.error) throw new Error(`CRM set ${key}: ${r.error.message}`);
-        return;
+        const payload = JSON.stringify(value);
+        return ordered(key, async () => {
+          const r = await supabase.from('app_settings').upsert({ key, value: payload });
+          if (r.error) throw new Error(`CRM set ${key}: ${r.error.message}`);
+        });
       }
       (await loadLocal())[key] = value;
       scheduleFlush();

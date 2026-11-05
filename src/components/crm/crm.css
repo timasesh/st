@@ -276,3 +276,49 @@
   .crm-chat-head .lbl { display: none; }
   .crm-msg { max-width: 86%; }
 }
+
+
+/* ───── задачи ───── */
+.crm-app { --task: #1d6bff; --task-ink: #ffffff; }
+.crm-btn.task { background: var(--task); border-color: var(--task); color: var(--task-ink); box-shadow: 0 4px 14px rgba(29, 107, 255, .35); }
+.crm-btn.task:hover:not(:disabled) { background: #1259e0; border-color: #1259e0; }
+.crm-btn.ok { color: var(--ok); border-color: var(--ok-soft); background: var(--ok-soft); }
+.crm-task-day { margin-bottom: 20px; }
+.crm-task-day h3 { margin: 0 0 8px; font-size: 15px; }
+.crm-task { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-left: 4px solid var(--task); border-radius: 12px; background: var(--card); box-shadow: var(--shadow); }
+.crm-task.active { background: color-mix(in srgb, var(--task) 8%, var(--card)); }
+.crm-task.overdue { border-color: var(--bad); border-left-color: var(--bad); background: var(--bad-soft); }
+.crm-task.done { border-left-color: var(--ok); opacity: .75; }
+.crm-task.failed { border-left-color: var(--bad); opacity: .85; }
+.crm-task.done .crm-task-text { text-decoration: line-through; }
+.crm-task-time { flex: none; display: grid; text-align: center; min-width: 54px; font-variant-numeric: tabular-nums; }
+.crm-task-time span { color: var(--muted); font-size: 12px; }
+.crm-task-body { flex: 1; min-width: 0; }
+.crm-task-text { margin: 0; font-weight: 700; word-break: break-word; }
+.crm-task-meta { display: flex; gap: 6px; margin-top: 4px; }
+.crm-task-tag { padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; }
+.crm-task-tag.ok { background: var(--ok-soft); color: var(--ok); }
+.crm-task-tag.bad { background: var(--bad); color: #fff; }
+.crm-task-tag.blue { background: var(--task); color: #fff; }
+.crm-task-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+@media (max-width: 760px) { .crm-task { flex-wrap: wrap; } .crm-task-actions { width: 100%; justify-content: flex-start; } }
+
+/* выбор времени */
+.crm-tp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.crm-tp-btn { width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card); cursor: pointer; font-size: 16px; }
+.crm-tp-btn small { color: var(--muted); font-size: 11px; }
+.crm-tp-btn.open, .crm-tp-btn:hover { border-color: var(--task); }
+.crm-tp-panel { margin-top: -4px; max-height: 230px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); padding: 6px; }
+.crm-tp-row { display: grid; grid-template-columns: 36px repeat(4, 1fr); gap: 6px; align-items: center; padding: 3px 0; }
+.crm-tp-h { text-align: center; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.crm-tp-row button { padding: 7px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; font-variant-numeric: tabular-nums; font-weight: 700; }
+.crm-tp-row button:hover:not(:disabled) { border-color: var(--task); color: var(--task); }
+.crm-tp-row button:disabled { opacity: .35; cursor: not-allowed; }
+.crm-tp-row button.on { background: var(--task); border-color: var(--task); color: #fff; }
+.crm-tp-row button.wide { grid-column: 2 / -1; }
+
+/* уведомления о задачах */
+.crm-popup.task { --pc: #1d6bff; }
+.crm-popup.task.end { --pc: #e11d48; background: var(--bad-soft); border-color: var(--bad); }
+.crm-popup-done { align-self: center; margin-right: 34px; display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border: 0; border-radius: 8px; background: var(--ok); color: #fff; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.crm-msg-pending { opacity: .6; }

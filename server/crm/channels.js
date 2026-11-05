@@ -121,5 +121,13 @@ export function createChannels({ env = process.env, telegram, fetchImpl = (...ar
     return graph(`https://graph.facebook.com/${version}/${id}/subscribed_apps`, wa.token, {});
   }
 
-  return { wabaInfo, subscribeWaba, diagnose, hasAppSecret, checkMeta, status, verifySignature, verifyChallenge, parseWhatsApp, parseInstagram, send, waVerify: wa.verify, igVerify: ig.verify };
+  /* держим соединение с Meta «тёплым»: первая отправка не тратит время на TLS-рукопожатие */
+  function warm() {
+    if (!(wa.token && wa.phoneId)) return;
+    const ping = () => { fetchImpl(`https://graph.facebook.com/${version}/${wa.phoneId}?fields=id`, { headers: { Authorization: `Bearer ${wa.token}` } }).then((r) => r.arrayBuffer()).catch(() => {}); };
+    ping();
+    setInterval(ping, 3 * 60 * 1000).unref?.();
+  }
+
+  return { warm, wabaInfo, subscribeWaba, diagnose, hasAppSecret, checkMeta, status, verifySignature, verifyChallenge, parseWhatsApp, parseInstagram, send, waVerify: wa.verify, igVerify: ig.verify };
 }

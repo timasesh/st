@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { crmApi } from './api';
 import type { ChannelId, ChannelState, Contact, Conversation, Lead, Message, Status } from './types';
-import { OPEN_CHAT_EVENT, takePendingChat, type OpenChat } from './notify';
+import { OPEN_CHAT_EVENT, OPEN_TAB_EVENT, takePendingChat, takePendingTab, type OpenChat } from './notify';
 
-export type Tab = 'leads' | 'contacts' | 'inbox' | 'duplicates' | 'analytics';
+export type Tab = 'leads' | 'contacts' | 'inbox' | 'duplicates' | 'analytics' | 'tasks';
 export type Nav = { tab: Tab; leadId?: string; contactId?: string; convId?: string; channel?: ChannelId };
 
 type Bootstrap = { statuses: Status[]; channels: ChannelState; leads: Lead[]; contacts: Contact[]; conversations: Conversation[]; duplicates: number };
@@ -67,7 +67,10 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     if (waiting) open(waiting);
     const handler = (event: Event) => { const target = (event as CustomEvent<OpenChat>).detail; if (target) { open(target); takePendingChat(); } };
     window.addEventListener(OPEN_CHAT_EVENT, handler);
-    return () => window.removeEventListener(OPEN_CHAT_EVENT, handler);
+    const openTab = () => { const tab = takePendingTab(); if (tab === 'tasks') setNav({ tab: 'tasks' }); };
+    if (takePendingTab() === 'tasks') setNav({ tab: 'tasks' });
+    window.addEventListener(OPEN_TAB_EVENT, openTab);
+    return () => { window.removeEventListener(OPEN_CHAT_EVENT, handler); window.removeEventListener(OPEN_TAB_EVENT, openTab); };
   }, []);
 
   /* живые обновления: сервер присылает изменённые сущности и новые сообщения */
