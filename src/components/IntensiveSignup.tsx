@@ -3,6 +3,7 @@ import { CalendarDays, CheckCircle2, Gamepad2, MessageCircle, Send, Star, Trophy
 import '../tg/tg.css';
 import PhoneInput from '../shared/PhoneInput';
 import { fullPhone, phoneProblem, prefixOk } from '../shared/phone';
+import { getAttribution } from '../shared/attribution';
 
 /* Страница записи на бесплатный интенсив (study-task.kz/intensive, /intensive/5, /intensive/9) — в стиле кабинета ученика.
    Темы, даты и программа задаются на сервере (INTENSIVE в server.js); здесь только запасной вариант, если сервер не ответил. */
@@ -55,7 +56,7 @@ export default function IntensiveSignup() {
     if (problem) { if (prefixOk(phone)) setError(problem); return; }
     setBusy(true);
     try {
-      const response = await fetch('/api/public/intensive-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentName, parentName, grade, phone: fullPhone(phone) }) });
+      const response = await fetch('/api/public/intensive-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentName, parentName, grade, phone: fullPhone(phone), attribution: getAttribution() }) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || 'Не удалось отправить заявку.');
       setDone({ already: Boolean(data?.already) });

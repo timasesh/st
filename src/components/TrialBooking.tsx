@@ -3,6 +3,7 @@ import { CheckCircle2, MessageCircle } from 'lucide-react';
 import '../tg/tg.css';
 import PhoneInput from '../shared/PhoneInput';
 import { fullPhone, phoneProblem, prefixOk } from '../shared/phone';
+import { getAttribution } from '../shared/attribution';
 
 /* Страница записи на пробный урок (study-task.kz/trial) — в стиле мини-приложения StudyTask («доска»). */
 const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
@@ -27,7 +28,7 @@ export default function TrialBooking() {
     if (problem) { if (prefixOk(phone)) setError(problem); return; }
     setBusy(true);
     try {
-      const response = await fetch('/api/public/trial-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentName, parentName, grade, phone: fullPhone(phone) }) });
+      const response = await fetch('/api/public/trial-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentName, parentName, grade, phone: fullPhone(phone), attribution: getAttribution() }) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || 'Не удалось отправить заявку.');
       setDone(true);

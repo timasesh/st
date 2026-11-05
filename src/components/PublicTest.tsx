@@ -6,6 +6,7 @@ import { ArrowRight, BookOpen, CheckCircle2, Loader2, Lock, MessageCircle, Rotat
 import { ALL_GRADES, DIFFICULTY, PUBLIC_TESTS, PublicQuestion, isGradeAvailable, resultLevel } from '../data/publicTests';
 import { whatsappUrl } from '../constants';
 import { Rich, TestVisual } from './TestVisual';
+import { getAttribution } from '../shared/attribution';
 
 type Stage = 'pick' | 'intro' | 'quiz' | 'result';
 type Prepared = PublicQuestion & { order: number[]; correct: number };
@@ -89,7 +90,7 @@ export default function PublicTest() {
     setFormError('');
     setSending(true);
     try {
-      const response = await fetch('/api/public/test-leads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, phone: digits, grade }) });
+      const response = await fetch('/api/public/test-leads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, phone: digits, grade, attribution: getAttribution() }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Не удалось сохранить данные. Попробуйте ещё раз.');
       setLeadId(data.id);

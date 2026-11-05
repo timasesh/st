@@ -17,6 +17,8 @@ import { createSchoolSprint } from './server/school-sprint.js';
 import { createTelegramNotifier } from './server/telegram-notify.js';
 import { createAccountAccess } from './server/account-access.js';
 import { createSkyQuestRecords } from './server/skyquest-records.js';
+import { createCrm } from './server/crm/index.js';
+import { HttpError } from './server/crm/util.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(ROOT, '.env.local') });
@@ -52,7 +54,12 @@ const LEGACY_DEFAULT_PASSWORD_HASH = 'PVp1UE40/4mVYCL30qMrK8eDOEP2Wi4okglSmBMh6W
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '14mb' }));
+app.use(express.json({ limit: '14mb', verify: (req, _res, buf) => { if (req.url.startsWith('/api/crm/webhooks/')) req.rawBody = buf; } }));
+// CRM: любое изменение пробных уроков (в админке или у преподавателя) подтягивается в заявки.
+app.use(['/api/admin/trial-lessons', '/api/teacher/trial-lessons'], (req, res, next) => {
+  if (req.method !== 'GET') res.on('finish', () => { if (res.statusCode < 400) crm.scheduleTrialSync(); });
+  next();
+});
 
 let sessionSecret;
 let credentials;
@@ -1360,6 +1367,7 @@ app.post('/api/public/test-leads', async (req, res) => {
     testLeadStartLog.set(ip, recent);
     const lead = { id: crypto.randomUUID(), name, phone, grade, status: 'started', score: null, total: null, missedTopics: [], startedAt: new Date().toISOString(), finishedAt: null };
     await mutateTestLeads((leads) => { leads.push(lead); });
+    void crm.captureForm({ kind: 'level_test', legacyId: lead.id, studentName: name, phone, grade, attribution: req.body?.attribution, createdAt: lead.startedAt }).catch((error) => console.warn('CRM test lead:', error.message));
     return res.status(201).json({ id: lead.id });
   } catch (error) {
     console.error('[StudyTask] test lead create failed:', error);
@@ -1389,6 +1397,7 @@ app.post('/api/public/test-leads/:id/result', async (req, res) => {
     if (!found) return res.status(404).json({ error: 'Запись не найдена.' });
     if (leadForNotice) {
       const l = leadForNotice;
+      void crm.updateTestResult(l.id, { score: l.score, total: l.total, missedTopics: l.missedTopics, finishedAt: l.finishedAt }).catch((error) => console.warn('CRM test result:', error.message));
       const msg = `📝 <b>Новое прохождение теста</b>\n\n👤 ${tgEsc(l.name)}\n🎓 ${l.grade} класс\n📞 +${tgEsc(l.phone)}\n✅ Результат: <b>${l.score} из ${l.total}</b>${l.missedTopics?.length ? `\n⚠️ Слабые темы: ${tgEsc(l.missedTopics.join(', '))}` : ''}`;
       void identity.notifyAdmins(msg).catch((error) => console.warn('notify test lead:', error.message));
     }
@@ -1447,6 +1456,7 @@ app.post('/api/public/trial-requests', async (req, res) => {
     trialRequestLog.set(ip, recent);
     const request = { id: crypto.randomUUID(), studentName, parentName, grade, phone, status: 'new', createdAt: new Date().toISOString() };
     await mutateTrialRequests((items) => { items.push(request); });
+    void crm.captureForm({ kind: 'trial', legacyId: request.id, studentName, parentName, phone, grade, attribution: req.body?.attribution, createdAt: request.createdAt }).catch((error) => console.warn('CRM trial request:', error.message));
     const msg = `🎯 <b>Новая запись на пробный урок</b>\n\n👤 Ученик: <b>${tgEsc(studentName)}</b>\n🎓 Класс: ${grade}\n👪 Родитель: ${tgEsc(parentName)}\n📞 +${tgEsc(phone)}`;
     void identity.notifyAdmins(msg).catch((error) => console.warn('notify trial request:', error.message));
     return res.status(201).json({ ok: true });
@@ -1533,6 +1543,7 @@ app.post('/api/public/intensive-requests', async (req, res) => {
       return { already: false, total: items.filter((item) => item.grade === grade).length };
     });
     if (!outcome.already) {
+      void crm.captureForm({ kind: 'intensive', legacyId: request.id, studentName, parentName, phone, grade, topic: track.topic, attribution: req.body?.attribution, createdAt: request.createdAt }).catch((error) => console.warn('CRM intensive request:', error.message));
       const msg = `🚀 <b>Новая запись на интенсив</b>\n\n🎓 Класс: <b>${grade}</b> · ${tgEsc(track.topic)}\n👤 Ученик: <b>${tgEsc(studentName)}</b>\n👪 Родитель: ${tgEsc(parentName)}\n📞 <a href="https://wa.me/${tgEsc(phone)}">+${tgEsc(phone)}</a>\n\n📋 Уже записано в ${grade} классе: <b>${outcome.total}</b>`;
       void identity.notifyAdmins(msg).catch((error) => console.warn('notify intensive request:', error.message));
     }
@@ -1594,43 +1605,46 @@ app.get('/api/admin/trial-lessons', requireAdmin, async (_req, res) => {
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить пробные уроки.' }); }
 });
 
-app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
+async function createTrialLesson(input, actor = 'admin') {
   await refreshAccounts();
-  const firstName = typeof req.body?.firstName === 'string' ? req.body.firstName.trim() : '';
-  const lastName = typeof req.body?.lastName === 'string' ? req.body.lastName.trim() : '';
-  const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
-  const parentPhone = normalizePhone(req.body?.parentPhone);
-  const { teacherId, day, hour } = req.body || {};
-  const lessonLink = typeof req.body?.lessonLink === 'string' ? req.body.lessonLink.trim() : '';
-  const lessonDescription = typeof req.body?.lessonDescription === 'string' ? req.body.lessonDescription.trim() : '';
-  if (!isValidLessonLink(lessonLink)) return res.status(400).json({ error: 'Укажите корректную ссылку на занятие (https://…).'});
-  if (lessonDescription.length > 1000) return res.status(400).json({ error: 'Описание занятия должно быть не длиннее 1000 символов.' });
+  const firstName = typeof input?.firstName === 'string' ? input.firstName.trim() : '';
+  const lastName = typeof input?.lastName === 'string' ? input.lastName.trim() : '';
+  const studentClass = typeof input?.studentClass === 'string' ? input.studentClass.trim() : '';
+  const parentPhone = normalizePhone(input?.parentPhone);
+  const { teacherId, day, hour } = input || {};
+  const lessonLink = typeof input?.lessonLink === 'string' ? input.lessonLink.trim() : '';
+  const lessonDescription = typeof input?.lessonDescription === 'string' ? input.lessonDescription.trim() : '';
+  if (!isValidLessonLink(lessonLink)) throw new HttpError(400, 'Укажите корректную ссылку на занятие (https://…).');
+  if (lessonDescription.length > 1000) throw new HttpError(400, 'Описание занятия должно быть не длиннее 1000 символов.');
   const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
   if (!firstName || firstName.length > 80 || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) {
-    return res.status(400).json({ error: 'Укажите имя, класс ученика и корректный номер родителя (фамилия необязательна).' });
+    throw new HttpError(400, 'Укажите имя, класс ученика и корректный номер родителя (фамилия необязательна).');
   }
   if (!teacher || !Number.isInteger(day) || day < 0 || day > 6 || !Number.isInteger(hour) || hour < 8 || hour > 21) {
-    return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
+    throw new HttpError(400, 'Выберите преподавателя и временной слот.');
   }
-  try {
-    const savedSchedule = supabase
-      ? await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle()
-      : null;
-    if (savedSchedule?.error) throw savedSchedule.error;
-    const schedule = savedSchedule ? (savedSchedule.data?.value ? JSON.parse(savedSchedule.data.value) : { lessons: [] }) : await readJsonFileOr(schedulePath, { lessons: [] });
-    const plannedLessons = Array.isArray(schedule) ? schedule : schedule.lessons || [];
-    const trials = await readTrialLessons();
-    const occupied = plannedLessons.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)
-      || trials.some((lesson) => (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour);
-    if (occupied) return res.status(409).json({ error: 'Этот слот преподавателя уже занят. Выберите другое время.' });
-    const createdAt = new Date().toISOString();
-    const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, parentPhone, teacherId, day, hour, lessonLink, lessonDescription, createdAt, scheduledAt: nextTrialSlotStart(day, hour, new Date(createdAt)), status: 'scheduled' };
-    const student = await ensureTrialStudentAccount(trial);
-    const activeTrial = { ...trial, studentId: student.id };
-    await writeTrialLessons([activeTrial, ...trials]);
-    await recordAdminAuditSafely(req.adminSession.sub, 'Создан пробный урок', `${firstName} ${lastName}, ${studentClass}; ${teacher.firstName} ${teacher.lastName}; ${day}:${hour}`);
-    return res.status(201).json({ ...activeTrial, teacher: publicAccount(teacher), temporaryLogin: parentPhone, temporaryPassword: 'test2026' });
-  } catch (error) { return res.status(error.message?.includes('уже используется') ? 409 : 500).json({ error: error.message || 'Не удалось создать пробный урок.' }); }
+  const savedSchedule = supabase
+    ? await supabase.from('app_settings').select('value').eq('key', 'weekly_schedule').maybeSingle()
+    : null;
+  if (savedSchedule?.error) throw savedSchedule.error;
+  const schedule = savedSchedule ? (savedSchedule.data?.value ? JSON.parse(savedSchedule.data.value) : { lessons: [] }) : await readJsonFileOr(schedulePath, { lessons: [] });
+  const plannedLessons = Array.isArray(schedule) ? schedule : schedule.lessons || [];
+  const trials = await readTrialLessons();
+  const occupied = plannedLessons.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)
+    || trials.some((lesson) => (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour);
+  if (occupied) throw new HttpError(409, 'Этот слот преподавателя уже занят. Выберите другое время.');
+  const createdAt = new Date().toISOString();
+  const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, parentPhone, teacherId, day, hour, lessonLink, lessonDescription, createdAt, scheduledAt: nextTrialSlotStart(day, hour, new Date(createdAt)), status: 'scheduled' };
+  const student = await ensureTrialStudentAccount(trial);
+  const activeTrial = { ...trial, studentId: student.id };
+  await writeTrialLessons([activeTrial, ...trials]);
+  await recordAdminAuditSafely(actor, 'Создан пробный урок', `${firstName} ${lastName}, ${studentClass}; ${teacher.firstName} ${teacher.lastName}; ${day}:${hour}`);
+  return { ...activeTrial, teacher: publicAccount(teacher), temporaryLogin: parentPhone, temporaryPassword: 'test2026' };
+}
+
+app.post('/api/admin/trial-lessons', requireAdmin, async (req, res) => {
+  try { return res.status(201).json(await createTrialLesson(req.body || {}, req.adminSession.sub)); }
+  catch (error) { return res.status(error.status || (error.message?.includes('уже используется') ? 409 : 500)).json({ error: error.message || 'Не удалось создать пробный урок.' }); }
 });
 
 app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
@@ -2683,6 +2697,29 @@ const identity = createTelegramIdentity({
   recordAudit: recordAdminAuditSafely,
 });
 identity.register(app);
+const crm = createCrm({
+  getSupabase: () => supabase,
+  dataDir,
+  requireAdmin,
+  readTrialLessons,
+  createTrialLesson,
+  getTeachers: () => accounts.filter((account) => account.role === 'teacher' && account.status !== 'withdrawn').map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim() })),
+  getTrialSlots: async () => {
+    await refreshAccounts();
+    const schedule = await readScheduleData();
+    const occupied = [];
+    for (const lesson of schedule.lessons || []) if (lesson.teacherId && Number.isInteger(lesson.day) && Number.isInteger(lesson.hour)) occupied.push({ teacherId: lesson.teacherId, day: lesson.day, hour: lesson.hour });
+    for (const trial of await readTrialLessons()) if (['scheduled', 'trial', undefined].includes(trial.status)) occupied.push({ teacherId: trial.teacherId, day: trial.day, hour: trial.hour });
+    const teachers = accounts.filter((account) => account.role === 'teacher' && account.status !== 'withdrawn').map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim() }));
+    return { teachers, occupied, hours: Array.from({ length: 14 }, (_, index) => index + 8) };
+  },
+  readLegacy: async () => ({ trialRequests: await readTrialRequests(), intensiveRequests: await readIntensiveRequests(), testLeads: await readTestLeads() }),
+  intensiveTopic: (grade) => INTENSIVE.tracks.find((track) => track.grade === Number(grade))?.topic || '',
+  notifyAdmins: (text) => identity.notifyAdmins(text),
+  telegram: { enabled: () => identity.enabled(), sendPlain: identity.sendPlain, fileUrl: identity.fileUrl },
+});
+identity.setCrmHooks({ incoming: crm.telegramIncoming, outgoing: crm.telegramOutgoing });
+crm.register(app);
 async function readScheduleData() {
   let data = { lessons: [], targets: {} };
   if (supabase) {
@@ -2719,6 +2756,7 @@ const adminAccount = (account) => account.role === 'student' || account.role ===
 async function start() {
   await initializeAuth();
   try { await identity.load(); await identity.ensureAll(); } catch (error) { console.warn('STID init failed:', error.message); }
+  void crm.init();
 
   if (isProduction) {
     const distDir = path.join(ROOT, 'dist');

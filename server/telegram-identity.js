@@ -109,7 +109,15 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
   const openButton = (text = 'Открыть кабинет') => ({ inline_keyboard: [[{ text, web_app: { url: webAppUrl } }]] });
   const adminWebAppUrl = `${publicUrl}/tg/admin`;
   const openAdminButton = (text = 'Открыть админ-панель') => ({ inline_keyboard: [[{ text, web_app: { url: adminWebAppUrl } }]] });
-  const say = (chatId, text, extra = {}) => tgCall('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra });
+  /* CRM: журнал переписки. Хуки подключаются снизу через setCrmHooks; администраторов в журнал не пишем. */
+  let crmHooks = null;
+  const say = async (chatId, text, extra = {}) => {
+    const result = await tgCall('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra });
+    if (crmHooks && !store.admins[String(chatId)]) void Promise.resolve(crmHooks.outgoing(chatId, text)).catch((error) => console.warn('CRM telegram out:', error.message));
+    return result;
+  };
+  const sendPlain = async (chatId, text) => (await tgCall('sendMessage', { chat_id: chatId, text, disable_web_page_preview: true })).message_id;
+  const fileUrl = async (fileId) => `https://api.telegram.org/file/bot${token}/${(await tgCall('getFile', { file_id: fileId })).file_path}`;
 
 
   /* ───── приветственное видео для /start ───── */
@@ -169,6 +177,12 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     await refreshAccounts();
     const linkedId = store.telegram[tgId];
     const linkedAccount = linkedId ? getAccounts().find((a) => a.id === linkedId && a.status !== 'withdrawn') : null;
+    /* CRM: входящее сообщение попадает в Inbox. Коды (STID, код администратора) — секреты, их не сохраняем. */
+    if (crmHooks && !store.admins[tgId]) {
+      const withoutLabel = text.replace(/stid/ig, '');
+      const looksLikeSecret = /^[\s\d\-–—:]+$/.test(withoutLabel) && withoutLabel.replace(/\D/g, '').length >= 5;
+      if (!looksLikeSecret) void Promise.resolve(crmHooks.incoming(message, linkedAccount)).catch((error) => console.warn('CRM telegram in:', error.message));
+    }
     // /restart — бот начинает с нуля: выход из аккаунта + приветствие с видео и просьбой прислать код
     if (/^\/restart(@\w+)?$/i.test(text)) {
       if (linkedId) { delete store.accountTg[linkedId]; delete store.telegram[tgId]; }
@@ -340,5 +354,8 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     } catch (error) { console.warn('Telegram setup failed:', error.message); }
   }
 
-  return { load, ensureStid, ensureAll, stidOf, isLinked, register, setupWebhook, sendToAccount, notifyAdmins };
+  return {
+    load, ensureStid, ensureAll, stidOf, isLinked, register, setupWebhook, sendToAccount, notifyAdmins,
+    enabled: () => Boolean(token), sendPlain, fileUrl, setCrmHooks: (hooks) => { crmHooks = hooks; },
+  };
 }
