@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { MessageCircle, X } from 'lucide-react';
 import type { ChannelId, Contact, Lead, StatusId } from './types';
-import { CHANNEL_LABEL, STATUS_COLOR, TYPE_LABEL, TYPE_TONE, formatPhone, initials, sourceLabel, waUrl } from './util';
+import { CHANNEL_LABEL, STATUS_COLOR, TYPE_LABEL, TYPE_TONE, formatPhone, initials, sourceLabel, waDigits, waUrl } from './util';
 import { useCrm } from './store';
 
 export function Chip({ tone = '', children, title }: { tone?: string; children: ReactNode; title?: string }) {
@@ -68,15 +68,29 @@ export function Drawer({ onClose, header, children }: { onClose: () => void; hea
   );
 }
 
-/* Номер телефона: клик открывает чат этого номера в WhatsApp (wa.me). Работает и внутри кнопок/строк таблицы — клик не всплывает. */
+/* Открыть чат с номером внутри CRM (WhatsApp-диалог). Если переписки с этим номером ещё нет — откроется приложение WhatsApp. */
+export function useOpenChat() {
+  const { convs, contactMap, go, toast } = useCrm();
+  return (phone: string | undefined | null) => {
+    const d = waDigits(phone || '');
+    if (!d) return;
+    const conv = convs.find((c) => c.channel === 'whatsapp' && !c.archived && waDigits(c.phone || c.externalId) === d)
+      || convs.find((c) => c.channel === 'whatsapp' && !c.archived && contactMap[c.contactId]?.phones.some((p) => waDigits(p) === d));
+    if (conv) { go({ tab: 'inbox', convId: conv.id, channel: 'whatsapp' }); return; }
+    toast('Переписки с этим номером в CRM пока нет — открываем WhatsApp');
+    window.open(waUrl(d), '_blank', 'noopener,noreferrer');
+  };
+}
+
+/* Номер телефона: клик открывает чат с клиентом в CRM. Работает и внутри кнопок/строк таблицы — клик не всплывает. */
 export function PhoneLink({ phone, className = '', icon = true, empty = 'без телефона' }: { phone?: string | null; className?: string; icon?: boolean; empty?: string }) {
+  const openChat = useOpenChat();
   const text = formatPhone(phone || '');
-  const url = waUrl(phone || '');
   if (!text) return empty ? <span className="crm-muted">{empty}</span> : null;
-  if (!url) return <span>{text}</span>;
-  const open = (event: { stopPropagation: () => void; preventDefault: () => void }) => { event.stopPropagation(); event.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); };
+  if (!waUrl(phone || '')) return <span>{text}</span>;
+  const open = (event: { stopPropagation: () => void; preventDefault: () => void }) => { event.stopPropagation(); event.preventDefault(); openChat(phone); };
   return (
-    <span role="link" tabIndex={0} className={`crm-phone ${className}`} title="Открыть чат в WhatsApp" aria-label={`Написать в WhatsApp ${text}`}
+    <span role="link" tabIndex={0} className={`crm-phone ${className}`} title="Открыть чат с клиентом" aria-label={`Открыть чат с ${text}`}
       onClick={open} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') open(event); }}>
       {icon && <MessageCircle size={13} aria-hidden />}{text}
     </span>

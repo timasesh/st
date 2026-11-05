@@ -3,7 +3,7 @@ import { Archive, CalendarCheck, ExternalLink, MessageCircle, Phone, Send, User 
 import { crmApi } from './api';
 import { useCrm } from './store';
 import type { Lead, StatusId, TrialSlots } from './types';
-import { Chip, Drawer, Field, PhoneLink, SourceChip, StatusChip, TypeChip } from './ui';
+import { Chip, Drawer, Field, PhoneLink, SourceChip, StatusChip, TypeChip, useOpenChat } from './ui';
 import { LostDialog } from './LeadsView';
 import { DAYS, TYPE_LABEL, fmtDateTime, formatPhone, leadTitle, sourceLabel, trialLabel, waDigits, waUrl } from './util';
 
@@ -66,6 +66,7 @@ const FragmentRow = ({ hour, children }: { hour: number; children: React.ReactNo
 
 export function LeadDrawer({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const { statuses, contactMap, convs, upsertLead, go, toast } = useCrm();
+  const openChat = useOpenChat();
   const [lostOpen, setLostOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [draft, setDraft] = useState({ studentName: lead.studentName, parentName: lead.parentName, grade: lead.grade ? String(lead.grade) : '', note: lead.note });
@@ -116,8 +117,9 @@ export function LeadDrawer({ lead, onClose }: { lead: Lead; onClose: () => void 
       <section className="crm-sec">
         <h4>Связаться</h4>
         <div className="crm-row crm-wrap">
-          {lead.phone && waUrl(lead.phone) && <a className="crm-btn wa" href={waUrl(lead.phone)} target="_blank" rel="noreferrer" title="Открыть чат в WhatsApp"><MessageCircle size={16} /> {formatPhone(lead.phone)}</a>}
+          {lead.phone && waUrl(lead.phone) && <button type="button" className="crm-btn wa" title="Открыть чат с клиентом в CRM" onClick={() => openChat(lead.phone)}><MessageCircle size={16} /> {formatPhone(lead.phone)}</button>}
           {lead.phone && <a className="crm-btn" href={`tel:+${waDigits(lead.phone)}`}><Phone size={16} /> Позвонить</a>}
+          {lead.phone && waUrl(lead.phone) && <a className="crm-btn" href={waUrl(lead.phone)} target="_blank" rel="noreferrer" title="Открыть в приложении WhatsApp">В приложении WhatsApp</a>}
           {tgUser && <a className="crm-btn" href={`https://t.me/${tgUser}`} target="_blank" rel="noreferrer"><Send size={16} /> @{tgUser}</a>}
           {conv && <button type="button" className="crm-btn" onClick={() => { onClose(); go({ tab: 'inbox', convId: conv.id, channel: conv.channel }); }}><MessageCircle size={16} /> Переписка{conv.unread ? ` (${conv.unread})` : ''}</button>}
           {lead.phone && <button type="button" className="crm-btn" onClick={() => { void navigator.clipboard?.writeText(`+${lead.phone}`); toast('Номер скопирован'); }}>Копировать</button>}

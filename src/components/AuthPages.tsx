@@ -10,6 +10,7 @@ import ManualQuizBuilder, { type ManualQuestion } from './ManualQuizBuilder';
 import { TestExplanationModal, type ReviewQuestion, type AnswerValue } from '../shared/quizReview';
 import InstagramLeadsTab from './InstagramLeadsTab';
 import CrmApp from './crm/CrmApp';
+import CrmNotifier from './crm/CrmNotifier';
 import AdminTelegramCard from './AdminTelegramCard';
 import TeacherTestsTab, { StartTestArgs } from './TeacherTestsTab';
 import MathText, { QuestionFigure } from '../shared/MathText';
@@ -1076,6 +1077,7 @@ export function AdminDashboardPage() {
 
   return (
     <main className={`admin-dashboard min-h-screen bg-primary-light text-foreground ${darkTheme ? 'theme-dark' : ''}`}>
+      <CrmNotifier onOpen={() => { setActiveView('sales'); setError(''); setSuccess(''); }} />
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-white px-5 py-4 shadow-sm sm:px-8">
         <a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">Панель администратора</span></span></a>
         <button type="button" onClick={() => window.location.reload()} aria-label="Обновить страницу" title="Обновить страницу" className="grid h-10 w-10 place-items-center rounded-xl border border-border text-primary hover:bg-primary-light"><RotateCw className="h-4 w-4" /></button><button type="button" onClick={logout} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-primary-light"><LogOut className="h-4 w-4" /> Выйти</button>

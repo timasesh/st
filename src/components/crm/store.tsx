@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { crmApi } from './api';
 import type { ChannelId, ChannelState, Contact, Conversation, Lead, Message, Status } from './types';
+import { OPEN_CHAT_EVENT, takePendingChat, type OpenChat } from './notify';
 
 export type Tab = 'leads' | 'contacts' | 'inbox' | 'duplicates' | 'analytics';
 export type Nav = { tab: Tab; leadId?: string; contactId?: string; convId?: string; channel?: ChannelId };
@@ -58,6 +59,16 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  /* «Открыть чат» из всплывающего уведомления: работает и когда CRM уже открыта, и когда её только что включили */
+  useEffect(() => {
+    const open = (target: OpenChat) => setNav({ tab: 'inbox', convId: target.convId, channel: target.channel });
+    const waiting = takePendingChat();
+    if (waiting) open(waiting);
+    const handler = (event: Event) => { const target = (event as CustomEvent<OpenChat>).detail; if (target) { open(target); takePendingChat(); } };
+    window.addEventListener(OPEN_CHAT_EVENT, handler);
+    return () => window.removeEventListener(OPEN_CHAT_EVENT, handler);
+  }, []);
 
   /* живые обновления: сервер присылает изменённые сущности и новые сообщения */
   useEffect(() => {

@@ -235,13 +235,42 @@
 .crm-setup { padding: 20px; }
 .crm-setup code { padding: 1px 6px; border-radius: 6px; background: var(--soft); font-size: 12px; }
 
+/* скрываемый список диалогов */
+.crm-inbox { transition: grid-template-columns .22s ease; }
+.crm-inbox[data-list="0"] { grid-template-columns: 0 minmax(0, 1fr) 300px; }
+.crm-inbox > .crm-conv-col { overflow: hidden; }
+.crm-inbox[data-list="0"] > .crm-conv-col { border-right: 0; visibility: hidden; }
+.crm-list-toggle { position: relative; }
+.crm-list-toggle .crm-badge { position: absolute; top: -7px; right: -7px; min-width: 18px; padding: 0 5px; font-size: 10px; }
+
+/* всплывающие уведомления о новых сообщениях */
+.crm-popups { position: fixed; z-index: 90; top: 80px; right: 20px; width: min(360px, calc(100vw - 32px)); display: grid; gap: 10px; background: transparent; pointer-events: none; }
+.crm-popup { --pc: #2563eb; position: relative; pointer-events: auto; display: flex; align-items: stretch; border: 1px solid var(--line); border-left: 4px solid var(--pc); border-radius: 14px; background: var(--card); box-shadow: 0 10px 34px rgba(15, 23, 42, .22); animation: crm-popup-in .22s cubic-bezier(.2, .9, .3, 1.2); overflow: hidden; }
+.crm-popup.whatsapp { --pc: #25d366; }
+.crm-popup.telegram { --pc: #2aabee; }
+.crm-popup.instagram { --pc: #a855f7; }
+.crm-popup-main { flex: 1; min-width: 0; display: flex; gap: 12px; align-items: center; padding: 12px 34px 12px 12px; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.crm-popup-main:hover { background: var(--soft); }
+.crm-popup .ico { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: color-mix(in srgb, var(--pc) 18%, transparent); color: var(--pc); }
+.crm-popup .txt { min-width: 0; display: grid; gap: 2px; }
+.crm-popup .head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.crm-popup .head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crm-popup .body { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 13px; word-break: break-word; }
+.crm-popup-x { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.crm-popup-x:hover { background: var(--soft); color: var(--ink); }
+@keyframes crm-popup-in { from { opacity: 0; transform: translateX(28px) scale(.97); } to { opacity: 1; transform: none; } }
+
 @media (max-width: 1100px) {
   .crm-inbox { grid-template-columns: 290px minmax(0, 1fr); }
+  .crm-inbox[data-list="0"] { grid-template-columns: 0 minmax(0, 1fr); }
   .crm-inbox > section:last-child { display: none; }
   .crm-split { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .crm-inbox { grid-template-columns: 1fr; height: calc(100vh - 170px); }
+  .crm-inbox, .crm-inbox[data-list="0"] { grid-template-columns: 1fr; height: calc(100vh - 170px); }
+  .crm-inbox[data-list="0"] > .crm-conv-col { visibility: visible; }
+  .crm-list-toggle { display: none; }
+  .crm-popups { top: 70px; right: 16px; }
   .crm-inbox[data-sel="1"] > .crm-conv-col, .crm-inbox[data-sel="0"] > .crm-chat-col { display: none; }
   .crm-back { display: inline-flex; }
   .crm-chat-head .lbl { display: none; }

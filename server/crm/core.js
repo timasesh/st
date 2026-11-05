@@ -382,7 +382,7 @@ export async function createCrmCore({ kv, emit = () => {} }) {
     if (dir === 'in') conv.unread = (conv.unread || 0) + 1; else if (!auto) conv.unread = 0;
     if (profile.username && !conv.username) conv.username = clip(profile.username, 60);
     await put('conv', conv);
-    emit('message', { convId: conv.id, message: saved });
+    emit('message', { convId: conv.id, message: saved, conv: { id: conv.id, channel: conv.channel, title: conv.title, phone: conv.phone || '', username: conv.username || '' } });
     return { conv, message: saved, isNewConv, isNewLead };
   }
 
