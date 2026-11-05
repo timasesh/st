@@ -88,6 +88,7 @@ export function createChannels({ env = process.env, telegram, fetchImpl = (...ar
   /* Какие переменные заданы — для диагностики (значения не раскрываются). */
   const diagnose = () => ({
     WHATSAPP_TOKEN: Boolean(wa.token), WHATSAPP_PHONE_NUMBER_ID: wa.phoneId || false, WHATSAPP_VERIFY_TOKEN: Boolean(wa.verify), META_APP_SECRET: Boolean(appSecret),
+    WHATSAPP_WABA_ID: env.WHATSAPP_WABA_ID || false,
     INSTAGRAM_TOKEN: Boolean(ig.token), graphVersion: version,
     webhookUrl: '/api/crm/webhooks/whatsapp',
   });
@@ -99,5 +100,26 @@ export function createChannels({ env = process.env, telegram, fetchImpl = (...ar
     return data;
   }
 
-  return { diagnose, hasAppSecret, checkMeta, status, verifySignature, verifyChallenge, parseWhatsApp, parseInstagram, send, waVerify: wa.verify, igVerify: ig.verify };
+  /* WABA: список номеров и подписка приложения на аккаунт (без подписки сообщения на вебхук не идут). */
+  const wabaId = env.WHATSAPP_WABA_ID || '';
+  async function graphGet(path) {
+    const response = await fetchImpl(`https://graph.facebook.com/${version}/${path}`, { headers: { Authorization: `Bearer ${wa.token}` } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    return data;
+  }
+  async function wabaInfo(id = wabaId) {
+    if (!id) throw new Error('Не задан WHATSAPP_WABA_ID');
+    const [numbers, apps] = await Promise.all([
+      graphGet(`${id}/phone_numbers?fields=id,display_phone_number,verified_name,status,quality_rating`),
+      graphGet(`${id}/subscribed_apps`),
+    ]);
+    return { wabaId: id, phoneNumbers: numbers.data || [], subscribedApps: (apps.data || []).map((a) => a.whatsapp_business_api_data?.name || a.name || a.id) };
+  }
+  async function subscribeWaba(id = wabaId) {
+    if (!id) throw new Error('Не задан WHATSAPP_WABA_ID');
+    return graph(`https://graph.facebook.com/${version}/${id}/subscribed_apps`, wa.token, {});
+  }
+
+  return { wabaInfo, subscribeWaba, diagnose, hasAppSecret, checkMeta, status, verifySignature, verifyChallenge, parseWhatsApp, parseInstagram, send, waVerify: wa.verify, igVerify: ig.verify };
 }

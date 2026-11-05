@@ -341,8 +341,19 @@ export function createCrm(deps) {
         try { out.meta = await channels.checkMeta(); }
         catch (error) { out.problems.push(`Meta не принимает токен/ID номера: ${error.message}`); }
       }
+      if (d.WHATSAPP_TOKEN && d.WHATSAPP_WABA_ID) {
+        try {
+          out.waba = await channels.wabaInfo();
+          if (!out.waba.subscribedApps.length) out.problems.push('Приложение не подписано на этот WhatsApp-аккаунт: откройте /api/admin/crm/whatsapp-subscribe (POST) или нажмите подписку в Meta');
+          if (d.WHATSAPP_PHONE_NUMBER_ID && !out.waba.phoneNumbers.some((n) => n.id === d.WHATSAPP_PHONE_NUMBER_ID)) out.problems.push(`WHATSAPP_PHONE_NUMBER_ID=${d.WHATSAPP_PHONE_NUMBER_ID} не относится к аккаунту ${d.WHATSAPP_WABA_ID}. Нужный ID — в списке waba.phoneNumbers`);
+        } catch (error) { out.problems.push(`Не удалось прочитать аккаунт WhatsApp ${d.WHATSAPP_WABA_ID}: ${error.message} (токен должен иметь доступ к этому аккаунту)`); }
+      } else out.problems.push('Не задан WHATSAPP_WABA_ID — задайте ID рабочего аккаунта WhatsApp, и проверка покажет его номера и подписку');
       out.hint = 'Если проблем нет, а сообщения не приходят: в Meta → Сценарии использования → Конфигурация проверьте Callback URL (https://study-task.kz/api/crm/webhooks/whatsapp), совпадение Verify token и подписку на поле messages. Затем смотрите логи Render по метке [CRM:whatsapp].';
       res.json(out);
+    }));
+    r.post('/whatsapp-subscribe', wrap(async (_req, res) => {
+      try { const out = await channels.subscribeWaba(); console.log('[CRM:whatsapp] приложение подписано на WABA', out); res.json({ ok: true, result: out, waba: await channels.wabaInfo() }); }
+      catch (error) { console.warn('[CRM:whatsapp] подписка на WABA не удалась:', error.message); res.status(502).json({ ok: false, error: error.message }); }
     }));
     r.get('/stream', requireAdmin, (req, res) => {
       res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
