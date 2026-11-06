@@ -8,19 +8,23 @@ export function createChannels({ env = process.env, telegram, fetchImpl = (...ar
   const wa = { token: env.WHATSAPP_TOKEN || '', phoneId: env.WHATSAPP_PHONE_NUMBER_ID || '', verify: env.WHATSAPP_VERIFY_TOKEN || '' };
   const ig = { token: env.INSTAGRAM_TOKEN || '', host: env.INSTAGRAM_GRAPH_HOST || 'graph.facebook.com', verify: env.INSTAGRAM_VERIFY_TOKEN || env.WHATSAPP_VERIFY_TOKEN || '' };
   const appSecret = env.META_APP_SECRET || '';
+  /* при входе через Instagram у приложения свой секрет — вебхуки подписаны им */
+  const secrets = [appSecret, env.INSTAGRAM_APP_SECRET || ''].filter(Boolean);
 
   const status = () => ({
     telegram: Boolean(telegram?.enabled?.()),
     whatsapp: Boolean(wa.token && wa.phoneId && appSecret && wa.verify),
-    instagram: Boolean(ig.token && appSecret && ig.verify),
+    instagram: Boolean(ig.token && secrets.length && ig.verify),
   });
 
   /* Подпись вебхука Meta: X-Hub-Signature-256 = sha256=HMAC(app_secret, raw body). Без секрета вебхук закрыт. */
   function verifySignature(rawBody, header) {
-    if (!appSecret || !rawBody || typeof header !== 'string' || !header.startsWith('sha256=')) return false;
-    const expected = crypto.createHmac('sha256', appSecret).update(rawBody).digest();
+    if (!secrets.length || !rawBody || typeof header !== 'string' || !header.startsWith('sha256=')) return false;
     let given; try { given = Buffer.from(header.slice(7), 'hex'); } catch { return false; }
-    return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+    return secrets.some((secret) => {
+      const expected = crypto.createHmac('sha256', secret).update(rawBody).digest();
+      return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+    });
   }
   const verifyChallenge = (query, expected) => (query['hub.mode'] === 'subscribe' && expected && query['hub.verify_token'] === expected ? String(query['hub.challenge'] ?? '') : null);
 
@@ -78,8 +82,8 @@ export function createChannels({ env = process.env, telegram, fetchImpl = (...ar
       return { externalId: data?.messages?.[0]?.id || '' };
     }
     if (conv.channel === 'instagram') {
-      if (!status().instagram) throw new HttpError(400, 'Instagram не подключён: задайте INSTAGRAM_TOKEN, INSTAGRAM_VERIFY_TOKEN и META_APP_SECRET.');
-      const data = await graph(`https://${ig.host}/${version}/me/messages`, ig.token, { recipient: { id: conv.externalId }, message: { text } });
+      if (!status().instagram) throw new HttpError(400, 'Instagram не подключён: задайте INSTAGRAM_TOKEN, INSTAGRAM_VERIFY_TOKEN и META_APP_SECRET (или INSTAGRAM_APP_SECRET).');
+      const data = await graph(`https://${ig.host}/${version}/${env.INSTAGRAM_ACCOUNT_ID || 'me'}/messages`, ig.token, { recipient: { id: conv.externalId }, message: { text } });
       return { externalId: data?.message_id || '' };
     }
     throw new HttpError(400, 'Неизвестный канал.');
