@@ -380,6 +380,27 @@ export function createCrm(deps) {
       try { const out = await channels.subscribeWaba(); console.log('[CRM:whatsapp] приложение подписано на WABA', out); res.json({ ok: true, result: out, waba: await channels.wabaInfo() }); }
       catch (error) { console.warn('[CRM:whatsapp] подписка на WABA не удалась:', error.message); res.status(502).json({ ok: false, error: error.message }); }
     }));
+    /* Диагностика Instagram: /api/admin/crm/instagram-check ; с ?subscribe=1 ещё и подписывает аккаунт на сообщения */
+    r.get('/instagram-check', requireAdmin, wrap(async (req, res) => {
+      const d = channels.igDiagnose();
+      const out = { variables: d, problems: [] };
+      if (!d.INSTAGRAM_TOKEN) out.problems.push('Не задан INSTAGRAM_TOKEN');
+      if (!d.INSTAGRAM_ACCOUNT_ID) out.problems.push('Не задан INSTAGRAM_ACCOUNT_ID');
+      if (!d.INSTAGRAM_VERIFY_TOKEN) out.problems.push('Не задан токен проверки (INSTAGRAM_VERIFY_TOKEN или WHATSAPP_VERIFY_TOKEN)');
+      if (!d.secrets) out.problems.push('Не задан META_APP_SECRET — вебхук будет отвечать 403');
+      if (d.INSTAGRAM_TOKEN) {
+        if (req.query.subscribe) {
+          try { out.subscribed = await channels.igSubscribe(); } catch (error) { out.problems.push(`Подписка аккаунта на сообщения не удалась: ${error.message}`); }
+        }
+        try {
+          out.meta = await channels.igInfo();
+          if (out.meta.subscribedApps?.error) out.problems.push(`Не удалось прочитать подписки аккаунта: ${out.meta.subscribedApps.error}`);
+          else if (!(out.meta.subscribedApps?.data || []).length) out.problems.push('Приложение не подписано на сообщения аккаунта: откройте эту же ссылку с ?subscribe=1 в конце');
+        } catch (error) { out.problems.push(`Meta не принимает токен или ID аккаунта: ${error.message}`); }
+      }
+      out.hint = 'Если проблем нет, а сообщения не приходят: в Instagram (приложение) включите «Разрешить доступ к сообщениям» (Настройки → Сообщения и ответы на истории → Подключённые инструменты); пока приложение Meta в режиме разработки, писать должен аккаунт с ролью в приложении. Логи Render ищите по метке [CRM:instagram].';
+      res.json(out);
+    }));
     r.get('/stream', requireAdmin, (req, res) => {
       res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.flushHeaders?.();

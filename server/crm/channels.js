@@ -133,5 +133,20 @@ export function createChannels({ env = process.env, telegram, fetchImpl = (...ar
     setInterval(ping, 3 * 60 * 1000).unref?.();
   }
 
-  return { warm, wabaInfo, subscribeWaba, diagnose, hasAppSecret, checkMeta, status, verifySignature, verifyChallenge, parseWhatsApp, parseInstagram, send, waVerify: wa.verify, igVerify: ig.verify };
+  /* Instagram: кто такой аккаунт для токена и подписан ли он на вебхук messages */
+  const igId = env.INSTAGRAM_ACCOUNT_ID || '';
+  async function igGet(path) {
+    const response = await fetchImpl(`https://${ig.host}/${version}/${path}`, { headers: { Authorization: `Bearer ${ig.token}` } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    return data;
+  }
+  const igInfo = async () => ({
+    account: await igGet(`${igId || 'me'}?fields=id,username,name`),
+    subscribedApps: await igGet(`${igId || 'me'}/subscribed_apps`).catch((error) => ({ error: error.message })),
+  });
+  const igSubscribe = () => graph(`https://${ig.host}/${version}/${igId || 'me'}/subscribed_apps?subscribed_fields=messages`, ig.token, {});
+  const igDiagnose = () => ({ INSTAGRAM_TOKEN: Boolean(ig.token), INSTAGRAM_ACCOUNT_ID: igId || false, INSTAGRAM_VERIFY_TOKEN: Boolean(ig.verify), secrets: secrets.length, host: ig.host, webhookUrl: '/api/crm/webhooks/instagram' });
+
+  return { igInfo, igSubscribe, igDiagnose, warm, wabaInfo, subscribeWaba, diagnose, hasAppSecret, checkMeta, status, verifySignature, verifyChallenge, parseWhatsApp, parseInstagram, send, waVerify: wa.verify, igVerify: ig.verify };
 }
