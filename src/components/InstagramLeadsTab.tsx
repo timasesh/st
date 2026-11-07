@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CalendarCheck, ChevronRight, ClipboardCheck, Rocket, LoaderCircle, MessageCircle, RotateCw, Search, X } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, ChevronRight, ClipboardCheck, Compass, Rocket, LoaderCircle, MessageCircle, RotateCw, Search, X } from 'lucide-react';
 import { resultLevel } from '../data/publicTests';
+import CareerAdmin from './CareerAdmin';
 
 type TestLead = {
   id: string; name: string; phone: string; grade: number;
@@ -24,7 +25,7 @@ const formatPhone = (digits: string) => {
 const formatDate = (iso: string) => new Date(iso).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 export default function InstagramLeadsTab() {
-  const [source, setSource] = useState<'menu' | 'level-test' | 'trial' | 'intensive'>('menu');
+  const [source, setSource] = useState<'menu' | 'level-test' | 'trial' | 'intensive' | 'career'>('menu');
   const [leads, setLeads] = useState<TestLead[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -81,11 +82,17 @@ export default function InstagramLeadsTab() {
           <span className="flex-1"><strong className="block font-display text-base font-extrabold">Интенсив</strong><span className="text-sm text-muted">study-task.kz/intensive · 5 и 9 классы</span></span>
           <ChevronRight className="h-5 w-5 text-muted" />
         </button>
+        <button type="button" onClick={() => setSource('career')} className="mt-3 flex w-full items-center gap-4 rounded-2xl border-2 border-border bg-primary-light/50 p-4 text-left transition hover:border-primary sm:max-w-md">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-violet-600 text-white"><Compass className="h-6 w-6" /></span>
+          <span className="flex-1"><strong className="block font-display text-base font-extrabold">Профориентация</strong><span className="text-sm text-muted">study-task.kz/career · тест и ИИ-отчёты</span></span>
+          <ChevronRight className="h-5 w-5 text-muted" />
+        </button>
       </section>
     );
   }
   if (source === 'trial') return <TrialRequestsView onBack={() => setSource('menu')} />;
   if (source === 'intensive') return <IntensiveRequestsView onBack={() => setSource('menu')} />;
+  if (source === 'career') return <CareerAdmin onBack={() => setSource('menu')} />;
 
   return (
     <section className="space-y-4 rounded-2xl border border-border bg-white p-5 shadow-sm">

@@ -1,5 +1,5 @@
 export type StatusId = 'new' | 'contacted' | 'trial_booked' | 'trial_done' | 'paid' | 'lost';
-export type LeadType = 'trial' | 'intensive' | 'level_test' | 'message' | 'manual';
+export type LeadType = 'trial' | 'intensive' | 'level_test' | 'career' | 'message' | 'manual';
 export type ChannelId = 'telegram' | 'whatsapp' | 'instagram';
 
 export type TimelineEntry = { at: string; type: string; text: string; by?: string; from?: string; to?: string };

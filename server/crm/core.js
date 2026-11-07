@@ -289,7 +289,7 @@ export async function createCrmCore({ kv, emit = () => {} }) {
       const studentName = `${trial.firstName || ''} ${trial.lastName || ''}`.trim();
       if (!lead && phone) {
         /* Один телефон = одна семья: выбираем заявку того же ребёнка, заявке на пробный отдаём приоритет. */
-        const typeScore = { trial: 2, manual: 1, message: 1, level_test: 0, intensive: 0 };
+        const typeScore = { trial: 2, manual: 1, message: 1, level_test: 0, intensive: 0, career: 0 };
         const wanted = nameKey(studentName);
         lead = [...maps.lead.values()]
           .filter((l) => !l.archived && !l.trialLessonId && l.phone === phone && (!l.studentName || namesCompatible(l.studentName, studentName)))

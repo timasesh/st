@@ -14,6 +14,7 @@ const UserPortalPage = lazy(() => import('./components/AuthPages').then((module)
 const PublicTest = lazy(() => import('./components/PublicTest'));
 const TrialBooking = lazy(() => import('./components/TrialBooking'));
 const IntensiveSignup = lazy(() => import('./components/IntensiveSignup'));
+const CareerTest = lazy(() => import('./components/CareerTest'));
 const AdminDashboardPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.AdminDashboardPage })));
 
 // Секции ниже первого экрана подгружаются после первой отрисовки, чтобы Hero появлялся сразу.
@@ -243,6 +244,9 @@ export default function App() {
   }
   if (window.location.pathname === '/intensive' || window.location.pathname.startsWith('/intensive/')) {
     return withPageLoading(<IntensiveSignup />);
+  }
+  if (window.location.pathname === '/career' || window.location.pathname === '/career/') {
+    return withPageLoading(<CareerTest />);
   }
   if (window.location.pathname === '/test' || window.location.pathname.startsWith('/test/')) {
     return withPageLoading(<PublicTest />);

@@ -1,7 +1,7 @@
 import type { ChannelId, Contact, Lead, LeadType, StatusId } from './types';
 
-export const TYPE_LABEL: Record<LeadType, string> = { trial: 'Пробный урок', intensive: 'Интенсив', level_test: 'Тест уровня', message: 'Сообщение', manual: 'Вручную' };
-export const TYPE_TONE: Record<LeadType, string> = { trial: 'brand', intensive: 'violet', level_test: 'sky', message: 'ok', manual: '' };
+export const TYPE_LABEL: Record<LeadType, string> = { trial: 'Пробный урок', intensive: 'Интенсив', level_test: 'Тест уровня', career: 'Профориентация', message: 'Сообщение', manual: 'Вручную' };
+export const TYPE_TONE: Record<LeadType, string> = { trial: 'brand', intensive: 'violet', level_test: 'sky', career: 'warn', message: 'ok', manual: '' };
 export const STATUS_COLOR: Record<StatusId, string> = { new: '#2563eb', contacted: '#0891b2', trial_booked: '#7c3aed', trial_done: '#d97706', paid: '#059669', lost: '#e11d48' };
 export const CHANNEL_LABEL: Record<ChannelId, string> = { telegram: 'Telegram', whatsapp: 'WhatsApp', instagram: 'Instagram' };
 export const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];

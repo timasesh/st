@@ -18,6 +18,7 @@ import { createTelegramNotifier } from './server/telegram-notify.js';
 import { createAccountAccess } from './server/account-access.js';
 import { createSkyQuestRecords } from './server/skyquest-records.js';
 import { createCrm } from './server/crm/index.js';
+import { registerCareer } from './server/career.js';
 import { HttpError } from './server/crm/util.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -2720,6 +2721,7 @@ const crm = createCrm({
 });
 identity.setCrmHooks({ incoming: crm.telegramIncoming, outgoing: crm.telegramOutgoing });
 crm.register(app);
+registerCareer(app, { requireAdmin, kv: crm.kv, crm, cleanLeadPhone, notifyAdmins: (text) => identity.notifyAdmins(text), tgEsc });
 async function readScheduleData() {
   let data = { lessons: [], targets: {} };
   if (supabase) {

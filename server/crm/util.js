@@ -10,7 +10,7 @@ export const STATUSES = [
 ];
 export const STATUS_IDS = STATUSES.map((s) => s.id);
 export const STATUS_RANK = { new: 0, contacted: 1, trial_booked: 2, trial_done: 3, paid: 4, lost: -1 };
-export const LEAD_TYPES = ['trial', 'intensive', 'level_test', 'message', 'manual'];
+export const LEAD_TYPES = ['trial', 'intensive', 'level_test', 'career', 'message', 'manual'];
 export const CHANNELS = ['telegram', 'whatsapp', 'instagram'];
 export const UTM_FIELDS = ['source', 'medium', 'campaign', 'content', 'term'];
 export const CLICK_IDS = ['fbclid', 'gclid', 'ttclid', 'yclid'];

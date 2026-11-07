@@ -72,7 +72,7 @@ export function createCrm(deps) {
     return core.exclusive(async () => {
       const legacyKey = `${form.kind}:${form.legacyId}`;
       if ([...core.maps.lead.values()].some((l) => l.legacy && `${l.legacy.kind}:${l.legacy.id}` === legacyKey)) return null;
-      const label = { trial: 'Заявка на пробный урок', intensive: 'Запись на интенсив', level_test: 'Начал тест уровня' }[form.kind] || 'Заявка с сайта';
+      const label = { trial: 'Заявка на пробный урок', intensive: 'Запись на интенсив', level_test: 'Начал тест уровня', career: 'Прошёл профориентацию' }[form.kind] || 'Заявка с сайта';
       return core.newLead({
         type: form.kind, channel: 'site', studentName: form.studentName, parentName: form.parentName, phone: form.phone, grade: form.grade,
         topic: form.topic, attribution: form.attribution, createdAt: form.createdAt, legacy: { kind: form.kind, id: form.legacyId }, createdText: label, test: form.test || null,
