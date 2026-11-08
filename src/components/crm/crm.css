@@ -338,3 +338,13 @@
 .crm-inbox { grid-template-rows: minmax(0, 1fr); }
 .crm-inbox > section { min-height: 0; height: 100%; }
 .crm-conv-list, .crm-thread { min-height: 0; }
+
+/* режим выбора заявок: отметить → удалить / выгрузить в Excel */
+.crm-lead.selectable { position: relative; cursor: pointer; }
+.crm-lead.picked { outline: 2px solid var(--brand); outline-offset: -2px; background: var(--brand-soft); }
+.crm-pick { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; padding: 0; display: inline-grid; place-items: center; border: 2px solid var(--line-strong); border-radius: 6px; background: var(--card); color: #fff; cursor: pointer; }
+.crm-table .crm-pick { position: static; vertical-align: middle; }
+.crm-pick.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.crm-table tr.picked td { background: var(--brand-soft); }
+.crm-selbar { position: sticky; bottom: 16px; z-index: 30; margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--card); border: 1px solid var(--brand); border-radius: 14px; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
+.crm-app:has(.crm-selbar) .crm-toast { bottom: 92px; }

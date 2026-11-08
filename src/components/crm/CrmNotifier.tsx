@@ -3,6 +3,7 @@ import { Check, ListChecks, MessageCircle, X } from 'lucide-react';
 import type { ChannelId, Message } from './types';
 import { CHANNEL_LABEL, formatPhone } from './util';
 import { isConvOpen, requestOpenChat, requestOpenTab } from './notify';
+import { CRM_UNLOCKED_EVENT } from './api';
 import { almatyNow, applyTask, endsIn, loadTasks, patchTask, removeTask, startsIn, tasksLoaded, timeLabel, useTasks } from './tasksStore';
 
 type Popup = { id: string; convId: string; channel: ChannelId; title: string; phone: string; text: string };
@@ -58,37 +59,45 @@ export default function CrmNotifier({ onOpen }: { onOpen: () => void }) {
 
   useEffect(() => {
     if (typeof EventSource === 'undefined') return undefined;
-    const source = new EventSource('/api/admin/crm/stream', { withCredentials: true });
-    source.addEventListener('upsert', (event) => {
-      try {
-        const { coll, entity } = JSON.parse((event as MessageEvent).data);
-        if (coll === 'conv') infoRef.current.set(entity.id, { title: entity.title || '', phone: entity.phone || '', channel: entity.channel });
-        else if (coll === 'task') applyTask(entity);
-      } catch { /* битое событие */ }
-    });
-    source.addEventListener('delete', (event) => {
-      try { const { coll, id } = JSON.parse((event as MessageEvent).data); if (coll === 'task') removeTask(id); } catch { /* битое событие */ }
-    });
-    source.onopen = () => { void loadTasks().catch(() => {}); };
-    source.addEventListener('message', (event) => {
-      try {
-        const { convId, message, conv } = JSON.parse((event as MessageEvent).data) as { convId: string; message: Message; conv?: { title?: string; phone?: string; channel?: ChannelId } };
-        if (!message || message.dir !== 'in' || message.auto) return;
-        if (seenRef.current.has(message.id)) return;
-        seenRef.current.add(message.id);
-        if (seenRef.current.size > 200) seenRef.current = new Set([...seenRef.current].slice(-100));
-        if (isConvOpen(convId)) return;
-        const known = infoRef.current.get(convId);
-        const channel = (conv?.channel || known?.channel || 'whatsapp') as ChannelId;
-        const phone = conv?.phone || known?.phone || '';
-        const popup: Popup = { id: message.id, convId, channel, title: conv?.title || known?.title || (phone ? formatPhone(phone) : 'Новое сообщение'), phone, text: preview(message) };
-        setPopups((list) => [popup, ...list.filter((p) => p.id !== popup.id)].slice(0, 4));
-        timers.current.set(popup.id, window.setTimeout(() => dismiss(popup.id), 10000));
-        beep();
-      } catch { /* битое событие */ }
-    });
+    /* CRM закрыта PIN-кодом: пока сеанса нет, поток отвечает 423 и браузер сам не переподключается — пробуем раз в 20 секунд и сразу после ввода PIN */
+    let stopped = false; let retry: number | undefined; let source: EventSource | null = null;
+    const connect = () => {
+      source = new EventSource('/api/admin/crm/stream', { withCredentials: true });
+      source.addEventListener('upsert', (event) => {
+        try {
+          const { coll, entity } = JSON.parse((event as MessageEvent).data);
+          if (coll === 'conv') infoRef.current.set(entity.id, { title: entity.title || '', phone: entity.phone || '', channel: entity.channel });
+          else if (coll === 'task') applyTask(entity);
+        } catch { /* битое событие */ }
+      });
+      source.addEventListener('delete', (event) => {
+        try { const { coll, id } = JSON.parse((event as MessageEvent).data); if (coll === 'task') removeTask(id); } catch { /* битое событие */ }
+      });
+      source.onopen = () => { void loadTasks().catch(() => {}); };
+      source.addEventListener('message', (event) => {
+        try {
+          const { convId, message, conv } = JSON.parse((event as MessageEvent).data) as { convId: string; message: Message; conv?: { title?: string; phone?: string; channel?: ChannelId } };
+          if (!message || message.dir !== 'in' || message.auto) return;
+          if (seenRef.current.has(message.id)) return;
+          seenRef.current.add(message.id);
+          if (seenRef.current.size > 200) seenRef.current = new Set([...seenRef.current].slice(-100));
+          if (isConvOpen(convId)) return;
+          const known = infoRef.current.get(convId);
+          const channel = (conv?.channel || known?.channel || 'whatsapp') as ChannelId;
+          const phone = conv?.phone || known?.phone || '';
+          const popup: Popup = { id: message.id, convId, channel, title: conv?.title || known?.title || (phone ? formatPhone(phone) : 'Новое сообщение'), phone, text: preview(message) };
+          setPopups((list) => [popup, ...list.filter((p) => p.id !== popup.id)].slice(0, 4));
+          timers.current.set(popup.id, window.setTimeout(() => dismiss(popup.id), 10000));
+          beep();
+        } catch { /* битое событие */ }
+      });
+      source.onerror = () => { if (source && source.readyState === 2 && !stopped) retry = window.setTimeout(connect, 20000); };
+    };
+    const reconnect = () => { window.clearTimeout(retry); source?.close(); if (!stopped) connect(); };
+    connect();
+    window.addEventListener(CRM_UNLOCKED_EVENT, reconnect);
     const activeTimers = timers.current;
-    return () => { source.close(); activeTimers.forEach((t) => window.clearTimeout(t)); activeTimers.clear(); };
+    return () => { stopped = true; window.clearTimeout(retry); window.removeEventListener(CRM_UNLOCKED_EVENT, reconnect); source?.close(); activeTimers.forEach((t) => window.clearTimeout(t)); activeTimers.clear(); };
   }, [dismiss]);
 
   /* Задачи: раз в 15 секунд сверяем часы с расписанием. Уведомление о начале — синее, о конце (если не отмечена) — красное и не исчезает само. */

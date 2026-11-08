@@ -724,6 +724,45 @@ app.post('/api/admin/cleanup/lock', requireAdmin, (_req, res) => {
   return res.json({ ok: true });
 });
 
+/* Доступ к CRM по PIN-коду: тот же код, что у «Управления данными», но отдельный cookie и более длинный сеанс (по умолчанию 8 часов),
+   потому что CRM открыта в течение рабочего дня. Срок меняется переменной CRM_ACCESS_MINUTES (5–1440). */
+const crmAccessCookieName = 'study_admin_crm';
+const crmAccessMinutes = Math.min(Math.max(Number(process.env.CRM_ACCESS_MINUTES) || 480, 5), 1440);
+function crmAccessSession(req) {
+  const session = getCookieToken(req, crmAccessCookieName);
+  return session && session.scope === 'crm' && session.sub === req.adminSession?.sub ? session : null;
+}
+function requireCrmAccess(req, res, next) {
+  if (!crmAccessSession(req)) return res.status(423).json({ error: 'Введите PIN-код, чтобы открыть CRM.' });
+  next();
+}
+app.get('/api/admin/crm-access/status', requireAdmin, (req, res) => {
+  const session = crmAccessSession(req);
+  res.json({ unlocked: Boolean(session), expiresAt: session ? session.exp : 0 });
+});
+app.post('/api/admin/crm-access/unlock', requireAdmin, (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  const attempts = (cleanupPinFailures.get(ip) || []).filter((time) => time > cutoff);
+  cleanupPinFailures.set(ip, attempts);
+  if (attempts.length >= 8) return res.status(429).json({ error: 'Слишком много попыток. Попробуйте ещё раз через 15 минут.' });
+  if (!cleanupPinMatches(req.body?.pin)) {
+    attempts.push(Date.now());
+    cleanupPinFailures.set(ip, attempts);
+    return res.status(401).json({ error: 'Неверный PIN-код. Проверьте цифры и попробуйте ещё раз.' });
+  }
+  cleanupPinFailures.delete(ip);
+  const exp = Date.now() + crmAccessMinutes * 60 * 1000;
+  res.cookie(crmAccessCookieName, signSession({ sub: req.adminSession.sub, scope: 'crm', exp }), {
+    httpOnly: true, secure: isProduction, sameSite: 'strict', path: '/', maxAge: crmAccessMinutes * 60 * 1000,
+  });
+  return res.json({ ok: true, expiresAt: exp });
+});
+app.post('/api/admin/crm-access/lock', requireAdmin, (_req, res) => {
+  res.clearCookie(crmAccessCookieName, { httpOnly: true, secure: isProduction, sameSite: 'strict', path: '/' });
+  return res.json({ ok: true });
+});
+
 const cleanupModelLabels = {
   accounts: 'Аккаунты', schedule: 'Расписание', scheduleTargets: 'Планы занятий', trials: 'Пробные уроки',
   tests: 'Тесты', lessonHistory: 'История занятий', homework: 'Домашние задания', homeworkFiles: 'Файлы заданий',
@@ -2702,6 +2741,7 @@ const crm = createCrm({
   getSupabase: () => supabase,
   dataDir,
   requireAdmin,
+  requireCrmAccess,
   readTrialLessons,
   createTrialLesson,
   getTeachers: () => accounts.filter((account) => account.role === 'teacher' && account.status !== 'withdrawn').map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim() })),

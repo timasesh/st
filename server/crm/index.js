@@ -4,6 +4,7 @@ import express from 'express';
 import { Readable } from 'node:stream';
 import crypto from 'node:crypto';
 import { createKv } from './kv.js';
+import { buildXlsx } from './xlsx.js';
 import { createCrmCore } from './core.js';
 import { createChannels } from './channels.js';
 import {
@@ -14,7 +15,7 @@ const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
 const CHANNEL_NAME = { telegram: 'Telegram', whatsapp: 'WhatsApp', instagram: 'Instagram' };
 
 export function createCrm(deps) {
-  const { requireAdmin } = deps;
+  const { requireAdmin, requireCrmAccess } = deps;
   const clients = new Set();
   const emit = (type, payload) => {
     const chunk = `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;
@@ -72,6 +73,7 @@ export function createCrm(deps) {
     return core.exclusive(async () => {
       const legacyKey = `${form.kind}:${form.legacyId}`;
       if ([...core.maps.lead.values()].some((l) => l.legacy && `${l.legacy.kind}:${l.legacy.id}` === legacyKey)) return null;
+      if (core.meta().deleted?.legacy?.includes(legacyKey)) return null;
       const label = { trial: 'Заявка на пробный урок', intensive: 'Запись на интенсив', level_test: 'Начал тест уровня', career: 'Прошёл профориентацию' }[form.kind] || 'Заявка с сайта';
       return core.newLead({
         type: form.kind, channel: 'site', studentName: form.studentName, parentName: form.parentName, phone: form.phone, grade: form.grade,
@@ -97,6 +99,7 @@ export function createCrm(deps) {
     return core.exclusive(async () => {
       const legacy = await deps.readLegacy();
       const have = new Set([...core.maps.lead.values()].filter((l) => l.legacy).map((l) => `${l.legacy.kind}:${l.legacy.id}`));
+      for (const key of core.meta().deleted?.legacy || []) have.add(key);
       const byDate = (list) => [...(list || [])].sort((a, b) => String(a.createdAt || a.startedAt).localeCompare(String(b.createdAt || b.startedAt)));
       let created = 0;
       const requestStatus = { new: 'new', contacted: 'contacted', done: 'contacted' };
@@ -344,6 +347,8 @@ export function createCrm(deps) {
   function register(app) {
     const r = express.Router();
     r.use(requireAdmin);
+    /* ещё и PIN-код: без него вся CRM (заявки, чаты, задачи, живой поток) отвечает 423 */
+    if (requireCrmAccess) r.use(requireCrmAccess);
 
     r.get('/bootstrap', wrap(async (_req, res) => {
       await ensureFresh();
@@ -435,6 +440,50 @@ export function createCrm(deps) {
     r.delete('/tasks/:id', wrap(async (req, res) => {
       await core.exclusive(() => core.drop('task', req.params.id));
       res.json({ ok: true });
+    }));
+
+
+    /* ───── массовые действия с заявками: сначала выбор, потом действие ───── */
+    const MAX_BULK = 1000;
+    const idsOf = (body) => {
+      const ids = Array.isArray(body?.ids) ? [...new Set(body.ids.filter((x) => typeof x === 'string' && x))] : [];
+      if (!ids.length) throw err(400, 'Выберите хотя бы одну заявку.');
+      if (ids.length > MAX_BULK) throw err(400, `За один раз можно обработать не больше ${MAX_BULK} заявок.`);
+      return ids;
+    };
+    r.post('/leads/bulk-delete', wrap(async (req, res) => {
+      const ids = idsOf(req.body);
+      const out = await core.exclusive(() => core.deleteLeads(ids));
+      console.log(`[CRM] ${actorOf(req)} удалил заявок: ${out.deleted} (запрошено ${ids.length})`);
+      res.json(out);
+    }));
+    r.post('/leads/export', wrap(async (req, res) => {
+      const ids = idsOf(req.body);
+      const TYPES = { trial: 'Пробный урок', intensive: 'Интенсив', level_test: 'Тест уровня', career: 'Профориентация', message: 'Сообщение', manual: 'Вручную' };
+      const SOURCES = { instagram: 'Instagram', facebook: 'Facebook', telegram: 'Telegram', whatsapp: 'WhatsApp', google: 'Google', tiktok: 'TikTok', youtube: 'YouTube', yandex: 'Яндекс', direct: 'Прямой заход', admin: 'Админ-панель', manual: 'Вручную', '': 'Не определён' };
+      const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+      const statusLabel = Object.fromEntries(STATUSES.map((s) => [s.id, s.label]));
+      const fmt = (iso) => (iso ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)) : '');
+      const leads = ids.map((id) => core.maps.lead.get(id)).filter(Boolean).sort((a, b) => (a.number || 0) - (b.number || 0));
+      if (!leads.length) throw err(404, 'Выбранные заявки уже удалены.');
+      const rows = leads.map((l) => [
+        l.number, fmt(l.createdAt), TYPES[l.type] || l.type, statusLabel[l.status] || l.status, SOURCES[l.source] ?? l.source, l.campaign || '',
+        l.studentName || '', l.parentName || '', l.phone ? `+${String(l.phone).replace(/^\+/, '')}` : '', l.grade ? Number(l.grade) : '', l.topic || '',
+        l.trial && !l.trial.removed ? `${DAYS[l.trial.day] ?? ''} ${String(l.trial.hour ?? '').padStart(2, '0')}:00${l.trial.teacherName ? ` · ${l.trial.teacherName}` : ''}` : '',
+        l.test && l.test.score != null ? `${l.test.score} из ${l.test.total}` : '', l.lostReason || '', l.note || '', l.archived ? 'да' : '',
+      ]);
+      const file = buildXlsx({
+        sheetName: 'Заявки',
+        headers: ['№', 'Создана', 'Тип', 'Статус', 'Источник', 'Кампания', 'Ученик', 'Родитель', 'Телефон', 'Класс', 'Тема', 'Пробный урок', 'Тест уровня', 'Причина отказа', 'Заметка', 'В архиве'],
+        rows,
+      });
+      const stamp = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Almaty' }).format(new Date());
+      res.set({
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="leads-${stamp}.xlsx"; filename*=UTF-8''${encodeURIComponent(`Заявки ${stamp}.xlsx`)}`,
+        'Cache-Control': 'no-store',
+      });
+      res.send(file);
     }));
 
     r.post('/leads', wrap(async (req, res) => res.status(201).json(await createManualLead(req.body || {}))));

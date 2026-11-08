@@ -14,7 +14,7 @@ const dayKey = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: '
 
 export async function createCrmCore({ kv, emit = () => {} }) {
   const maps = { contact: new Map(), lead: new Map(), conv: new Map(), task: new Map() };
-  let meta = { leadSeq: 0, dismissed: [], importedAt: null };
+  let meta = { leadSeq: 0, dismissed: [], importedAt: null, deleted: { legacy: [], trials: [] } };
   const chunkCache = new Map();
   let queue = Promise.resolve();
   const exclusive = (fn) => { const run = queue.then(fn); queue = run.catch(() => {}); return run; };
@@ -26,6 +26,8 @@ export async function createCrmCore({ kv, emit = () => {} }) {
     }
     const saved = await kv.get('crm:meta');
     if (saved && typeof saved === 'object') meta = { ...meta, ...saved };
+    /* «надгробия»: удалённые вручную заявки не должны вернуться при синхронизации пробных и импорте старых данных */
+    meta.deleted = { legacy: Array.isArray(meta.deleted?.legacy) ? meta.deleted.legacy : [], trials: Array.isArray(meta.deleted?.trials) ? meta.deleted.trials : [] };
     const maxSeq = Math.max(0, ...[...maps.lead.values()].map((l) => l.number || 0));
     if (maxSeq > meta.leadSeq) meta.leadSeq = maxSeq;
   }
@@ -280,11 +282,13 @@ export async function createCrmCore({ kv, emit = () => {} }) {
   async function syncTrials(trials, teacherName = () => '') {
     let changed = 0;
     const seen = new Set();
+    const tombTrials = new Set(meta.deleted.trials);
     for (const trial of trials) {
       if (!trial?.id) continue;
       seen.add(trial.id);
       const phone = normalizePhone(trial.parentPhone);
       let lead = [...maps.lead.values()].find((l) => l.trialLessonId === trial.id);
+      if (!lead && tombTrials.has(trial.id)) continue;
       let fresh = false;
       const studentName = `${trial.firstName || ''} ${trial.lastName || ''}`.trim();
       if (!lead && phone) {
@@ -338,6 +342,23 @@ export async function createCrmCore({ kv, emit = () => {} }) {
       }
     }
     return changed;
+  }
+
+  /* Массовое удаление заявок. Контакты и диалоги не трогаем — удаляются только сами заявки. */
+  async function deleteLeads(ids) {
+    const wanted = [...new Set((Array.isArray(ids) ? ids : []).map(String))];
+    let deleted = 0;
+    for (const id of wanted) {
+      const lead = maps.lead.get(id);
+      if (!lead) continue;
+      if (lead.legacy?.kind && lead.legacy.id) meta.deleted.legacy.push(`${lead.legacy.kind}:${lead.legacy.id}`);
+      if (lead.trialLessonId) meta.deleted.trials.push(lead.trialLessonId);
+      if (await drop('lead', id)) deleted += 1;
+    }
+    meta.deleted.legacy = [...new Set(meta.deleted.legacy)].slice(-5000);
+    meta.deleted.trials = [...new Set(meta.deleted.trials)].slice(-5000);
+    await saveMeta();
+    return { deleted, missing: wanted.length - deleted };
   }
 
   /* ───── диалоги ───── */
@@ -445,7 +466,7 @@ export async function createCrmCore({ kv, emit = () => {} }) {
   return {
     init, exclusive, put, drop, maps, meta: () => meta, saveMeta, view,
     blankContact, resolveContacts, findParentByPhone, findAnyByPhone,
-    newLead, getLead, applyStatus, timeline,
+    newLead, getLead, applyStatus, timeline, deleteLeads,
     findDuplicates, mergeContacts, pairKey, syncTrials, ingest, appendMessage, getMessages, findMessage, convByExternal, analytics,
     uuid, kv,
   };

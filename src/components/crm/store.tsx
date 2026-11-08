@@ -17,7 +17,7 @@ type Ctx = {
   dupCount: number; setDupCount: (n: number) => void;
   unreadTotal: number;
   nav: Nav; go: (next: Partial<Nav> & { tab?: Tab }) => void;
-  upsertLead: (lead: Lead) => void; upsertContact: (contact: Contact) => void; upsertConv: (conv: Conversation) => void;
+  upsertLead: (lead: Lead) => void; dropLeads: (ids: string[]) => void; upsertContact: (contact: Contact) => void; upsertConv: (conv: Conversation) => void;
   reload: () => Promise<void>;
   toast: (text: string, tone?: 'ok' | 'bad') => void;
   subscribeMessages: (fn: (convId: string, message: Message) => void) => () => void;
@@ -124,6 +124,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const value: Ctx = {
     ready, error, live, statuses, channels, leads, leadMap, contacts, contactMap, convs, convMap, dupCount, setDupCount, unreadTotal, nav, go,
     upsertLead: (lead) => setLeadMap((m) => ({ ...m, [lead.id]: lead })),
+    dropLeads: (ids) => setLeadMap((m) => { const next = { ...m }; for (const id of ids) delete next[id]; return next; }),
     upsertContact: (contact) => setContactMap((m) => ({ ...m, [contact.id]: contact })),
     upsertConv: (conv) => setConvMap((m) => ({ ...m, [conv.id]: conv })),
     reload, toast, subscribeMessages,

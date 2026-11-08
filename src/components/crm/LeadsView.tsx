@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { CalendarClock, LayoutGrid, List, MessageCircle, Plus, Search } from 'lucide-react';
-import { crmApi } from './api';
+import { CalendarClock, Check, CheckSquare, Copy, Download, LayoutGrid, List, MessageCircle, Plus, Search, Trash2 } from 'lucide-react';
+import { crmApi, crmDownload } from './api';
 import { useCrm } from './store';
 import type { Lead, StatusId } from './types';
 import { Chip, Empty, Field, Modal, PhoneLink, SourceChip, StatusChip, TypeChip } from './ui';
@@ -66,9 +66,10 @@ function NewLeadDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-function LeadCard({ lead, unread, dragging, onDragStart, onDragEnd, onOpen }: { lead: Lead; unread: boolean; dragging: boolean; onDragStart: (e: DragEvent) => void; onDragEnd: () => void; onOpen: () => void }) {
+function LeadCard({ lead, unread, dragging, selecting, picked, onDragStart, onDragEnd, onOpen }: { lead: Lead; unread: boolean; dragging: boolean; selecting: boolean; picked: boolean; onDragStart: (e: DragEvent) => void; onDragEnd: () => void; onOpen: () => void }) {
   return (
-    <button type="button" className={`crm-lead ${dragging ? 'dragging' : ''}`} draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onOpen}>
+    <button type="button" className={`crm-lead ${dragging ? 'dragging' : ''} ${selecting ? 'selectable' : ''} ${picked ? 'picked' : ''}`} draggable={!selecting} onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onOpen} aria-pressed={selecting ? picked : undefined}>
+      {selecting && <span className={`crm-pick ${picked ? 'on' : ''}`} aria-hidden>{picked && <Check size={14} strokeWidth={3.5} />}</span>}
       <div className="name">#{lead.number} · {leadTitle(lead)}{unread && <span className="crm-new-dot" title="Есть непрочитанное сообщение" />}</div>
       {lead.parentName && lead.studentName && <div className="crm-muted" style={{ fontSize: 12 }}>Родитель: {lead.parentName}</div>}
       <div className="meta">
@@ -85,7 +86,7 @@ function LeadCard({ lead, unread, dragging, onDragStart, onDragEnd, onOpen }: { 
 }
 
 export function LeadsView() {
-  const { leads, statuses, convs, nav, go, upsertLead, toast } = useCrm();
+  const { leads, statuses, convs, nav, go, upsertLead, dropLeads, toast } = useCrm();
   const [mode, setMode] = useState<'board' | 'list'>(() => { try { return localStorage.getItem('crm.mode') === 'list' ? 'list' : 'board'; } catch { return 'board'; } });
   const [query, setQuery] = useState('');
   const [type, setType] = useState('');
@@ -97,6 +98,11 @@ export function LeadsView() {
   const [overCol, setOverCol] = useState<string | null>(null);
   const [lostFor, setLostFor] = useState<string | null>(null);
   const dragRef = useRef<string | null>(null);
+  /* режим выбора: сначала отмечаем заявки, потом выбираем действие (удалить / выгрузить в Excel) */
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState<'' | 'delete' | 'export'>('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => { try { localStorage.setItem('crm.mode', mode); } catch { /* не критично */ } }, [mode]);
 
@@ -108,6 +114,49 @@ export function LeadsView() {
       && (!type || l.type === type) && (!source || l.source === source) && Date.parse(l.createdAt) >= since
       && matchesQuery([l.studentName, l.parentName, l.phone, String(l.number), l.campaign, l.note], query));
   }, [leads, archived, type, source, period, query]);
+
+  /* действия применяются только к тем отмеченным заявкам, которые сейчас видны (фильтры не скрывают «чужие» выборы) */
+  const chosen = useMemo(() => filtered.filter((l) => picked.has(l.id)), [filtered, picked]);
+  const toggle = (id: string) => setPicked((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const stopSelecting = () => { setSelecting(false); setPicked(new Set()); setConfirmDelete(false); };
+  const pickAll = () => setPicked(new Set(filtered.map((l) => l.id)));
+  /* «повторы»: заявки с одним телефоном. В каждой группе остаётся самая продвинутая по статусу (при равенстве — самая старая), остальные отмечаются */
+  const pickDuplicates = () => {
+    const rank: Record<string, number> = { paid: 5, trial_done: 4, trial_booked: 3, contacted: 2, new: 1, lost: 0 };
+    const groups = new Map<string, Lead[]>();
+    for (const l of filtered) { if (!l.phone) continue; groups.set(l.phone, [...(groups.get(l.phone) || []), l]); }
+    const extra: string[] = [];
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const keep = [...group].sort((a, b) => (rank[b.status] ?? 0) - (rank[a.status] ?? 0) || a.createdAt.localeCompare(b.createdAt))[0];
+      for (const l of group) if (l.id !== keep.id) extra.push(l.id);
+    }
+    setPicked(new Set(extra));
+    toast(extra.length ? `Отмечено повторов: ${extra.length}. В каждой группе остаётся заявка с самым продвинутым статусом.` : 'Повторов по телефону не найдено.');
+  };
+  const exportChosen = async () => {
+    if (!chosen.length) return;
+    setBulkBusy('export');
+    try {
+      const { blob, filename } = await crmDownload('/leads/export', { ids: chosen.map((l) => l.id) });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast(`Excel скачан: ${chosen.length} заявок`);
+    } catch (reason) { toast(reason instanceof Error ? reason.message : 'Не удалось выгрузить заявки', 'bad'); }
+    finally { setBulkBusy(''); }
+  };
+  const deleteChosen = async () => {
+    const ids = chosen.map((l) => l.id);
+    if (!ids.length) return;
+    setBulkBusy('delete');
+    try {
+      const out = await crmApi<{ deleted: number }>('/leads/bulk-delete', { body: { ids } });
+      dropLeads(ids); setPicked(new Set()); setConfirmDelete(false);
+      toast(`Удалено заявок: ${out.deleted}`);
+    } catch (reason) { toast(reason instanceof Error ? reason.message : 'Не удалось удалить заявки', 'bad'); }
+    finally { setBulkBusy(''); }
+  };
 
   const moveTo = async (id: string, status: StatusId, reason?: string) => {
     const lead = leads.find((l) => l.id === id);
@@ -140,6 +189,7 @@ export function LeadsView() {
           <button type="button" aria-pressed={mode === 'board'} onClick={() => setMode('board')}><LayoutGrid size={14} style={{ verticalAlign: -2 }} /> Доска</button>
           <button type="button" aria-pressed={mode === 'list'} onClick={() => setMode('list')}><List size={14} style={{ verticalAlign: -2 }} /> Список</button>
         </div>
+        <button type="button" className={`crm-btn ${selecting ? 'primary' : ''}`} onClick={() => (selecting ? stopSelecting() : setSelecting(true))} title="Отметить несколько заявок и удалить их или выгрузить в Excel"><CheckSquare size={16} /> {selecting ? 'Закончить выбор' : 'Выбрать'}</button>
         <button type="button" className="crm-btn primary" onClick={() => setCreating(true)}><Plus size={16} /> Заявка</button>
       </div>
 
@@ -152,9 +202,9 @@ export function LeadsView() {
                 onDragOver={(e) => { e.preventDefault(); if (overCol !== status.id) setOverCol(status.id); }} onDragLeave={() => setOverCol((c) => (c === status.id ? null : c))} onDrop={(e) => { e.preventDefault(); drop(status.id); }}>
                 <div className="crm-col-head"><span><i className="dot" style={{ background: STATUS_COLOR[status.id] }} />{status.label}</span><Chip>{items.length}</Chip></div>
                 {items.map((lead) => (
-                  <LeadCard key={lead.id} lead={lead} unread={unreadByContact.has(lead.contactId)} dragging={dragId === lead.id}
+                  <LeadCard key={lead.id} lead={lead} unread={unreadByContact.has(lead.contactId)} dragging={dragId === lead.id} selecting={selecting} picked={picked.has(lead.id)}
                     onDragStart={(e) => { dragRef.current = lead.id; setDragId(lead.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', lead.id); }}
-                    onDragEnd={() => { setDragId(null); setOverCol(null); }} onOpen={() => go({ leadId: lead.id })} />
+                    onDragEnd={() => { setDragId(null); setOverCol(null); }} onOpen={() => (selecting ? toggle(lead.id) : go({ leadId: lead.id }))} />
                 ))}
                 {!items.length && <div className="crm-muted" style={{ padding: '18px 6px', textAlign: 'center', fontSize: 13 }}>Пусто</div>}
               </section>
@@ -164,10 +214,11 @@ export function LeadsView() {
       ) : (
         <div className="crm-table-wrap">
           <table className="crm-table">
-            <thead><tr><th>№</th><th>Ученик / родитель</th><th>Телефон</th><th>Тип</th><th>Источник</th><th>Статус</th><th>Пробный</th><th>Создана</th></tr></thead>
+            <thead><tr>{selecting && <th style={{ width: 36 }}><button type="button" className={`crm-pick on-hdr ${filtered.length && chosen.length === filtered.length ? 'on' : ''}`} aria-label="Выбрать все заявки в списке" onClick={() => (chosen.length === filtered.length ? setPicked(new Set()) : pickAll())}>{filtered.length > 0 && chosen.length === filtered.length && <Check size={14} strokeWidth={3.5} />}</button></th>}<th>№</th><th>Ученик / родитель</th><th>Телефон</th><th>Тип</th><th>Источник</th><th>Статус</th><th>Пробный</th><th>Создана</th></tr></thead>
             <tbody>
               {filtered.map((l) => (
-                <tr key={l.id} onClick={() => go({ leadId: l.id })}>
+                <tr key={l.id} className={picked.has(l.id) ? 'picked' : ''} onClick={() => (selecting ? toggle(l.id) : go({ leadId: l.id }))}>
+                  {selecting && <td><span className={`crm-pick ${picked.has(l.id) ? 'on' : ''}`} aria-hidden>{picked.has(l.id) && <Check size={14} strokeWidth={3.5} />}</span></td>}
                   <td>{l.number}</td>
                   <td><strong>{leadTitle(l)}</strong>{l.parentName && l.studentName && <div className="crm-muted" style={{ fontSize: 12 }}>{l.parentName}</div>}</td>
                   <td><PhoneLink phone={l.phone} empty="—" /></td><td><TypeChip type={l.type} /></td>
@@ -183,9 +234,34 @@ export function LeadsView() {
       )}
       {mode === 'board' && !leads.length && <p className="crm-muted" style={{ textAlign: 'center', marginTop: 24 }}><MessageCircle size={16} style={{ verticalAlign: -3 }} /> Заявок пока нет — они появятся автоматически после первой отправки формы на сайте.</p>}
 
+      {selecting && (
+        <div className="crm-selbar" role="region" aria-label="Действия с выбранными заявками">
+          <strong>Выбрано: {chosen.length}</strong><span className="crm-muted">из {filtered.length}</span>
+          <button type="button" className="crm-btn sm" onClick={pickAll} disabled={!filtered.length}>Выбрать все</button>
+          <button type="button" className="crm-btn sm" onClick={pickDuplicates} disabled={!filtered.length} title="Отметить лишние заявки с одинаковым телефоном"><Copy size={14} /> Отметить повторы</button>
+          <button type="button" className="crm-btn sm" onClick={() => setPicked(new Set())} disabled={!chosen.length}>Снять выбор</button>
+          <span className="crm-spacer" />
+          <button type="button" className="crm-btn" onClick={() => void exportChosen()} disabled={!chosen.length || bulkBusy !== ''}><Download size={16} /> {bulkBusy === 'export' ? 'Готовим файл…' : 'Скачать Excel'}</button>
+          <button type="button" className="crm-btn danger" onClick={() => setConfirmDelete(true)} disabled={!chosen.length || bulkBusy !== ''}><Trash2 size={16} /> Удалить</button>
+        </div>
+      )}
+      {confirmDelete && (
+        <Modal title={`Удалить заявок: ${chosen.length}?`} onClose={() => (bulkBusy ? undefined : setConfirmDelete(false))} width={460}>
+          <p style={{ margin: '0 0 10px' }}>Заявки будут удалены безвозвратно. Контакты и переписка в мессенджерах останутся, а удалённые пробные уроки и заявки с сайта повторно не создаются.</p>
+          <ul className="crm-muted" style={{ margin: '0 0 12px', paddingLeft: 18, fontSize: 13 }}>
+            {chosen.slice(0, 6).map((l) => <li key={l.id}>#{l.number} · {leadTitle(l)} · {l.phone || 'без телефона'}</li>)}
+            {chosen.length > 6 && <li>…и ещё {chosen.length - 6}</li>}
+          </ul>
+          <button type="button" className="crm-btn sm" onClick={() => void exportChosen()} disabled={bulkBusy !== ''}><Download size={14} /> Сначала скачать копию в Excel</button>
+          <div className="crm-row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
+            <button type="button" className="crm-btn" onClick={() => setConfirmDelete(false)} disabled={bulkBusy !== ''}>Отмена</button>
+            <button type="button" className="crm-btn danger" onClick={() => void deleteChosen()} disabled={bulkBusy !== ''}><Trash2 size={16} /> {bulkBusy === 'delete' ? 'Удаляем…' : `Удалить ${chosen.length}`}</button>
+          </div>
+        </Modal>
+      )}
       {creating && <NewLeadDialog onClose={() => setCreating(false)} />}
       {lostFor && <LostDialog onClose={() => setLostFor(null)} onConfirm={(reason) => { const id = lostFor; setLostFor(null); void moveTo(id, 'lost', reason); }} />}
-      {openLead && <LeadDrawer lead={openLead} onClose={() => go({ leadId: undefined })} />}
+      {openLead && !selecting && <LeadDrawer lead={openLead} onClose={() => go({ leadId: undefined })} />}
     </div>
   );
 }
