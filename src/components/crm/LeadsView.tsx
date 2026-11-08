@@ -103,6 +103,8 @@ export function LeadsView() {
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const [bulkBusy, setBulkBusy] = useState<'' | 'delete' | 'export'>('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const CONFIRM_PHRASE = 'delete all';
 
   useEffect(() => { try { localStorage.setItem('crm.mode', mode); } catch { /* не критично */ } }, [mode]);
 
@@ -118,7 +120,8 @@ export function LeadsView() {
   /* действия применяются только к тем отмеченным заявкам, которые сейчас видны (фильтры не скрывают «чужие» выборы) */
   const chosen = useMemo(() => filtered.filter((l) => picked.has(l.id)), [filtered, picked]);
   const toggle = (id: string) => setPicked((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
-  const stopSelecting = () => { setSelecting(false); setPicked(new Set()); setConfirmDelete(false); };
+  const stopSelecting = () => { setSelecting(false); setPicked(new Set()); setConfirmDelete(false); setConfirmText(''); };
+  const closeConfirm = () => { setConfirmDelete(false); setConfirmText(''); };
   const pickAll = () => setPicked(new Set(filtered.map((l) => l.id)));
   /* «повторы»: заявки с одним телефоном. В каждой группе остаётся самая продвинутая по статусу (при равенстве — самая старая), остальные отмечаются */
   const pickDuplicates = () => {
@@ -148,11 +151,11 @@ export function LeadsView() {
   };
   const deleteChosen = async () => {
     const ids = chosen.map((l) => l.id);
-    if (!ids.length) return;
+    if (!ids.length || confirmText !== CONFIRM_PHRASE) return;
     setBulkBusy('delete');
     try {
-      const out = await crmApi<{ deleted: number }>('/leads/bulk-delete', { body: { ids } });
-      dropLeads(ids); setPicked(new Set()); setConfirmDelete(false);
+      const out = await crmApi<{ deleted: number }>('/leads/bulk-delete', { body: { ids, confirm: CONFIRM_PHRASE } });
+      dropLeads(ids); setPicked(new Set()); closeConfirm();
       toast(`Удалено заявок: ${out.deleted}`);
     } catch (reason) { toast(reason instanceof Error ? reason.message : 'Не удалось удалить заявки', 'bad'); }
     finally { setBulkBusy(''); }
@@ -246,16 +249,23 @@ export function LeadsView() {
         </div>
       )}
       {confirmDelete && (
-        <Modal title={`Удалить заявок: ${chosen.length}?`} onClose={() => (bulkBusy ? undefined : setConfirmDelete(false))} width={460}>
+        <Modal title={`Удалить заявок: ${chosen.length}?`} onClose={() => (bulkBusy ? undefined : closeConfirm())} width={460}>
           <p style={{ margin: '0 0 10px' }}>Заявки будут удалены безвозвратно. Контакты и переписка в мессенджерах останутся, а удалённые пробные уроки и заявки с сайта повторно не создаются.</p>
           <ul className="crm-muted" style={{ margin: '0 0 12px', paddingLeft: 18, fontSize: 13 }}>
             {chosen.slice(0, 6).map((l) => <li key={l.id}>#{l.number} · {leadTitle(l)} · {l.phone || 'без телефона'}</li>)}
             {chosen.length > 6 && <li>…и ещё {chosen.length - 6}</li>}
           </ul>
           <button type="button" className="crm-btn sm" onClick={() => void exportChosen()} disabled={bulkBusy !== ''}><Download size={14} /> Сначала скачать копию в Excel</button>
+          <Field label={`Для подтверждения введите «${CONFIRM_PHRASE}» вручную (вставка запрещена)`}>
+            <input className="crm-input" value={confirmText} autoFocus autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} placeholder={CONFIRM_PHRASE} aria-label="Подтверждение удаления"
+              onChange={(e) => setConfirmText(e.target.value)}
+              onPaste={(e) => e.preventDefault()} onDrop={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()}
+              onBeforeInput={(e) => { const type = (e.nativeEvent as InputEvent).inputType; if (type === 'insertFromPaste' || type === 'insertFromDrop' || type === 'insertFromYank' || type === 'insertReplacementText') e.preventDefault(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && confirmText === CONFIRM_PHRASE && !bulkBusy) void deleteChosen(); }} />
+          </Field>
           <div className="crm-row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
-            <button type="button" className="crm-btn" onClick={() => setConfirmDelete(false)} disabled={bulkBusy !== ''}>Отмена</button>
-            <button type="button" className="crm-btn danger" onClick={() => void deleteChosen()} disabled={bulkBusy !== ''}><Trash2 size={16} /> {bulkBusy === 'delete' ? 'Удаляем…' : `Удалить ${chosen.length}`}</button>
+            <button type="button" className="crm-btn" onClick={closeConfirm} disabled={bulkBusy !== ''}>Отмена</button>
+            <button type="button" className="crm-btn danger" onClick={() => void deleteChosen()} disabled={bulkBusy !== '' || confirmText !== CONFIRM_PHRASE}><Trash2 size={16} /> {bulkBusy === 'delete' ? 'Удаляем…' : `Удалить ${chosen.length}`}</button>
           </div>
         </Modal>
       )}

@@ -453,6 +453,7 @@ export function createCrm(deps) {
     };
     r.post('/leads/bulk-delete', wrap(async (req, res) => {
       const ids = idsOf(req.body);
+      if (req.body?.confirm !== 'delete all') throw err(400, 'Для удаления введите подтверждение «delete all».');
       const out = await core.exclusive(() => core.deleteLeads(ids));
       console.log(`[CRM] ${actorOf(req)} удалил заявок: ${out.deleted} (запрошено ${ids.length})`);
       res.json(out);
