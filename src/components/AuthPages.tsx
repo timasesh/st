@@ -11,7 +11,6 @@ import { TestExplanationModal, type ReviewQuestion, type AnswerValue } from '../
 import InstagramLeadsTab from './InstagramLeadsTab';
 import CrmApp from './crm/CrmApp';
 import CrmGate from './CrmGate';
-import CrmSettings from './CrmSettings';
 import CrmNotifier from './crm/CrmNotifier';
 import AdminTelegramCard from './AdminTelegramCard';
 import TeacherTestsTab, { StartTestArgs } from './TeacherTestsTab';
@@ -1100,7 +1099,6 @@ export function AdminDashboardPage() {
             <button type="button" onClick={() => { setActiveView('trial'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'trial' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><UserPlus className="h-5 w-5" /> Пробный урок <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${activeView === 'trial' ? 'bg-white/20' : 'bg-primary-light'}`}>{trialLessons.length}</span></button>
             <button type="button" onClick={() => { setActiveView('leads'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'leads' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><Star className="h-5 w-5" /> Лиды с инстаграма</button>
             <button type="button" onClick={() => { setActiveView('sales'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'sales' ? 'bg-primary text-white shadow-md' : 'text-muted hover:bg-primary-light hover:text-primary'}`}><Users className="h-5 w-5" /> CRM: заявки и чаты</button>
-            <button type="button" onClick={() => { setActiveView('crm'); setError(''); setSuccess(''); }} className={`crm-tab flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-extrabold transition ${activeView === 'crm' ? 'bg-blue-700 text-white shadow-md ring-2 ring-blue-300' : 'bg-blue-600 text-white shadow-sm hover:bg-blue-700'}`}><Settings className="h-5 w-5" /> Настройка CRM</button>
             <button type="button" onClick={() => { setActiveView('cleanup'); setError(''); setSuccess(''); }} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${activeView === 'cleanup' ? 'bg-rose-600 text-white shadow-md' : 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'}`}><Trash2 className="h-5 w-5" /> Управление данными</button>
           </nav>
         </aside>
@@ -1163,8 +1161,6 @@ export function AdminDashboardPage() {
                 </>
               )}
             </section>
-          ) : activeView === 'crm' ? (
-            <CrmGate title="Настройка CRM" hint="Введите PIN-код, чтобы открыть настройки CRM."><CrmSettings onOpenLeads={() => { setActiveView('sales'); setError(''); setSuccess(''); }} /></CrmGate>
           ) : activeView === 'settings' ? (
             <div className="grid max-w-3xl gap-6">
               <section className="admin-card rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
