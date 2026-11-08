@@ -4,7 +4,8 @@ import { CAREER_LETTERS, CAREER_QUESTIONS, CAREER_SCALES, careerLevel } from '..
 
 type Status = 'queued' | 'generating' | 'ready' | 'failed';
 type Row = { id: string; name: string; phone: string; grade: number | null; scores: number[]; createdAt: string; status: Status; error: string; hasReport: boolean; generatedAt?: string };
-type Report = { headline: string; summary: string; strengths: string[]; areas: { scale: number; meaning: string; professions: string[]; develop: string }[]; subjects: string[]; parents: string[]; nextSteps: string[]; note: string };
+type Specialty = { title: string; field: string; match: string; daily: string; skills: string[]; study: string; ent: string[] };
+type Report = { specialties?: Specialty[]; headline: string; summary: string; strengths: string[]; areas: { scale: number; meaning: string; professions: string[]; develop: string }[]; subjects: string[]; parents: string[]; nextSteps: string[]; note: string };
 type Full = Row & { answers: number[]; report: Report | null; model?: string };
 
 const STATUS: Record<Status, { label: string; tone: string }> = {
@@ -91,6 +92,13 @@ function ReportView({ item, onChanged, onBack }: { item: Full; onChanged: () => 
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось запустить генерацию.'); }
     finally { setBusy(false); }
   };
+  const downloadPdf = () => {
+    const previous = document.title;
+    document.title = `Профориентация - ${item.name}`;
+    const restore = () => { document.title = previous; window.removeEventListener('afterprint', restore); };
+    window.addEventListener('afterprint', restore);
+    window.print();
+  };
   const remove = async () => {
     if (!window.confirm(`Удалить результат профориентации «${item.name}»? Это нельзя отменить.`)) return;
     setBusy(true);
@@ -103,12 +111,12 @@ function ReportView({ item, onChanged, onBack }: { item: Full; onChanged: () => 
 
   return (
     <div className="space-y-4">
-      <style>{`@media print{body *{visibility:hidden!important}#career-report,#career-report *{visibility:visible!important}#career-report{position:absolute;left:0;top:0;width:100%}.no-print{display:none!important}}`}</style>
+      <style>{`@media print{@page{size:A4;margin:12mm}html,body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}body *{visibility:hidden!important}#career-report,#career-report *{visibility:visible!important}#career-report{position:absolute;left:0;top:0;width:100%}.no-print{display:none!important}#career-report>*,#career-report .avoid-break{break-inside:avoid;page-break-inside:avoid}}`}</style>
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-bold text-muted hover:bg-primary-light hover:text-primary"><ArrowLeft className="h-4 w-4" /> К списку</button>
         <div className="flex flex-wrap gap-2">
           <a href={`https://wa.me/${item.phone}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
-          <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-bold text-muted hover:bg-primary-light hover:text-primary"><Printer className="h-4 w-4" /> Печать / PDF</button>
+          <button type="button" onClick={downloadPdf} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-bold text-white hover:opacity-90"><Printer className="h-4 w-4" /> Скачать PDF</button>
           <button type="button" onClick={() => void regenerate()} disabled={busy || pending} className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-bold text-muted hover:bg-primary-light hover:text-primary disabled:opacity-50"><Sparkles className="h-4 w-4" /> {report ? 'Создать отчёт заново' : 'Создать отчёт'}</button>
           <button type="button" onClick={() => void remove()} disabled={busy} aria-label="Удалить" className="rounded-xl border border-border p-2 text-rose-600 hover:bg-rose-50 disabled:opacity-50"><Trash2 className="h-4 w-4" /></button>
         </div>
@@ -128,6 +136,26 @@ function ReportView({ item, onChanged, onBack }: { item: Full; onChanged: () => 
             <Bars scores={item.scores} />
           </div>
         </div>
+
+        {report?.specialties && report.specialties.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-display text-lg font-extrabold text-slate-800">Рекомендуемые специальности · топ-3</h3>
+            {report.specialties.map((spec, i) => (
+              <div key={i} className="avoid-break overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
+                <div className="flex items-center gap-3 px-5 py-3 text-white" style={{ background: ['#1b2b6b', '#2f6bff', '#0e9f8e'][i] }}>
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/20 font-display text-lg font-extrabold">{i + 1}</span>
+                  <div className="min-w-0"><p className="font-display text-lg font-extrabold leading-tight">{spec.title}</p>{spec.field && <p className="text-xs font-bold opacity-85">{spec.field}</p>}</div>
+                </div>
+                <div className="space-y-3 p-5 text-sm leading-relaxed text-slate-700">
+                  {spec.match && <p><b>Почему подходит:</b> {spec.match}</p>}
+                  {spec.daily && <p><b>Чем занимается:</b> {spec.daily}</p>}
+                  {spec.skills.length > 0 && <div className="flex flex-wrap items-center gap-2"><b>Навыки:</b>{spec.skills.map((text) => <Chip key={text} color="#2563eb">{text}</Chip>)}</div>}
+                  {spec.study && <p className="rounded-xl bg-slate-50 p-3"><b>Где учиться:</b> {spec.study}{spec.ent.length > 0 ? ` Профильные предметы ЕНТ: ${spec.ent.join(', ')}.` : ''}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {pending && (
           <div className="no-print flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800"><LoaderCircle className="h-5 w-5 animate-spin" /> ИИ составляет отчёт. Страница обновится сама.</div>

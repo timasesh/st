@@ -33,8 +33,8 @@ ${lines}
 - Не ставь диагнозов и не делай категоричных выводов: опросник — ориентир, а не приговор. Интересы в этом возрасте меняются.
 - Совет по предметам и кружкам должен быть практичным (что попробовать в ближайшие 1–3 месяца).
 - Верни ТОЛЬКО JSON без Markdown и пояснений, строго такого вида:
-{"headline":"короткий яркий заголовок профиля, до 8 слов","summary":"3–5 предложений о профиле ребёнка","strengths":["3–5 сильных сторон"],"areas":[{"scale":1,"meaning":"2–3 предложения, что эта склонность значит именно для этого ребёнка","professions":["4–6 подходящих профессий"],"develop":"как развивать: кружки, занятия, проекты"}],"subjects":["школьные предметы и кружки, на которые стоит обратить внимание"],"parents":["3–4 совета родителям"],"next_steps":["3–4 конкретных шага на ближайшие 1–3 месяца"],"note":"одно предложение-оговорка про ориентир и консультацию профориентолога"}
-В "areas" опиши ровно три самые сильные шкалы по порядку, "scale" — номер шкалы (1–6).`;
+{"headline":"короткий яркий заголовок профиля, до 8 слов","summary":"3–5 предложений о профиле ребёнка","strengths":["3–5 сильных сторон"],"specialties":[{"title":"конкретная специальность или профессия","field":"направление, например: IT и данные","match":"2–3 предложения: почему это подходит именно этому ребёнку по его баллам","daily":"чем специалист занимается на работе, 1–2 предложения","skills":["3–5 навыков, которые стоит развивать"],"study":"какие направления подготовки/образовательные программы выбирать в Казахстане, 1–2 предложения","ent":["2 профильных предмета для поступления"]}],"areas":[{"scale":1,"meaning":"2–3 предложения, что эта склонность значит именно для этого ребёнка","professions":["4–6 подходящих профессий"],"develop":"как развивать: кружки, занятия, проекты"}],"subjects":["школьные предметы и кружки, на которые стоит обратить внимание"],"parents":["3–4 совета родителям"],"next_steps":["3–4 конкретных шага на ближайшие 1–3 месяца"],"note":"одно предложение-оговорка про ориентир и консультацию профориентолога"}
+В "specialties" дай ровно три КОНКРЕТНЫЕ специальности (не общие слова вроде «работа с людьми», а, например, «Инженер-программист», «Клинический психолог», «Архитектор»), от самой подходящей к менее. Выбирай по сочетанию двух-трёх сильных шкал. Названия вузов и проходные баллы не выдумывай и не обещай поступления: указывай только направления подготовки и профильные предметы ЕНТ. В "areas" опиши ровно три самые сильные шкалы по порядку, "scale" — номер шкалы (1–6).`;
   }
 
   function parseJson(content) {
@@ -53,7 +53,17 @@ ${lines}
       professions: list(area?.professions, 8, 80),
       develop: clean(String(area?.develop ?? ''), 500),
     })).filter((area) => area.meaning);
+    const specialties = (Array.isArray(data.specialties) ? data.specialties : []).slice(0, 3).map((item) => ({
+      title: clean(String(item?.title ?? ''), 100),
+      field: clean(String(item?.field ?? ''), 100),
+      match: clean(String(item?.match ?? ''), 600),
+      daily: clean(String(item?.daily ?? ''), 400),
+      skills: list(item?.skills, 6, 100),
+      study: clean(String(item?.study ?? ''), 400),
+      ent: list(item?.ent, 3, 80),
+    })).filter((item) => item.title);
     const report = {
+      specialties,
       headline: clean(String(data.headline ?? ''), 120),
       summary: clean(String(data.summary ?? ''), 1400),
       strengths: list(data.strengths, 6),
@@ -74,7 +84,7 @@ ${lines}
     const request = () => fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 6000, temperature: 0.4, ...(/^moonshotai\//i.test(model) ? { reasoning_effort: 'low' } : {}), stream: false }),
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 8000, temperature: 0.4, ...(/^moonshotai\//i.test(model) ? { reasoning_effort: 'low' } : {}), stream: false }),
       signal: AbortSignal.timeout(180000),
     });
     let response = await request();
