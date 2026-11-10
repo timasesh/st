@@ -13,6 +13,15 @@ interface View { x: number; y: number; s: number }
 type Box = [number, number, number, number];
 
 const STORAGE_KEY = 'studytask-board-v1';
+interface SavedBoard { id: string; name: string; updated: number; pageCount: number }
+async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...init });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error || `Ошибка сервера (${res.status})`);
+  return data as T;
+}
+const newBoardId = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
 const COLORS = ['#111827', '#1649E8', '#E5484D', '#16A34A', '#F59E0B', '#8B5CF6', '#0EA5E9'];
 const WIDTHS = [2, 4, 8, 14, 24];
 const GRID = 40;
@@ -211,6 +220,16 @@ export default function StudyTaskBoard() {
   const [editor, setEditor] = useState<{ id: number | null; x: number; y: number; text: string; fs: number; c: string } | null>(null);
 
   const stored = useRef(savedPages());
+  const boardIdRef = useRef<string | null>((() => { try { return localStorage.getItem(STORAGE_KEY + '-id'); } catch { return null; } })());
+  const [boards, setBoards] = useState<SavedBoard[]>([]);
+  const [boardsOpen, setBoardsOpen] = useState(false);
+  const [boardsLoading, setBoardsLoading] = useState(false);
+  const [boardsErr, setBoardsErr] = useState('');
+  const [boardName, setBoardName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [boardMsg, setBoardMsg] = useState('');
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  
   const pagesRef = useRef<Page[]>((stored.current?.pages || [[]]).map((objs) => ({ objs, undo: [], redo: [] })));
   const curRef = useRef(stored.current?.cur || 0);
   const viewRef = useRef<View>({ x: 60, y: 60, s: 1 });
@@ -369,6 +388,56 @@ export default function StudyTaskBoard() {
   const chooseColor = (c: string) => { setColor(c); applyStyle({ c }); };
   const chooseWidth = (w: number) => { const v = Math.max(1, Math.min(40, w)); setWidth(v); applyStyle({ w: v }); };
   const toggleFill = () => { const v = !st.current.fill; setFill(v); applyStyle({ fill: v }); };
+  const setBoardId = (id: string | null) => { boardIdRef.current = id; try { if (id) localStorage.setItem(STORAGE_KEY + '-id', id); else localStorage.removeItem(STORAGE_KEY + '-id'); } catch { /* ignore */ } };
+  const flash = (m: string) => { setBoardMsg(m); window.setTimeout(() => setBoardMsg(''), 3000); };
+  const refreshBoards = async () => {
+    setBoardsLoading(true); setBoardsErr('');
+    try { const d = await apiFetch<{ boards: SavedBoard[] }>('/api/teacher/boards'); setBoards(d.boards); return d.boards; }
+    catch (e) { setBoardsErr((e as Error).message); return null; }
+    finally { setBoardsLoading(false); }
+  };
+  const saveBoard = async (asNew = false) => {
+    if (busy) return;
+    const name = boardName.trim() || `Доска ${new Date().toLocaleDateString('ru-RU')}`;
+    const id = !asNew && boardIdRef.current ? boardIdRef.current : newBoardId();
+    setBusy(true);
+    try {
+      await apiFetch(`/api/teacher/boards/${id}`, { method: 'PUT', body: JSON.stringify({ name, pages: pagesRef.current.map((p) => p.objs) }) });
+      setBoardId(id); setBoardName(name); flash(boardIdRef.current === id && !asNew && boards.some((b) => b.id === id) ? 'Доска обновлена' : 'Доска сохранена'); scheduleSave();
+      if (boardsOpen) void refreshBoards(); else setBoards((list) => (list.some((b) => b.id === id) ? list.map((b) => (b.id === id ? { ...b, name, updated: Date.now(), pageCount: pagesRef.current.length } : b)) : [{ id, name, updated: Date.now(), pageCount: pagesRef.current.length }, ...list]));
+    } catch (e) { flash(`Не сохранено: ${(e as Error).message}`); }
+    finally { setBusy(false); }
+  };
+  const openBoard = async (b: SavedBoard) => {
+    setBusy(true);
+    try {
+      const d = await apiFetch<{ board: { id: string; name: string; pages: Obj[][] } }>(`/api/teacher/boards/${b.id}`);
+      pagesRef.current = (d.board.pages.length ? d.board.pages : [[]]).map((objs) => ({ objs, undo: [], redo: [] }));
+      curRef.current = 0; setBoardId(b.id); setBoardName(d.board.name); setSel([]); previewRef.current = null; viewRef.current = { x: 60, y: 60, s: 1 };
+      scheduleSave(); setBoardsOpen(false); changed();
+    } catch (e) { setBoardsErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  const newBoard = () => {
+    pagesRef.current = [{ objs: [], undo: [], redo: [] }]; curRef.current = 0; setBoardId(null); setBoardName(''); setSel([]); previewRef.current = null;
+    scheduleSave(); setBoardsOpen(false); changed();
+  };
+  const renameBoard = async (id: string, name: string) => {
+    const n = name.trim(); setRenaming(null); if (!n) return;
+    try {
+      await apiFetch(`/api/teacher/boards/${id}`, { method: 'PUT', body: JSON.stringify({ name: n }) });
+      setBoards((list) => list.map((b) => (b.id === id ? { ...b, name: n } : b)));
+      if (boardIdRef.current === id) setBoardName(n);
+    } catch (e) { setBoardsErr((e as Error).message); }
+  };
+  const deleteBoard = async (b: SavedBoard) => {
+    if (!window.confirm(`Удалить доску «${b.name}»? Отменить нельзя.`)) return;
+    try {
+      await apiFetch(`/api/teacher/boards/${b.id}`, { method: 'DELETE' });
+      setBoards((list) => list.filter((x) => x.id !== b.id));
+      if (boardIdRef.current === b.id) { setBoardId(null); setBoardName(''); }
+    } catch (e) { setBoardsErr((e as Error).message); }
+  };
   const clearPage = () => { if (page().objs.length) { commit([]); setSel([]); } };
   const gotoPage = (i: number) => { if (i < 0 || i >= pagesRef.current.length) return; curRef.current = i; setSel([]); previewRef.current = null; scheduleSave(); changed(); };
   const addPage = () => { pagesRef.current.push({ objs: [], undo: [], redo: [] }); gotoPage(pagesRef.current.length - 1); };
@@ -477,8 +546,12 @@ export default function StudyTaskBoard() {
         dragRef.current = { mode: 'resize', ax: opp[0], ay: opp[1], ox: corners[hnd][0], oy: corners[hnd][1], base: selectedObjs(), corner: hnd };
       } else {
         const h = topHit(wx, wy);
-        if (h) {
-          if (e.shiftKey) { const has = selRef.current.includes(h.id); setSel(has ? selRef.current.filter((id) => id !== h.id) : [...selRef.current, h.id]); }
+        const sb = unionBox(selectedObjs());
+        const inSel = !!sb && !e.shiftKey && selRef.current.length > 0 && wx >= sb[0] - 4 / viewRef.current.s && wx <= sb[2] + 4 / viewRef.current.s && wy >= sb[1] - 4 / viewRef.current.s && wy <= sb[3] + 4 / viewRef.current.s;
+        if (inSel || h) {
+          if (inSel) { /* drag the whole current selection by any point inside its frame */ }
+          else if (!h) { /* unreachable */ }
+          else if (e.shiftKey) { const has = selRef.current.includes(h.id); setSel(has ? selRef.current.filter((id) => id !== h.id) : [...selRef.current, h.id]); }
           else if (!selRef.current.includes(h.id)) setSel([h.id]);
           dragRef.current = { mode: 'move', wx, wy, base: selectedObjs(), moved: false, sx, sy };
         } else {
@@ -635,6 +708,10 @@ export default function StudyTaskBoard() {
   useEffect(() => { requestDraw(); }, [gridMode, tool, sel, requestDraw]);
 
   useEffect(() => { wrapRef.current?.scrollIntoView({ block: 'start' }); }, []);
+  useEffect(() => {
+    void refreshBoards().then((list) => { const id = boardIdRef.current; const found = list?.find((b) => b.id === id); if (found) setBoardName(found.name); else if (list && id) setBoardId(null); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const p = page();
   const cursor = tool === 'select' ? 'default' : tool === 'hand' ? 'grab' : tool === 'text' ? 'text' : tool === 'eraser' ? 'none' : 'crosshair';
@@ -711,6 +788,31 @@ export default function StudyTaskBoard() {
         <div className="pointer-events-none absolute bottom-2 left-3 rounded-lg bg-white/90 px-2.5 py-1 text-xs font-semibold text-muted shadow-sm">
           {hasSel ? `Выбрано: ${sel.length} · Delete — удалить, Ctrl+C / Ctrl+X — копировать / вырезать, стрелки — сдвиг` : TOOLS.find((t) => t.id === tool)?.label}
         </div>
+        {boardsOpen && (
+          <div className="absolute inset-y-3 left-3 z-10 flex w-[min(92%,380px)] flex-col rounded-2xl border border-border bg-white p-4 text-sm shadow-2xl">
+            <div className="mb-2 flex items-center justify-between"><strong className="font-display">Мои доски</strong><button type="button" onClick={() => setBoardsOpen(false)} aria-label="Закрыть" className="rounded p-1 text-muted hover:bg-primary-light"><X className="h-4 w-4" /></button></div>
+            <button type="button" onClick={newBoard} className="mb-2 rounded-lg border border-dashed border-primary px-3 py-2 text-xs font-bold text-primary hover:bg-primary-light">+ Новая чистая доска</button>
+            <div className="-mr-1 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+              {boardsErr && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">{boardsErr}</p>}
+              {boardsLoading && <p className="p-3 text-center text-xs text-muted">Загрузка…</p>}
+              {!boardsLoading && !boardsErr && boards.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted">Пока ничего не сохранено. Введите название внизу и нажмите «Сохранить».</p>}
+              {boards.map((b) => (
+                <div key={b.id} className={`rounded-xl border p-3 ${b.id === boardIdRef.current ? 'border-primary bg-primary-light' : 'border-border'}`}>
+                  {renaming?.id === b.id ? (
+                    <input autoFocus value={renaming.name} onChange={(e) => setRenaming({ id: b.id, name: e.target.value })} onBlur={() => void renameBoard(b.id, renaming.name)} onKeyDown={(e) => { if (e.key === 'Enter') void renameBoard(b.id, renaming.name); if (e.key === 'Escape') setRenaming(null); }} maxLength={60} className="w-full rounded border border-primary px-2 py-1 text-sm outline-none" />
+                  ) : (<strong className="block truncate">{b.name}</strong>)}
+                  <span className="text-xs text-muted">{b.pageCount} стр. · {new Date(b.updated).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  <div className="mt-2 flex gap-1.5">
+                    <button type="button" onClick={() => void openBoard(b)} className="rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-white">Открыть</button>
+                    <button type="button" onClick={() => setRenaming({ id: b.id, name: b.name })} className="rounded-lg border border-border px-2.5 py-1 text-xs font-bold text-muted hover:bg-white">Переименовать</button>
+                    <button type="button" onClick={() => void deleteBoard(b)} className="ml-auto rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50">Удалить</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-muted">Доски хранятся на сервере в вашем аккаунте и доступны с любого устройства. Изменения в сохранённой доске записываются только по кнопке «Обновить», так что исходник не потеряется. Черновик текущей доски сохраняется сам.</p>
+          </div>
+        )}
         {help && (
           <div className="absolute right-3 top-3 z-10 w-[min(92%,360px)] rounded-2xl border border-border bg-white p-4 text-sm shadow-2xl">
             <div className="mb-2 flex items-center justify-between"><strong className="font-display">Горячие клавиши</strong><button type="button" onClick={() => setHelp(false)} aria-label="Закрыть" className="rounded p-1 text-muted hover:bg-primary-light"><X className="h-4 w-4" /></button></div>
@@ -731,7 +833,12 @@ export default function StudyTaskBoard() {
             className={`h-9 min-w-9 rounded-lg px-3 text-sm font-bold transition ${i === curRef.current ? 'bg-primary text-white shadow-sm' : 'border border-border bg-white text-muted hover:bg-primary-light'}`}>{i + 1}</button>
         ))}
         <button type="button" onClick={addPage} className={btn} title="Новый чистый лист" aria-label="Добавить страницу"><Plus className="h-4 w-4" /></button>
-        <span className="ml-auto flex items-center gap-2">
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <input value={boardName} onChange={(e) => setBoardName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void saveBoard(); }} placeholder="Название доски" maxLength={60} aria-label="Название доски" className="h-9 w-44 rounded-lg border border-border px-3 text-sm outline-none focus:border-primary" />
+          <button type="button" onClick={() => void saveBoard()} disabled={busy} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary-dark" title="Сохранить в список досок">{boardIdRef.current ? 'Обновить' : 'Сохранить'}</button>
+          {boardIdRef.current && <button type="button" onClick={() => void saveBoard(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted hover:bg-primary-light" title="Сохранить копией под этим названием">Как новую</button>}
+          <button type="button" onClick={() => { const next = !boardsOpen; setBoardsOpen(next); if (next) void refreshBoards(); }} aria-expanded={boardsOpen} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-primary hover:bg-primary-light">Мои доски{boards.length ? ` (${boards.length})` : ''}</button>
+          {boardMsg && <span role="status" className="text-xs font-bold text-emerald-600">{boardMsg}</span>}
           <button type="button" onClick={clearPage} disabled={!p.objs.length} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted hover:bg-primary-light disabled:opacity-40" title="Очистить страницу (можно отменить Ctrl+Z)">Очистить страницу</button>
           <button type="button" onClick={removePage} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">Удалить страницу</button>
         </span>

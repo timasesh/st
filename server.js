@@ -41,6 +41,7 @@ const homeworkAttachmentsPath = path.join(dataDir, 'homework-attachments.json');
 const homeworkAttachmentsBucket = 'homework-attachments';
 let warnedAboutHomeworkStorageMigration = false;
 const skyQuestProgressPath = path.join(dataDir, 'skyquest-progress.json');
+const teacherBoardsPath = path.join(dataDir, 'teacher-boards.json');
 const cookieName = 'study_admin_session';
 const cleanupCookieName = 'study_admin_cleanup';
 const userCookieName = 'study_user_session';
@@ -1985,6 +1986,107 @@ app.get('/api/teacher/students/:studentId/lesson-history', async (req, res) => {
     return res.json({ student: subject.summary, history: history.map((entry) => ({ ...entry, attachment: attachments[entry.id] || null })) });
   }
   catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить историю занятий.' }); }
+});
+
+// ---- Study Task board: доски преподавателя (Supabase teacher_boards или файл в DATA_DIR) ----
+const BOARD_MAX_BYTES = 8 * 1024 * 1024;
+const BOARD_ID_RE = /^[A-Za-z0-9_-]{3,40}$/;
+function boardTeacher(req, res) {
+  const user = getUserSession(req);
+  if (!user || user.account.role !== 'teacher') { res.status(403).json({ error: 'Доска доступна только преподавателю.' }); return null; }
+  return user.account;
+}
+function cleanBoardPages(pages) {
+  if (!Array.isArray(pages) || pages.length < 1 || pages.length > 100) return null;
+  const out = pages.map((page) => (Array.isArray(page) ? page : null));
+  if (out.some((page) => !page || page.length > 20000)) return null;
+  return out;
+}
+function boardMeta(row) { return { id: row.id, name: row.name, updated: new Date(row.updated).getTime() || Date.now(), pageCount: row.pageCount }; }
+async function boardsList(teacherId) {
+  if (supabase) {
+    const result = await supabase.from('teacher_boards').select('id, name, updated_at, pages').eq('teacher_id', teacherId).order('updated_at', { ascending: false });
+    if (result.error) throw new Error(`Supabase teacher_boards: ${result.error.message}. Выполните SQL supabase/migrations/20261110_teacher_boards.sql.`);
+    return (result.data || []).map((row) => boardMeta({ id: row.id, name: row.name, updated: row.updated_at, pageCount: Array.isArray(row.pages) ? row.pages.length : 0 }));
+  }
+  const all = await readJsonFileOr(teacherBoardsPath, {});
+  return Object.values(all[teacherId] || {}).map((row) => boardMeta({ ...row, pageCount: row.pages.length })).sort((a, b) => b.updated - a.updated);
+}
+async function boardGet(teacherId, id) {
+  if (supabase) {
+    const result = await supabase.from('teacher_boards').select('id, name, updated_at, pages').eq('teacher_id', teacherId).eq('id', id).maybeSingle();
+    if (result.error) throw new Error(`Supabase teacher_boards: ${result.error.message}`);
+    return result.data ? { id: result.data.id, name: result.data.name, updated: new Date(result.data.updated_at).getTime(), pages: result.data.pages } : null;
+  }
+  const all = await readJsonFileOr(teacherBoardsPath, {});
+  return all[teacherId]?.[id] || null;
+}
+async function boardSave(teacherId, id, name, pages) {
+  const updated = Date.now();
+  if (supabase) {
+    const existing = await supabase.from('teacher_boards').select('id, pages').eq('teacher_id', teacherId).eq('id', id).maybeSingle();
+    if (existing.error) throw new Error(`Supabase teacher_boards: ${existing.error.message}. Выполните SQL supabase/migrations/20261110_teacher_boards.sql.`);
+    const payload = { name, updated_at: new Date(updated).toISOString(), ...(pages ? { pages } : {}) };
+    const result = existing.data
+      ? await supabase.from('teacher_boards').update(payload).eq('teacher_id', teacherId).eq('id', id)
+      : await supabase.from('teacher_boards').insert({ id, teacher_id: teacherId, pages: pages || [[]], ...payload });
+    if (result.error) throw new Error(`Supabase teacher_boards: ${result.error.message}`);
+    return updated;
+  }
+  const all = await readJsonFileOr(teacherBoardsPath, {});
+  const mine = all[teacherId] || (all[teacherId] = {});
+  mine[id] = { id, name, updated, pages: pages || mine[id]?.pages || [[]] };
+  await fs.mkdir(dataDir, { recursive: true });
+  const temporaryPath = `${teacherBoardsPath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(all), { mode: 0o600 });
+  await fs.rename(temporaryPath, teacherBoardsPath);
+  return updated;
+}
+async function boardDelete(teacherId, id) {
+  if (supabase) {
+    const result = await supabase.from('teacher_boards').delete().eq('teacher_id', teacherId).eq('id', id);
+    if (result.error) throw new Error(`Supabase teacher_boards: ${result.error.message}`);
+    return;
+  }
+  const all = await readJsonFileOr(teacherBoardsPath, {});
+  if (all[teacherId]) delete all[teacherId][id];
+  const temporaryPath = `${teacherBoardsPath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(all), { mode: 0o600 });
+  await fs.rename(temporaryPath, teacherBoardsPath);
+}
+app.get('/api/teacher/boards', async (req, res) => {
+  const teacher = boardTeacher(req, res); if (!teacher) return;
+  try { return res.json({ boards: await boardsList(teacher.id) }); }
+  catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить доски.' }); }
+});
+app.get('/api/teacher/boards/:id', async (req, res) => {
+  const teacher = boardTeacher(req, res); if (!teacher) return;
+  if (!BOARD_ID_RE.test(req.params.id)) return res.status(400).json({ error: 'Некорректный номер доски.' });
+  try { const board = await boardGet(teacher.id, req.params.id); return board ? res.json({ board }) : res.status(404).json({ error: 'Доска не найдена.' }); }
+  catch (error) { return res.status(500).json({ error: error.message || 'Не удалось открыть доску.' }); }
+});
+app.put('/api/teacher/boards/:id', async (req, res) => {
+  const teacher = boardTeacher(req, res); if (!teacher) return;
+  if (!BOARD_ID_RE.test(req.params.id)) return res.status(400).json({ error: 'Некорректный номер доски.' });
+  const name = String(req.body?.name || '').trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: 'Введите название доски.' });
+  let pages = null;
+  if (req.body?.pages !== undefined) {
+    pages = cleanBoardPages(req.body.pages);
+    if (!pages) return res.status(400).json({ error: 'Некорректное содержимое доски.' });
+    if (Buffer.byteLength(JSON.stringify(pages)) > BOARD_MAX_BYTES) return res.status(413).json({ error: 'Доска слишком большая (больше 8 МБ). Удалите часть рисунков или сохраните страницы отдельно.' });
+  }
+  try {
+    if (!pages && !(await boardGet(teacher.id, req.params.id))) return res.status(404).json({ error: 'Доска не найдена.' });
+    const updated = await boardSave(teacher.id, req.params.id, name, pages);
+    return res.json({ ok: true, id: req.params.id, name, updated });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить доску.' }); }
+});
+app.delete('/api/teacher/boards/:id', async (req, res) => {
+  const teacher = boardTeacher(req, res); if (!teacher) return;
+  if (!BOARD_ID_RE.test(req.params.id)) return res.status(400).json({ error: 'Некорректный номер доски.' });
+  try { await boardDelete(teacher.id, req.params.id); return res.json({ ok: true }); }
+  catch (error) { return res.status(500).json({ error: error.message || 'Не удалось удалить доску.' }); }
 });
 
 app.get('/api/parent/students/:studentId/lesson-history', async (req, res) => {
