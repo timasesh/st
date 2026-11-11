@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
-  ArrowUpRight, ClipboardPaste, Copy, CopyPlus, Crosshair, Download, Eraser, Grid3x3, Hand, Highlighter, Keyboard, Maximize2, Minimize2,
+  ArrowUpRight, ClipboardPaste, Copy, CopyPlus, Crosshair, Download, Eraser, Grid3x3, Hand, Highlighter, ImagePlus, Keyboard, Maximize2, Minimize2,
   Minus, MousePointer2, PaintBucket, PenLine, Plus, Redo2, Scissors, Square, Triangle, Circle, Trash2, Type, Undo2, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 
 type Tool = 'select' | 'pen' | 'marker' | 'eraser' | 'line' | 'arrow' | 'rect' | 'tri' | 'ell' | 'text' | 'laser' | 'hand';
-type Kind = 'pen' | 'marker' | 'line' | 'arrow' | 'rect' | 'tri' | 'ell' | 'text';
+type Kind = 'pen' | 'marker' | 'line' | 'arrow' | 'rect' | 'tri' | 'ell' | 'text' | 'img';
 type Pt = [number, number, number];
-interface Obj { id: number; k: Kind; c: string; w: number; fill: boolean; pts?: Pt[]; x1: number; y1: number; x2: number; y2: number; text?: string; fs?: number }
+interface Obj { id: number; k: Kind; c: string; w: number; fill: boolean; pts?: Pt[]; x1: number; y1: number; x2: number; y2: number; text?: string; fs?: number; src?: string }
 interface Page { objs: Obj[]; undo: Obj[][]; redo: Obj[][] }
 interface View { x: number; y: number; s: number }
 type Box = [number, number, number, number];
@@ -61,6 +61,7 @@ function textSize(o: Obj): [number, number] {
 function norm(o: Obj): Box { return [Math.min(o.x1, o.x2), Math.min(o.y1, o.y2), Math.max(o.x1, o.x2), Math.max(o.y1, o.y2)]; }
 function bounds(o: Obj): Box {
   if (o.k === 'text') { const [w, h] = textSize(o); return [o.x1, o.y1, o.x1 + w, o.y1 + h]; }
+  if (o.k === 'img') return norm(o);
   const pad = (o.k === 'marker' ? o.w * 3 : o.w) / 2;
   if (o.pts) {
     let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
@@ -123,7 +124,7 @@ function hit(o: Obj, x: number, y: number, tol: number): boolean {
       if (o.fill && inTri(x, y, t)) return true;
       return distSeg(x, y, ...t[0], ...t[1]) <= r || distSeg(x, y, ...t[1], ...t[2]) <= r || distSeg(x, y, ...t[2], ...t[0]) <= r;
     }
-    case 'text': { const [a, b, c, d] = bounds(o); return x >= a - tol && x <= c + tol && y >= b - tol && y <= d + tol; }
+    case 'text': case 'img': { const [a, b, c, d] = bounds(o); return x >= a - tol && x <= c + tol && y >= b - tol && y <= d + tol; }
   }
 }
 function moveObj(o: Obj, dx: number, dy: number): Obj {
@@ -134,6 +135,36 @@ function scaleObj(o: Obj, ax: number, ay: number, sx: number, sy: number): Obj {
   const n: Obj = { ...o, x1: X(o.x1), y1: Y(o.y1), x2: X(o.x2), y2: Y(o.y2), pts: o.pts?.map((p) => [X(p[0]), Y(p[1]), p[2]] as Pt) };
   if (o.k === 'text') n.fs = Math.max(8, (o.fs || 24) * (Math.abs(sx) + Math.abs(sy)) / 2);
   return n;
+}
+
+// ---------- images ----------
+const imgCache = new Map<string, HTMLImageElement>();
+let onImgLoad: (() => void) | null = null;
+function getImg(src?: string): HTMLImageElement | null {
+  if (!src || !src.startsWith('data:image/')) return null;
+  let im = imgCache.get(src);
+  if (!im) { im = new Image(); im.onload = () => onImgLoad?.(); im.src = src; imgCache.set(src, im); }
+  return im.complete && im.naturalWidth ? im : null;
+}
+async function prepareImage(file: File): Promise<{ src: string; w: number; h: number }> {
+  const url = URL.createObjectURL(file);
+  try {
+    const im = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Не удалось открыть изображение')); i.src = url; });
+    const nw = im.naturalWidth || 800, nh = im.naturalHeight || 600;
+    const k = Math.min(1, 1600 / Math.max(nw, nh));
+    const w = Math.max(1, Math.round(nw * k)), h = Math.max(1, Math.round(nh * k));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const cx = cv.getContext('2d'); if (!cx) throw new Error('Не удалось обработать изображение');
+    cx.imageSmoothingQuality = 'high';
+    let src = '';
+    if (/png|webp|gif|svg/.test(file.type)) { cx.drawImage(im, 0, 0, w, h); src = cv.toDataURL('image/png'); }
+    if (!src || src.length > 1_800_000) {
+      cx.clearRect(0, 0, w, h); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(im, 0, 0, w, h);
+      for (const q of [0.88, 0.72, 0.55]) { src = cv.toDataURL('image/jpeg', q); if (src.length <= 1_800_000) break; }
+    }
+    if (src.length > 2_500_000) throw new Error('Изображение слишком тяжёлое. Уменьшите его и попробуйте снова.');
+    return { src, w, h };
+  } finally { URL.revokeObjectURL(url); }
 }
 
 // ---------- rendering ----------
@@ -175,6 +206,10 @@ function drawObj(ctx: CanvasRenderingContext2D, o: Obj) {
     else { const t = triPts(o); ctx.moveTo(...t[0]); ctx.lineTo(...t[1]); ctx.lineTo(...t[2]); ctx.closePath(); }
     if (o.fill) { ctx.save(); ctx.globalAlpha = 0.18; ctx.fill(); ctx.restore(); }
     ctx.stroke();
+  } else if (o.k === 'img') {
+    const [a, b, c, d] = norm(o); const im = getImg(o.src);
+    if (im) { ctx.imageSmoothingQuality = 'high'; ctx.drawImage(im, a, b, c - a, d - b); }
+    else { ctx.fillStyle = '#f1f5f9'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1; ctx.fillRect(a, b, c - a, d - b); ctx.strokeRect(a, b, c - a, d - b); }
   } else if (o.k === 'text') {
     ctx.font = `${o.fs || 24}px ${FONT}`; ctx.textBaseline = 'top';
     (o.text || '').split('\n').forEach((line, i) => ctx.fillText(line, o.x1, o.y1 + i * (o.fs || 24) * 1.25));
@@ -330,7 +365,9 @@ export default function StudyTaskBoard() {
   const scheduleSave = () => {
     window.clearTimeout(save.current);
     save.current = window.setTimeout(() => {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ pages: pagesRef.current.map((p) => p.objs), cur: curRef.current })); } catch { /* storage full or blocked */ }
+      const arr = pagesRef.current.map((p) => p.objs);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ pages: arr, cur: curRef.current })); }
+      catch { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ pages: arr.map((l) => l.filter((o) => o.k !== 'img')), cur: curRef.current })); } catch { /* storage full or blocked */ } }
     }, 500);
   };
   const commit = (objs: Obj[]) => {
@@ -356,7 +393,7 @@ export default function StudyTaskBoard() {
     previewRef.current = null; hiddenRef.current = new Set(); scheduleSave(); changed();
   };
   const selectedObjs = () => page().objs.filter((o) => selRef.current.includes(o.id));
-  const copySel = () => { const s = selectedObjs(); if (!s.length) return false; clipboard = JSON.parse(JSON.stringify(s)); pasteCount = 0; return true; };
+  const copySel = () => { const s = selectedObjs(); if (!s.length) return false; clipboard = JSON.parse(JSON.stringify(s)); pasteCount = 0; try { void navigator.clipboard?.writeText('studytask-board').catch(() => undefined); } catch { /* ignore */ } return true; };
   const deleteSel = () => { if (!selRef.current.length) return; const ids = new Set(selRef.current); commit(page().objs.filter((o) => !ids.has(o.id))); setSel([]); };
   const cutSel = () => { if (copySel()) deleteSel(); };
   const pasteClip = () => {
@@ -455,16 +492,40 @@ export default function StudyTaskBoard() {
   const toggleFullscreen = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void wrapRef.current?.requestFullscreen?.(); };
   const exportPng = () => {
     const objs = page().objs; const box = unionBox(objs) || ([0, 0, 1200, 800] as Box);
-    const pad = 40, sc = 2; const w = Math.ceil(box[2] - box[0] + pad * 2), h = Math.ceil(box[3] - box[1] + pad * 2);
+    const pad = 64, sc = 2; const w = Math.ceil(box[2] - box[0] + pad * 2), h = Math.ceil(box[3] - box[1] + pad * 2);
     const cv = document.createElement('canvas'); cv.width = Math.min(8000, w * sc); cv.height = Math.min(8000, h * sc);
     const ctx = cv.getContext('2d'); if (!ctx) return;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.scale(sc, sc); ctx.translate(pad - box[0], pad - box[1]);
-    objs.forEach((o) => drawObj(ctx, o));
-    cv.toBlob((blob) => {
-      if (!blob) return; const url = URL.createObjectURL(blob); const a = document.createElement('a');
-      const d = new Date(); a.href = url; a.download = `study-task-board-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-стр${curRef.current + 1}.png`;
-      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }, 'image/png');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.save(); ctx.scale(sc, sc); ctx.translate(pad - box[0], pad - box[1]);
+    objs.forEach((o) => drawObj(ctx, o)); ctx.restore();
+    const finish = (logo?: HTMLImageElement) => {
+      if (logo && logo.naturalWidth) ctx.drawImage(logo, 14 * sc, 14 * sc, 36 * sc, 36 * sc);
+      cv.toBlob((blob) => {
+        if (!blob) return; const url = URL.createObjectURL(blob); const a = document.createElement('a');
+        const d = new Date(); a.href = url; a.download = `study-task-board-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-стр${curRef.current + 1}.png`;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, 'image/png');
+    };
+    const lg = new Image(); lg.onload = () => finish(lg); lg.onerror = () => finish(); lg.src = '/static/ST.webp';
+  };
+
+  // ----- images -----
+  const fileRef = useRef<HTMLInputElement>(null);
+  const insertImages = async (files: File[], at?: { wx: number; wy: number }) => {
+    const imgs = files.filter((f) => f.type.startsWith('image/')); if (!imgs.length) return;
+    const cv = canvasRef.current; if (!cv) return;
+    const r = cv.getBoundingClientRect(); const v = viewRef.current;
+    const cx = at ? at.wx : (r.width / 2 - v.x) / v.s, cy = at ? at.wy : (r.height / 2 - v.y) / v.s;
+    const made: Obj[] = []; let off = 0;
+    for (const f of imgs) {
+      try {
+        const { src, w, h } = await prepareImage(f);
+        const k = Math.min((r.width * 0.6) / v.s / w, (r.height * 0.7) / v.s / h, 1.5);
+        const ww = w * k, hh = h * k;
+        made.push({ id: nid(), k: 'img', c: '#000', w: 1, fill: false, x1: cx - ww / 2 + off, y1: cy - hh / 2 + off, x2: cx + ww / 2 + off, y2: cy + hh / 2 + off, src });
+        off += 30;
+      } catch (e) { flash((e as Error).message); }
+    }
+    if (made.length) { commit([...made, ...page().objs]); setSel(made.map((o) => o.id)); setTool('select'); }
   };
 
   // ----- text editor -----
@@ -494,7 +555,7 @@ export default function StudyTaskBoard() {
   };
   const eraseAt = (wx: number, wy: number, gone: Set<number>) => {
     const tol = Math.max(8, st.current.width * 2) / viewRef.current.s;
-    for (const o of page().objs) if (!gone.has(o.id) && hit(o, wx, wy, tol)) gone.add(o.id);
+    for (const o of page().objs) if (o.k !== 'img' && !gone.has(o.id) && hit(o, wx, wy, tol)) gone.add(o.id);
     hiddenRef.current = new Set(gone);
   };
   const topHit = (wx: number, wy: number) => {
@@ -594,7 +655,7 @@ export default function StudyTaskBoard() {
       d.moved = true; previewRef.current = new Map(d.base.map((o) => [o.id, moveObj(o, dx, dy)]));
     } else if (d.mode === 'resize') {
       let fx = (wx - d.ax) / ((d.ox - d.ax) || 1), fy = (wy - d.ay) / ((d.oy - d.ay) || 1);
-      if (e.shiftKey || d.base.some((o) => o.k === 'text')) { const f = Math.abs(fx) > Math.abs(fy) ? fx : fy; fx = f; fy = f; }
+      if (e.shiftKey || d.base.some((o) => o.k === 'text' || o.k === 'img')) { const f = Math.abs(fx) > Math.abs(fy) ? fx : fy; fx = f; fy = f; }
       fx = Math.abs(fx) < 0.05 ? 0.05 * Math.sign(fx || 1) : fx; fy = Math.abs(fy) < 0.05 ? 0.05 * Math.sign(fy || 1) : fy;
       previewRef.current = new Map(d.base.map((o) => [o.id, scaleObj(o, d.ax, d.ay, fx, fy)]));
     } else if (d.mode === 'marquee') {
@@ -658,8 +719,8 @@ export default function StudyTaskBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const api = useRef({ undo, redo, copySel, cutSel, pasteClip, duplicateSel, selectAll, deleteSel, nudge, chooseColor, chooseWidth, toggleFill, setTool, gotoPage, zoomCenter, resetView, setGridMode, exportPng });
-  api.current = { undo, redo, copySel, cutSel, pasteClip, duplicateSel, selectAll, deleteSel, nudge, chooseColor, chooseWidth, toggleFill, setTool, gotoPage, zoomCenter, resetView, setGridMode, exportPng };
+  const api = useRef({ undo, redo, copySel, cutSel, pasteClip, duplicateSel, selectAll, deleteSel, nudge, chooseColor, chooseWidth, toggleFill, setTool, gotoPage, zoomCenter, resetView, setGridMode, exportPng, insertImages });
+  api.current = { undo, redo, copySel, cutSel, pasteClip, duplicateSel, selectAll, deleteSel, nudge, chooseColor, chooseWidth, toggleFill, setTool, gotoPage, zoomCenter, resetView, setGridMode, exportPng, insertImages };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -673,7 +734,7 @@ export default function StudyTaskBoard() {
           case 'KeyY': e.preventDefault(); a.redo(); return;
           case 'KeyC': if (a.copySel()) e.preventDefault(); return;
           case 'KeyX': if (selRef.current.length) { e.preventDefault(); a.cutSel(); } return;
-          case 'KeyV': if (clipboard.length) { e.preventDefault(); a.pasteClip(); } return;
+          case 'KeyV': return; // обрабатывается событием paste (картинка из буфера или копия объектов)
           case 'KeyD': e.preventDefault(); a.duplicateSel(); return;
           case 'KeyA': e.preventDefault(); a.selectAll(); return;
           case 'Digit0': case 'Numpad0': e.preventDefault(); a.resetView(); return;
@@ -703,6 +764,19 @@ export default function StudyTaskBoard() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      const files = (Array.from(e.clipboardData?.files || []) as File[]).filter((f) => f.type.startsWith('image/'));
+      if (files.length) { e.preventDefault(); void api.current.insertImages(files); return; }
+      if (clipboard.length) { e.preventDefault(); api.current.pasteClip(); }
+    };
+    window.addEventListener('paste', onPaste);
+    onImgLoad = () => requestDraw();
+    return () => { window.removeEventListener('paste', onPaste); onImgLoad = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => { requestDraw(); }, [gridMode, tool, sel, requestDraw]);
@@ -739,6 +813,9 @@ export default function StudyTaskBoard() {
           <button type="button" className={btn} onClick={pasteClip} disabled={!clipboard.length} title="Вставить (Ctrl+V)" aria-label="Вставить"><ClipboardPaste className="h-4 w-4" /></button>
           <button type="button" className={btn} onClick={duplicateSel} disabled={!hasSel} title="Дублировать (Ctrl+D)" aria-label="Дублировать"><CopyPlus className="h-4 w-4" /></button>
           <button type="button" className={`${btn} hover:!bg-rose-50 hover:!text-rose-600`} onClick={deleteSel} disabled={!hasSel} title="Удалить (Delete)" aria-label="Удалить"><Trash2 className="h-4 w-4" /></button>
+          <span className="mx-1 h-7 w-px bg-border" />
+          <button type="button" className={`${btn} gap-1.5 text-xs font-bold`} onClick={() => fileRef.current?.click()} title="Вставить картинку или схему (также Ctrl+V для скриншота или перетащить файл на лист)" aria-label="Вставить картинку"><ImagePlus className="h-4 w-4" /><span className="hidden sm:inline">Картинка</span></button>
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const fl = (Array.from(e.target.files || []) as File[]); e.target.value = ''; void insertImages(fl); }} />
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2">
           <div className="flex items-center gap-1" role="group" aria-label="Цвет">
@@ -776,9 +853,12 @@ export default function StudyTaskBoard() {
         </div>
       </div>
 
-      <div className={`relative overflow-hidden rounded-2xl border border-border bg-white shadow-sm ${isFs ? 'min-h-0 flex-1' : 'h-[max(560px,calc(100vh-200px))]'}`} ref={areaRef}>
+      <div className={`relative overflow-hidden rounded-2xl border border-border bg-white shadow-sm ${isFs ? 'min-h-0 flex-1' : 'h-[max(560px,calc(100vh-200px))]'}`} ref={areaRef}
+        onDragOver={(e) => { if (Array.from(e.dataTransfer.types).includes('Files')) e.preventDefault(); }}
+        onDrop={(e) => { const fl = (Array.from(e.dataTransfer.files) as File[]).filter((f) => f.type.startsWith('image/')); if (!fl.length) return; e.preventDefault(); const q = evPoint(e); void insertImages(fl, { wx: q.wx, wy: q.wy }); }}>
         <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onPointerLeave={onLeave} onDoubleClick={onDouble}
           onContextMenu={(e) => e.preventDefault()} style={{ touchAction: 'none', cursor, display: 'block' }} aria-label="Белый лист" />
+        <img src="/static/ST.webp" alt="" aria-hidden="true" draggable={false} className="pointer-events-none absolute left-3 top-3 z-[5] h-9 w-9 select-none rounded-lg object-contain opacity-90" />
         {editor && edView && (
           <textarea id="stb-editor" autoFocus defaultValue={editor.text} onBlur={(e) => finishEditor(e.currentTarget.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); finishEditor(e.currentTarget.value); } }}
@@ -818,7 +898,7 @@ export default function StudyTaskBoard() {
             <div className="mb-2 flex items-center justify-between"><strong className="font-display">Горячие клавиши</strong><button type="button" onClick={() => setHelp(false)} aria-label="Закрыть" className="rounded p-1 text-muted hover:bg-primary-light"><X className="h-4 w-4" /></button></div>
             <p className="text-xs text-muted">Работают на любой раскладке клавиатуры.</p>
             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-              {[...TOOLS.map((t) => [t.key, t.label]), ['Ctrl+Z', 'Отменить'], ['Ctrl+Y / Ctrl+Shift+Z', 'Вернуть'], ['Ctrl+C / X / V', 'Копировать / вырезать / вставить'], ['Delete', 'Удалить выделенное'], ['Ctrl+D', 'Дублировать'], ['Ctrl+A', 'Выделить всё'], ['Стрелки', 'Сдвиг выделенного (Shift — крупнее)'], ['Shift при рисовании', 'Ровная линия / квадрат / круг'], ['1–7', 'Цвет'], ['[  ]', 'Толщина'], ['F', 'Заливка фигур'], ['G', 'Сетка: клетка / точки / нет'], ['Пробел + мышь', 'Двигать лист'], ['Ctrl + колесо', 'Масштаб'], ['PgUp / PgDn', 'Страница'], ['Esc', 'Снять выделение']].map(([k, v]) => (
+              {[...TOOLS.map((t) => [t.key, t.label]), ['Ctrl+Z', 'Отменить'], ['Ctrl+Y / Ctrl+Shift+Z', 'Вернуть'], ['Ctrl+C / X / V', 'Копировать / вырезать / вставить'], ['Delete', 'Удалить выделенное'], ['Ctrl+D', 'Дублировать'], ['Ctrl+V / перетащить файл', 'Вставить картинку, схему, скриншот'], ['Ctrl+A', 'Выделить всё'], ['Стрелки', 'Сдвиг выделенного (Shift — крупнее)'], ['Shift при рисовании', 'Ровная линия / квадрат / круг'], ['1–7', 'Цвет'], ['[  ]', 'Толщина'], ['F', 'Заливка фигур'], ['G', 'Сетка: клетка / точки / нет'], ['Пробел + мышь', 'Двигать лист'], ['Ctrl + колесо', 'Масштаб'], ['PgUp / PgDn', 'Страница'], ['Esc', 'Снять выделение']].map(([k, v]) => (
                 <React.Fragment key={k}><dt className="font-mono text-xs font-bold text-primary">{k}</dt><dd className="text-xs">{v}</dd></React.Fragment>
               ))}
             </dl>
