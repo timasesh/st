@@ -1233,6 +1233,8 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
     const isBlock = lesson.kind === 'block';
     if (isBlock && lesson.studentId) return res.status(400).json({ error: 'Занятый слот не может быть привязан к ученику.' });
     const student = isBlock ? null : accounts.find((account) => account.id === lesson.studentId && account.role === 'student' && account.status !== 'withdrawn');
+    // Уроки выбывших или удалённых учеников при сохранении тихо убираем из расписания: иначе одно такое занятие блокирует сохранение всего расписания.
+    if (!isBlock && lesson.studentId && !student) continue;
     const teacherId = student?.teacherId || lesson.teacherId;
     const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
     if (lesson.studentId && !student) return res.status(400).json({ error: 'В расписании выбран неизвестный ученик.' });
