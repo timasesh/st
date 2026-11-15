@@ -1988,6 +1988,94 @@ app.get('/api/teacher/students/:studentId/lesson-history', async (req, res) => {
   catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить историю занятий.' }); }
 });
 
+// ---- Оплаты учеников (Supabase payments или файл payments.json в DATA_DIR) ----
+const paymentsPath = path.join(dataDir, 'payments.json');
+const PAYMENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+const paymentFromRow = (row) => ({ id: row.id, studentId: row.student_id, lessons: Number(row.lessons), amount: Number(row.amount), perLesson: Number(row.per_lesson), paidAt: String(row.paid_at).slice(0, 10), note: row.note || '', createdAt: row.created_at });
+const paymentToRow = (p) => ({ id: p.id, student_id: p.studentId, lessons: p.lessons, amount: p.amount, per_lesson: p.perLesson, paid_at: p.paidAt, note: p.note || '' });
+async function paymentsRead() {
+  if (supabase) {
+    const result = await supabase.from('payments').select('*').order('paid_at', { ascending: false }).order('created_at', { ascending: false }).limit(5000);
+    if (result.error) throw new Error(`Supabase payments: ${result.error.message}. Выполните SQL supabase/migrations/20261115_payments.sql.`);
+    return result.data.map(paymentFromRow);
+  }
+  const all = await readJsonFileOr(paymentsPath, []);
+  return (Array.isArray(all) ? all : []).sort((a, b) => String(b.paidAt).localeCompare(String(a.paidAt)) || String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+async function paymentsWriteFile(list) {
+  await fs.mkdir(dataDir, { recursive: true });
+  const temporaryPath = `${paymentsPath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(list), { mode: 0o600 });
+  await fs.rename(temporaryPath, paymentsPath);
+}
+function paymentFromBody(body, studentIds) {
+  const studentId = typeof body?.studentId === 'string' ? body.studentId : '';
+  const lessons = Number(body?.lessons);
+  const amount = Number(body?.amount);
+  const paidAt = typeof body?.paidAt === 'string' ? body.paidAt : '';
+  const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 300) : '';
+  if (!studentIds.has(studentId)) return { error: 'Выберите существующего ученика.' };
+  if (!Number.isInteger(lessons) || lessons < 1 || lessons > 1000) return { error: 'Количество занятий — целое число от 1 до 1000.' };
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) return { error: 'Сумма оплаты должна быть больше нуля.' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidAt) || Number.isNaN(Date.parse(`${paidAt}T00:00:00Z`)) || new Date(`${paidAt}T00:00:00Z`).toISOString().slice(0, 10) !== paidAt) return { error: 'Укажите корректную дату оплаты.' };
+  return { payment: { studentId, lessons, amount: Math.round(amount * 100) / 100, perLesson: Math.round((amount / lessons) * 100) / 100, paidAt, note } };
+}
+app.get('/api/admin/payments', requireAdmin, async (_req, res) => {
+  try { res.json(await paymentsRead()); }
+  catch (error) { res.status(500).json({ error: error.message || 'Не удалось загрузить оплаты.' }); }
+});
+app.post('/api/admin/payments', requireAdmin, async (req, res) => {
+  try {
+    await refreshAccounts();
+    const parsed = paymentFromBody(req.body, new Set(accounts.filter((a) => a.role === 'student' && a.status !== 'withdrawn').map((a) => a.id)));
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const payment = { id: crypto.randomUUID(), ...parsed.payment, createdAt: new Date().toISOString() };
+    if (supabase) {
+      const result = await supabase.from('payments').insert(paymentToRow(payment));
+      if (result.error) throw new Error(`Supabase payments: ${result.error.message}. Выполните SQL supabase/migrations/20261115_payments.sql.`);
+    } else await paymentsWriteFile([payment, ...(await readJsonFileOr(paymentsPath, []))]);
+    const student = accounts.find((a) => a.id === payment.studentId);
+    await recordAdminAuditSafely(req.adminSession.sub, 'Добавлена оплата', `${student?.firstName || ''} ${student?.lastName || ''}: ${payment.lessons} зан., ${payment.amount} ₸`);
+    return res.status(201).json(payment);
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить оплату.' }); }
+});
+app.put('/api/admin/payments/:id', requireAdmin, async (req, res) => {
+  try {
+    if (!PAYMENT_ID_RE.test(req.params.id)) return res.status(400).json({ error: 'Некорректный номер оплаты.' });
+    await refreshAccounts();
+    const parsed = paymentFromBody(req.body, new Set(accounts.filter((a) => a.role === 'student').map((a) => a.id)));
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    if (supabase) {
+      const existing = await supabase.from('payments').select('id, created_at').eq('id', req.params.id).maybeSingle();
+      if (existing.error) throw new Error(`Supabase payments: ${existing.error.message}`);
+      if (!existing.data) return res.status(404).json({ error: 'Оплата не найдена.' });
+      const row = paymentToRow({ id: req.params.id, ...parsed.payment });
+      const result = await supabase.from('payments').update(row).eq('id', req.params.id);
+      if (result.error) throw new Error(`Supabase payments: ${result.error.message}`);
+      await recordAdminAuditSafely(req.adminSession.sub, 'Изменена оплата', `${parsed.payment.lessons} зан., ${parsed.payment.amount} ₸`);
+      return res.json({ id: req.params.id, ...parsed.payment, createdAt: existing.data.created_at });
+    }
+    const list = await readJsonFileOr(paymentsPath, []);
+    const index = list.findIndex((p) => p.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: 'Оплата не найдена.' });
+    list[index] = { ...list[index], ...parsed.payment };
+    await paymentsWriteFile(list);
+    await recordAdminAuditSafely(req.adminSession.sub, 'Изменена оплата', `${parsed.payment.lessons} зан., ${parsed.payment.amount} ₸`);
+    return res.json(list[index]);
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось изменить оплату.' }); }
+});
+app.delete('/api/admin/payments/:id', requireAdmin, async (req, res) => {
+  try {
+    if (!PAYMENT_ID_RE.test(req.params.id)) return res.status(400).json({ error: 'Некорректный номер оплаты.' });
+    if (supabase) {
+      const result = await supabase.from('payments').delete().eq('id', req.params.id);
+      if (result.error) throw new Error(`Supabase payments: ${result.error.message}`);
+    } else await paymentsWriteFile((await readJsonFileOr(paymentsPath, [])).filter((p) => p.id !== req.params.id));
+    await recordAdminAuditSafely(req.adminSession.sub, 'Удалена оплата', req.params.id);
+    return res.json({ ok: true });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось удалить оплату.' }); }
+});
+
 // ---- Study Task board: доски преподавателя (Supabase teacher_boards или файл в DATA_DIR) ----
 const BOARD_MAX_BYTES = 8 * 1024 * 1024;
 const BOARD_ID_RE = /^[A-Za-z0-9_-]{3,40}$/;
