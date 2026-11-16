@@ -176,7 +176,7 @@ export function createCrm(deps) {
     if (!core) return;
     for (const item of items) {
       const result = await core.exclusive(() => core.ingest({
-        channel, externalId: item.externalId, dir: item.echo ? 'out' : 'in', author: item.echo ? (channel === 'whatsapp' ? 'WhatsApp Business (телефон)' : 'Instagram') : '',
+        channel, externalId: item.externalId, dir: item.echo ? 'out' : 'in', author: item.echo ? (channel === 'whatsapp' ? 'phone' : 'Instagram') : '',
         profile: { name: item.name || '', phone: item.phone || '' },
         message: { text: item.text, attachments: item.attachments, externalId: item.messageId, at: item.at }, fast: true,
       }));
@@ -604,6 +604,7 @@ export function createCrm(deps) {
         if (!items.length) {
           const kinds = (req.body?.entry || []).flatMap((e) => (e.changes || []).map((c) => c.field + (c.value?.statuses ? ':statuses' : '')));
           console.log(`${tag} сообщений в запросе нет (${kinds.join(', ') || 'пусто'}) — например, статусы доставки`);
+          for (const e of req.body?.entry || []) for (const c of e.changes || []) if (c.field !== 'messages' && c.value) console.log(`${tag} поле ${c.field}: ключи ${Object.keys(c.value).join(', ')}${c.value.message_echoes ? `; message_echoes[0]: ${Object.keys(c.value.message_echoes[0] || {}).join(', ')}` : ''}`);
           return;
         }
         console.log(`${tag} входящих сообщений: ${items.length}, от ${items.map((i) => i.phone || i.externalId).join(', ')}`);
