@@ -8,7 +8,7 @@ import PortalSettings from './PortalSettings';
 import { ParentChildrenView, ParentPrizesView } from './ParentPortalSections';
 import AdminDataCleanup from './AdminDataCleanup';
 import AdminPayments from './AdminPayments';
-import { HoldLogo, TeacherLinkCard, readTeacherLink, saveTeacherLink, type TeacherLink } from './TeacherLink';
+import { HoldLogo, TeacherLinkCard, fetchTeacherLink, openTeacherSession, unlinkTeacherOnServer, type TeacherLink } from './TeacherLink';
 import { isActiveTrial, activeTrialsInSlot } from '../shared/trials.js';
 import ManualQuizBuilder, { type ManualQuestion } from './ManualQuizBuilder';
 import { TestExplanationModal, type ReviewQuestion, type AnswerValue } from '../shared/quizReview';
@@ -637,13 +637,15 @@ function EmptyTrialState({ message }: { message: string }) {
 
 export function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
-  const [teacherLink, setTeacherLink] = useState<TeacherLink | null>(() => readTeacherLink());
+  const [teacherLink, setTeacherLink] = useState<TeacherLink | null>(null);
   const [teacherOpen, setTeacherOpen] = useState(false);
   const [teacherNotice, setTeacherNotice] = useState('');
-  const unlinkTeacher = (notice = '') => { saveTeacherLink(null); setTeacherLink(null); setTeacherOpen(false); setTeacherNotice(notice); };
+  useEffect(() => { void fetchTeacherLink().then(setTeacherLink); }, []);
+  const unlinkTeacher = (notice = '') => { void unlinkTeacherOnServer(); setTeacherLink(null); setTeacherOpen(false); setTeacherNotice(notice); };
+  const openTeacher = async () => { if (await openTeacherSession()) setTeacherOpen(true); else unlinkTeacher('Не удалось открыть панель преподавателя. Привяжите её заново.'); };
   const toggleTeacherPanel = () => {
     if (teacherOpen) { setTeacherOpen(false); return; }
-    if (teacherLink) { setTeacherOpen(true); return; }
+    if (teacherLink) { void openTeacher(); return; }
     setActiveView('settings'); setTeacherNotice('Сначала привяжите панель преподавателя: введите логин и пароль ниже.');
   };
   const [activeRole, setActiveRole] = useState<AccountRole>('student');
@@ -1182,7 +1184,7 @@ export function AdminDashboardPage() {
             </section>
           ) : activeView === 'settings' ? (
             <div className="grid max-w-3xl gap-6">
-              <TeacherLinkCard link={teacherLink} notice={teacherNotice} onLinked={(link) => { saveTeacherLink(link); setTeacherLink(link); setTeacherNotice(''); setTeacherOpen(true); }} onUnlink={() => unlinkTeacher()} onOpen={() => setTeacherOpen(true)} />
+              <TeacherLinkCard link={teacherLink} notice={teacherNotice} onLinked={(link) => { setTeacherLink(link); setTeacherNotice(''); setTeacherOpen(true); }} onUnlink={() => { setTeacherLink(null); setTeacherOpen(false); setTeacherNotice(''); }} onOpen={() => void openTeacher()} />
               <section className="admin-card rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                 <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{darkTheme ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}</span><div><h2 className="font-display text-lg font-extrabold">Оформление</h2><p className="text-sm text-muted">Настройте внешний вид панели для этого браузера.</p></div></div>
                 <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border p-4"><span><strong className="block">Тёмная тема</strong><span className="text-sm text-muted">{darkTheme ? 'Включена' : 'Выключена'}</span></span><button type="button" role="switch" aria-checked={darkTheme} onClick={toggleAdminTheme} className={`relative h-7 w-12 rounded-full transition ${darkTheme ? 'bg-blue-600' : 'bg-slate-300'}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${darkTheme ? 'left-6' : 'left-1'}`} /></button></div>
@@ -1316,7 +1318,7 @@ export function AdminDashboardPage() {
         {teacherOpen && teacherLink && (
           <motion.div key="teacher-panel" className="fixed inset-0 z-[200] overflow-y-auto bg-white"
             initial={{ clipPath: 'circle(0px at 56px 52px)' }} animate={{ clipPath: 'circle(150% at 56px 52px)' }} exit={{ clipPath: 'circle(0px at 56px 52px)' }} transition={{ duration: 0.7, ease: [0.76, 0, 0.24, 1] }}>
-            <UserPortalPage expectedRole="teacher" embedded={{ onUnauthorized: () => unlinkTeacher('Сеанс преподавателя завершился. Привяжите панель заново.'), onLogout: () => unlinkTeacher(), onLogoHold: () => setTeacherOpen(false) }} />
+            <UserPortalPage expectedRole="teacher" embedded={{ onUnauthorized: () => unlinkTeacher('Сеанс преподавателя завершился. Привяжите панель заново.'), onLogout: () => setTeacherOpen(false), onLogoHold: () => setTeacherOpen(false) }} />
           </motion.div>
         )}
       </AnimatePresence>

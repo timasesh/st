@@ -6,6 +6,7 @@
    • «Квиз» (с дедлайном): за 24 часа → за 1 час → дедлайн прошёл. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { isActiveTrial } from '../src/shared/trials.js';
 
 const TZ = 'Asia/Almaty';
 const TICK_MS = 60 * 1000;
@@ -26,7 +27,7 @@ const fmtDay = (date) => new Intl.DateTimeFormat('ru-RU', { timeZone: TZ, weekda
 const fmtDayTime = (date) => `${fmtDay(date)}, ${fmtTime(date)}`;
 const addDaysKey = (key, days) => { const [y, m, d] = key.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10); };
 
-export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refreshAccounts, sendToAccount, readSchedule, readTrialLessons, getTrialScheduledAt, nextSlotStart, readHistory, listHomeworkFiles, readAllTests, getTestWindow }) {
+export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refreshAccounts, sendToAccount, readSchedule, readTrialLessons, getTrialScheduledAt, nextSlotStart, readHistory, listHomeworkFiles, readAllTests, getTestWindow, getAdminTeacherId, sendToAdmins }) {
   const storePath = path.join(dataDir, 'notify-sent.json');
   let sent = {};
   let saveChain = Promise.resolve();
@@ -114,6 +115,7 @@ export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refr
         }
       }
       await testReminders(now);
+      await teacherReminders(now);
     } catch (error) { console.warn('notify tick failed:', error.message); }
     finally { ticking = false; }
   }
@@ -149,6 +151,86 @@ export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refr
     }
   }
 
+  /* ───── преподаватель, привязанный к админу: утреннее расписание, «за час», пробные ───── */
+  const personName = (id) => { const a = getAccounts().find((x) => x.id === id); return a ? `${a.firstName} ${a.lastName}`.trim() : 'Ученик'; };
+  async function onceAdmin(key, text) {
+    if (sent[key]) return false;
+    const delivered = await sendToAdmins(text);
+    if (delivered > 0) { sent[key] = Date.now(); await save(); return true; }
+    return false;
+  }
+  /* занятия преподавателя на конкретную дату: [{ hour, minute, label, trial }] по времени */
+  async function teacherDay(teacherId, dateKey) {
+    const weekday = localParts(new Date(`${dateKey}T12:00:00+05:00`)).weekday;
+    const accounts = getAccounts();
+    const items = [];
+    for (const lesson of (await readSchedule()).lessons || []) {
+      if (lesson.kind === 'block' || !lesson.studentId || lesson.teacherId !== teacherId || lesson.day !== weekday) continue;
+      const student = accounts.find((a) => a.id === lesson.studentId);
+      if (!student || student.status === 'withdrawn') continue;
+      items.push({ hour: lesson.hour, minute: 0, label: `${esc(personName(lesson.studentId))}${lesson.title ? ` — ${esc(lesson.title)}` : ''}`, trial: false });
+    }
+    for (const trial of await readTrialLessons()) {
+      if (!isActiveTrial(trial) || trial.teacherId !== teacherId) continue;
+      const start = new Date(getTrialScheduledAt(trial));
+      if (!Number.isFinite(start.getTime()) || localParts(start).date !== dateKey) continue;
+      const parts = localParts(start);
+      items.push({ hour: parts.hour, minute: parts.minute, label: `${esc(`${trial.firstName || ''} ${trial.lastName || ''}`.trim() || 'Ученик')}${trial.studentClass ? `, ${esc(trial.studentClass)}` : ''}`, trial: true });
+    }
+    return items.sort((a, b) => a.hour * 60 + a.minute - (b.hour * 60 + b.minute));
+  }
+  const pad2 = (n) => String(n).padStart(2, '0');
+  async function dayScheduleText(teacherId, dateKey, title) {
+    const items = await teacherDay(teacherId, dateKey);
+    const head = `${title} (${fmtDay(new Date(`${dateKey}T12:00:00+05:00`))})`;
+    if (!items.length) return `${head}
+
+Занятий нет 🎉`;
+    const lines = items.map((it, i) => `${i + 1}. <b>${pad2(it.hour)}:${pad2(it.minute)}</b> — ${it.label}${it.trial ? ' 🆕 пробный урок' : ''}`);
+    return `${head}
+
+${lines.join('\n')}
+
+Всего занятий: <b>${items.length}</b>`;
+  }
+  async function teacherReminders(now) {
+    const teacherId = getAdminTeacherId && getAdminTeacherId();
+    if (!teacherId || !sendToAdmins) return;
+    const teacher = getAccounts().find((a) => a.id === teacherId && a.role === 'teacher' && a.status !== 'withdrawn');
+    if (!teacher) return;
+    const lp = localParts(now);
+    // 1) каждый день с 6:00 — расписание на день
+    if (lp.hour >= 6 && lp.hour < 12 && !sent[`tday:${lp.date}`]) await onceAdmin(`tday:${lp.date}`, await dayScheduleText(teacherId, lp.date, '☀️ <b>Расписание на сегодня</b>'));
+    // 2) за час до каждого занятия
+    const upcoming = [];
+    for (const lesson of (await readSchedule()).lessons || []) {
+      if (lesson.kind === 'block' || !lesson.studentId || lesson.teacherId !== teacherId) continue;
+      const student = getAccounts().find((a) => a.id === lesson.studentId);
+      if (!student || student.status === 'withdrawn') continue;
+      const first = new Date(nextSlotStart(lesson.day, lesson.hour, now));
+      for (const start of [new Date(first.getTime() - 7 * 86400000), first]) upcoming.push({ key: `th1:l:${lesson.id}:${start.toISOString()}`, start, text: `${esc(personName(lesson.studentId))}${lesson.title ? ` — ${esc(lesson.title)}` : ''}`, link: student.lessonLink || '' });
+    }
+    for (const trial of await readTrialLessons()) {
+      if (!isActiveTrial(trial) || trial.teacherId !== teacherId) continue;
+      const start = new Date(getTrialScheduledAt(trial));
+      if (Number.isFinite(start.getTime())) upcoming.push({ key: `th1:t:${trial.id}:${start.toISOString()}`, start, text: `${esc(`${trial.firstName || ''} ${trial.lastName || ''}`.trim())} — пробный урок 🆕`, link: trial.lessonLink || '' });
+    }
+    for (const item of upcoming) {
+      const minutes = Math.round((item.start.getTime() - now.getTime()) / 60000);
+      if (minutes > 0 && minutes <= REMIND_BEFORE_MIN) await onceAdmin(item.key, `⏰ <b>${minutes >= 55 ? 'Через час' : `Через ${minutes} мин`} занятие</b> в <b>${fmtTime(item.start)}</b>\n${item.text}${item.link ? `\n\nСсылка: ${esc(item.link)}` : ''}`);
+    }
+  }
+  /* назначили/перенесли пробный урок этому преподавателю: уведомление + новое расписание на этот день */
+  async function notifyTeacherTrial(trial) {
+    const teacherId = getAdminTeacherId && getAdminTeacherId();
+    if (!teacherId || !sendToAdmins || !trial || trial.teacherId !== teacherId) return false;
+    const start = new Date(getTrialScheduledAt(trial));
+    if (!Number.isFinite(start.getTime())) return false;
+    await sendToAdmins(`🆕 <b>Назначен пробный урок</b>\n${esc(`${trial.firstName || ''} ${trial.lastName || ''}`.trim())}${trial.studentClass ? `, ${esc(trial.studentClass)}` : ''}\n${fmtDayTime(start)}${trial.lessonLink ? `\n\nСсылка: ${esc(trial.lessonLink)}` : ''}`);
+    await sendToAdmins(await dayScheduleText(teacherId, localParts(start).date, '📅 <b>Новое расписание</b>'));
+    return true;
+  }
+
   /* сразу при назначении */
   async function notifyHomework(studentId, entry) {
     if (!entry?.nextHomework || entry.attendance === false) return false;
@@ -175,5 +257,5 @@ export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refr
   }
   function stop() { if (timer) clearInterval(timer); timer = null; }
 
-  return { start, stop, tick, notifyHomework, notifyTest };
+  return { start, stop, tick, notifyHomework, notifyTest, notifyTeacherTrial };
 }

@@ -3,14 +3,21 @@ import { motion } from 'motion/react';
 import { Check, ExternalLink, Eye, EyeOff, GraduationCap, Link2, Link2Off, LoaderCircle } from 'lucide-react';
 import PhoneInput from '../shared/PhoneInput';
 
-export const TEACHER_LINK_KEY = 'study_admin_teacher_link';
 export type TeacherLink = { name: string };
-export function readTeacherLink(): TeacherLink | null {
-  try { const raw = localStorage.getItem(TEACHER_LINK_KEY); const parsed = raw ? JSON.parse(raw) : null; return parsed && typeof parsed.name === 'string' ? { name: parsed.name } : null; }
-  catch { return null; }
+/** Привязка хранится на сервере (работает и на сайте, и в Telegram Mini App). */
+export async function fetchTeacherLink(): Promise<TeacherLink | null> {
+  try {
+    const response = await fetch('/api/admin/teacher-link', { credentials: 'same-origin' });
+    const result = await response.json().catch(() => ({}));
+    return response.ok && result.linked && result.teacher ? { name: String(result.teacher.name || '') } : null;
+  } catch { return null; }
 }
-export function saveTeacherLink(link: TeacherLink | null) {
-  try { if (link) localStorage.setItem(TEACHER_LINK_KEY, JSON.stringify(link)); else localStorage.removeItem(TEACHER_LINK_KEY); } catch { /* ссылка живёт только до перезагрузки */ }
+/** Выдаёт сеанс привязанного преподавателя (без пароля) — перед открытием панели. */
+export async function openTeacherSession(): Promise<boolean> {
+  try { return (await fetch('/api/admin/teacher-link/session', { method: 'POST', credentials: 'same-origin' })).ok; } catch { return false; }
+}
+export async function unlinkTeacherOnServer() {
+  try { await fetch('/api/admin/teacher-link', { method: 'DELETE', credentials: 'same-origin' }); } catch { /* повторим при следующей попытке */ }
 }
 
 /** Логотип ST: обычный клик — как раньше (ссылка на главную), удержание 2 секунды — onHold (с кольцом прогресса). */
@@ -57,21 +64,20 @@ export function TeacherLinkCard({ link, notice, onLinked, onUnlink, onOpen }: { 
     setError(''); setPhase('loading'); setStep(0);
     const steps = [window.setTimeout(() => setStep(1), 900), window.setTimeout(() => setStep(2), 1800)];
     try {
-      const request = fetch('/api/auth/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: `7${phone}`, password, audience: 'teacher' }) })
+      const request = fetch('/api/admin/teacher-link', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: `7${phone}`, password }) })
         .then(async (response) => { const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Не удалось войти. Проверьте номер телефона и пароль.'); return result; });
       const [result] = await Promise.all([request, sleep(2300)]);
-      const account = result.account as { firstName: string; lastName: string; role: string };
-      if (!account || account.role !== 'teacher') throw new Error('Это не аккаунт преподавателя.');
+      if (!result.linked || !result.teacher) throw new Error('Это не аккаунт преподавателя.');
       setPhase('done'); setPassword('');
       await sleep(800);
-      onLinked({ name: `${account.firstName} ${account.lastName}`.trim() });
+      onLinked({ name: String(result.teacher.name || '') });
       setPhase('idle'); setPhone('');
     } catch (reason) {
       setPhase('idle'); setError(reason instanceof Error ? reason.message : 'Не удалось подключить панель преподавателя.');
     } finally { steps.forEach((id) => window.clearTimeout(id)); }
   };
   const unlink = async () => {
-    try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch { /* сеанс всё равно сбросим на нашей стороне */ }
+    await unlinkTeacherOnServer();
     onUnlink();
   };
 
@@ -93,7 +99,7 @@ export function TeacherLinkCard({ link, notice, onLinked, onUnlink, onOpen }: { 
           <label className="block text-sm font-bold">Пароль<div className="relative mt-1"><input type={showPassword ? 'text' : 'password'} autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} className={`${field} pr-11`} /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted hover:bg-primary-light">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></label>
           {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
           <button type="submit" disabled={phase !== 'idle'} className="clay-btn inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60"><Link2 className="h-4 w-4" />Привязать</button>
-          <p className="text-xs text-muted">Пароль нигде не сохраняется: проверяется один раз, дальше работает сеанс преподавателя в этом браузере.</p>
+          <p className="text-xs text-muted">Пароль нигде не сохраняется: он проверяется один раз. Привязка действует и в Telegram Mini App администратора.</p>
         </form>
       )}
       {phase !== 'idle' && (

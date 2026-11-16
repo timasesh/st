@@ -12,7 +12,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || (token ? crypto.createHash('sha256').update(`${token}:study-task-webhook`).digest('hex').slice(0, 40) : '');
   const storePath = path.join(dataDir, 'identity-links.json');
   const STORE_KEY = 'identity_links';
-  let store = { stids: {}, telegram: {}, accountTg: {}, exited: {}, admins: {}, adminCode: '' };
+  let store = { stids: {}, telegram: {}, accountTg: {}, exited: {}, admins: {}, adminCode: '', adminTeacherId: '' };
   const DEFAULT_ADMIN_CODE = process.env.ADMIN_TG_CODE || '6564563';
   const getAdminCode = () => store.adminCode || DEFAULT_ADMIN_CODE;
   let saveChain = Promise.resolve();
@@ -29,7 +29,7 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
         raw = JSON.parse(await fs.readFile(storePath, 'utf8'));
       }
     } catch { /* пусто — создадим */ }
-    if (raw && typeof raw === 'object') store = { stids: raw.stids || {}, telegram: raw.telegram || {}, accountTg: raw.accountTg || {}, exited: raw.exited || {}, admins: raw.admins || {}, adminCode: typeof raw.adminCode === 'string' ? raw.adminCode : '' };
+    if (raw && typeof raw === 'object') store = { stids: raw.stids || {}, telegram: raw.telegram || {}, accountTg: raw.accountTg || {}, exited: raw.exited || {}, admins: raw.admins || {}, adminTeacherId: typeof raw.adminTeacherId === 'string' ? raw.adminTeacherId : '', adminCode: typeof raw.adminCode === 'string' ? raw.adminCode : '' };
   }
   function save() {
     const snapshot = JSON.stringify(store);
@@ -313,6 +313,9 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
       if (!user?.id) return res.status(401).json({ error: 'Не удалось подтвердить Telegram.' });
       if (!store.admins[String(user.id)]) return res.status(404).json({ linked: false });
       setAdminSessionCookie(res);
+      /* если админ привязал аккаунт преподавателя — в Telegram он открывается без пароля */
+      const teacher = store.adminTeacherId ? getAccounts().find((a) => a.id === store.adminTeacherId && a.role === 'teacher' && a.status !== 'withdrawn') : null;
+      if (teacher) setUserSessionCookie(res, teacher);
       return res.json({ ok: true, linked: true });
     });
 
@@ -354,8 +357,10 @@ export function createTelegramIdentity({ getSupabase, dataDir, getAccounts, refr
     } catch (error) { console.warn('Telegram setup failed:', error.message); }
   }
 
+  const adminTeacherId = () => store.adminTeacherId || '';
+  const setAdminTeacherId = async (id) => { store.adminTeacherId = id || ''; await save(); };
   return {
-    load, ensureStid, ensureAll, stidOf, isLinked, register, setupWebhook, sendToAccount, notifyAdmins,
+    adminTeacherId, setAdminTeacherId, load, ensureStid, ensureAll, stidOf, isLinked, register, setupWebhook, sendToAccount, notifyAdmins,
     enabled: () => Boolean(token), sendPlain, fileUrl, setCrmHooks: (hooks) => { crmHooks = hooks; },
   };
 }

@@ -108,6 +108,7 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
   const [saving, setSaving] = useState(false);
   const [tick, setTick] = useState(0);
   const [adjust, setAdjust] = useState<Record<string, number>>({});
+  const [cancels, setCancels] = useState<Record<string, { date: string; time: string; reason: string }[]>>({});
   const [editHeld, setEditHeld] = useState<{ id: string; value: string; auto: number } | null>(null);
 
   useEffect(() => { const timer = window.setInterval(() => setTick((value) => value + 1), 60000); return () => window.clearInterval(timer); }, []);
@@ -126,6 +127,11 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
       const result = await readJson(response);
       if (response.ok && result && typeof result === 'object') setAdjust(result as Record<string, number>);
     } catch { /* без корректировок расчёт идёт по расписанию */ }
+    try {
+      const response = await fetch('/api/admin/payment-cancellations', { credentials: 'same-origin' });
+      const result = await readJson(response);
+      if (response.ok && result && typeof result === 'object') setCancels(result as Record<string, { date: string; time: string; reason: string }[]>);
+    } catch { /* без учёта отмен расчёт идёт по расписанию */ }
   };
   const saveHeld = async (studentId: string, auto: number, wanted: string) => {
     const value = toNumber(wanted);
@@ -157,7 +163,14 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
       const perWeek = slots.reduce((sum, list) => sum + list.length, 0);
       const list = [...(payByStudent.get(student.id) || [])].sort((a, b) => a.paidAt.localeCompare(b.paidAt) || a.createdAt.localeCompare(b.createdAt));
       const paid = list.reduce((sum, payment) => sum + payment.lessons, 0);
-      const auto = list.length ? countHeld(slots, list[0].paidAt, now.today, now.hour) : 0;
+      /* отменённые занятия (✗ + причина у преподавателя) не считаются проведёнными */
+      const cancelled = list.length ? (cancels[student.id] || []).filter((entry) => {
+        if (entry.date < list[0].paidAt || entry.date > now.today) return false;
+        const hour = Number(entry.time.slice(0, 2));
+        if (!slots[weekdayOf(parseDay(entry.date))].includes(hour)) return false;
+        return entry.date < now.today || hour + 1 <= now.hour;
+      }).length : 0;
+      const auto = list.length ? Math.max(0, countHeld(slots, list[0].paidAt, now.today, now.hour) - cancelled) : 0;
       const delta = adjust[student.id] || 0;
       const held = list.length ? Math.max(0, auto + delta) : 0;
       const remaining = paid - held;
@@ -170,7 +183,7 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
       else if (remaining <= 0) level = 'over';
       else if (!perWeek) level = 'noschedule';
       else if (remaining <= SOON_LESSONS || (daysLeft !== null && daysLeft <= SOON_DAYS)) level = 'soon';
-      return { student, perWeek, paid, held, auto, delta, remaining, ends, level, last: list.length ? list[list.length - 1] : null };
+      return { student, perWeek, paid, held, auto, cancelled, delta, remaining, ends, level, last: list.length ? list[list.length - 1] : null };
     });
     const rank: Record<Level, number> = { over: 0, soon: 1, none: 2, noschedule: 3, ok: 4 };
     rows.sort((a, b) => rank[a.level] - rank[b.level] || a.remaining - b.remaining || `${a.student.firstName} ${a.student.lastName}`.localeCompare(`${b.student.firstName} ${b.student.lastName}`, 'ru'));
@@ -196,7 +209,7 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
       monthLabel: `${MONTHS[monthDate.getUTCMonth()]} ${monthDate.getUTCFullYear()}`,
       due: rows.filter((row) => row.level === 'over' || row.level === 'soon').length,
     };
-  }, [students, lessons, payments, teachersCount, tick, adjust]);
+  }, [students, lessons, payments, teachersCount, tick, adjust, cancels]);
 
   const studentName = (id: string) => { const student = students.find((item) => item.id === id); return student ? `${student.firstName} ${student.lastName}` : 'Ученик удалён или выбыл'; };
   const sortedStudents = useMemo(() => [...students].sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`, 'ru')), [students]);
@@ -298,7 +311,7 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
                   <td className="px-3 py-3">{row.last ? (editHeld?.id === row.student.id ? (
                     <span className="inline-flex items-center gap-1"><input autoFocus inputMode="numeric" value={editHeld.value} onChange={(event) => setEditHeld({ ...editHeld, value: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter') void saveHeld(row.student.id, row.auto, editHeld.value); if (event.key === 'Escape') setEditHeld(null); }} className="admin-input w-16 rounded-lg border-2 border-border bg-primary-light px-2 py-1 text-sm focus:border-primary focus:outline-none" /><button type="button" onClick={() => void saveHeld(row.student.id, row.auto, editHeld.value)} className="rounded-lg bg-primary px-2 py-1 text-xs font-bold text-white">OK</button><button type="button" onClick={() => setEditHeld(null)} aria-label="Отмена" className="rounded-lg p-1 text-muted hover:bg-primary-light"><X className="h-4 w-4" /></button></span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5">{row.held}{row.delta !== 0 && <span title={`По расписанию ${row.auto}, вручную ${row.delta > 0 ? '+' : ''}${row.delta}`} className="rounded-full bg-primary-light px-1.5 py-0.5 text-[10px] font-bold text-primary">{row.delta > 0 ? '+' : ''}{row.delta}</span>}<button type="button" onClick={() => setEditHeld({ id: row.student.id, value: String(row.held), auto: row.auto })} title="Изменить число проведённых занятий (отмены и переносы)" aria-label="Изменить число проведённых занятий" className="rounded-lg p-1 text-muted hover:bg-primary-light hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button>{row.delta !== 0 && <button type="button" onClick={() => void saveHeld(row.student.id, row.auto, String(row.auto))} title="Вернуть расчёт по расписанию" aria-label="Сбросить корректировку" className="rounded-lg p-1 text-muted hover:bg-primary-light hover:text-primary"><RotateCcw className="h-3.5 w-3.5" /></button>}</span>
+                    <span className="inline-flex items-center gap-1.5">{row.held}{row.cancelled > 0 && <span title="Отменённые занятия (✗ у преподавателя) не считаются" className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">отмен: {row.cancelled}</span>}{row.delta !== 0 && <span title={`По расписанию ${row.auto}, вручную ${row.delta > 0 ? '+' : ''}${row.delta}`} className="rounded-full bg-primary-light px-1.5 py-0.5 text-[10px] font-bold text-primary">{row.delta > 0 ? '+' : ''}{row.delta}</span>}<button type="button" onClick={() => setEditHeld({ id: row.student.id, value: String(row.held), auto: row.auto })} title="Изменить число проведённых занятий (отмены и переносы)" aria-label="Изменить число проведённых занятий" className="rounded-lg p-1 text-muted hover:bg-primary-light hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button>{row.delta !== 0 && <button type="button" onClick={() => void saveHeld(row.student.id, row.auto, String(row.auto))} title="Вернуть расчёт по расписанию" aria-label="Сбросить корректировку" className="rounded-lg p-1 text-muted hover:bg-primary-light hover:text-primary"><RotateCcw className="h-3.5 w-3.5" /></button>}</span>
                   )) : '—'}</td>
                   <td className="px-3 py-3 font-bold">{row.last ? (row.remaining < 0 ? `долг ${-row.remaining}` : row.remaining) : '—'}</td>
                   <td className="whitespace-nowrap px-3 py-3">{row.last && row.ends ? (row.remaining <= 0 ? 'уже закончилось' : shortDate(row.ends)) : '—'}</td>

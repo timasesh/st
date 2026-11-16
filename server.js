@@ -1682,6 +1682,7 @@ async function createTrialLesson(input, actor = 'admin') {
   const student = await ensureTrialStudentAccount(trial);
   const activeTrial = { ...trial, studentId: student.id };
   await writeTrialLessons([activeTrial, ...trials]);
+  void notifier.notifyTeacherTrial(activeTrial).catch((error) => console.warn('teacher trial notify:', error.message));
   await recordAdminAuditSafely(actor, 'Создан пробный урок', `${firstName} ${lastName}, ${studentClass}; ${teacher.firstName} ${teacher.lastName}; ${day}:${hour}`);
   return { ...activeTrial, teacher: publicAccount(teacher), temporaryLogin: parentPhone, temporaryPassword: 'test2026' };
 }
@@ -1718,6 +1719,7 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
     const student = await ensureTrialStudentAccount(trials[index]);
     trials[index].studentId = student.id;
     await writeTrialLessons(trials);
+    void notifier.notifyTeacherTrial(trials[index]).catch((error) => console.warn('teacher trial notify:', error.message));
     await recordAdminAuditSafely(req.adminSession.sub, 'Перенесён пробный урок', `${trials[index].firstName} ${trials[index].lastName}; ${day}:${hour}; ${teacher.firstName} ${teacher.lastName}`);
     return res.json({ ...trials[index], teacher: publicAccount(teacher) });
   } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось перенести пробный урок.' }); }
@@ -2014,6 +2016,66 @@ async function paymentAdjustmentsWrite(map) {
   await fs.writeFile(temporaryPath, JSON.stringify(map), { mode: 0o600 });
   await fs.rename(temporaryPath, paymentAdjustmentsPath);
 }
+/* Отмены занятий (преподаватель поставил ✗ и выбрал причину): такие занятия не считаются проведёнными в «Оплатах».
+   Для каждой даты+времени учитывается последняя отметка. */
+app.get('/api/admin/payment-cancellations', requireAdmin, async (_req, res) => {
+  try {
+    await refreshAccounts();
+    const out = {};
+    for (const student of accounts.filter((account) => account.role === 'student' && account.status !== 'withdrawn')) {
+      const latest = new Map();
+      for (const entry of await readStudentLessonHistory(student.id)) {
+        if (typeof entry.attendance !== 'boolean' || !entry.date || !entry.time) continue;
+        const key = `${entry.date}T${entry.time}`;
+        const known = latest.get(key);
+        if (!known || String(entry.createdAt || '') > String(known.createdAt || '')) latest.set(key, entry);
+      }
+      const list = [...latest.values()].filter((entry) => entry.attendance === false).map((entry) => ({ date: entry.date, time: entry.time, reason: entry.attendanceReason || '' }));
+      if (list.length) out[student.id] = list;
+    }
+    res.json(out);
+  } catch (error) { res.status(500).json({ error: error.message || 'Не удалось загрузить отмены занятий.' }); }
+});
+
+/* ───── Привязка аккаунта преподавателя к админу (сайт и Telegram Mini App) ───── */
+const publicTeacherLink = () => {
+  const teacher = accounts.find((account) => account.id === identity.adminTeacherId() && account.role === 'teacher' && account.status !== 'withdrawn');
+  return teacher ? { linked: true, teacher: { id: teacher.id, name: `${teacher.firstName} ${teacher.lastName}`.trim() } } : { linked: false, teacher: null };
+};
+app.get('/api/admin/teacher-link', requireAdmin, async (_req, res) => { await refreshAccounts(); res.json(publicTeacherLink()); });
+app.post('/api/admin/teacher-link', requireAdmin, async (req, res) => {
+  await refreshAccounts();
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  if (isLoginRateLimited(ip)) return res.status(429).json({ error: 'Слишком много попыток. Попробуйте ещё раз через 15 минут.' });
+  const phone = normalizePhone(req.body?.phone);
+  const password = req.body?.password;
+  const teacher = accounts.find((account) => account.phone === phone && account.role === 'teacher' && account.status !== 'withdrawn');
+  const valid = teacher && typeof password === 'string' && password.length <= 128 ? await passwordsMatch(password, teacher.salt, teacher.passwordHash) : false;
+  if (!valid) {
+    if (!failedLoginAttempts.has(ip)) failedLoginAttempts.set(ip, []);
+    failedLoginAttempts.get(ip).push(Date.now());
+    return res.status(401).json({ error: 'Неверный номер телефона или пароль преподавателя.' });
+  }
+  failedLoginAttempts.delete(ip);
+  await identity.setAdminTeacherId(teacher.id);
+  setUserSessionCookie(res, teacher);
+  await recordAdminAuditSafely(req.adminSession.sub, 'Привязана панель преподавателя', `${teacher.firstName} ${teacher.lastName}`);
+  res.json(publicTeacherLink());
+});
+app.post('/api/admin/teacher-link/session', requireAdmin, async (_req, res) => {
+  await refreshAccounts();
+  const link = publicTeacherLink();
+  if (!link.linked) return res.status(404).json({ error: 'Панель преподавателя не привязана.' });
+  setUserSessionCookie(res, accounts.find((account) => account.id === link.teacher.id));
+  res.json(link);
+});
+app.delete('/api/admin/teacher-link', requireAdmin, async (req, res) => {
+  await identity.setAdminTeacherId('');
+  clearUserSessionCookie(res);
+  await recordAdminAuditSafely(req.adminSession.sub, 'Отвязана панель преподавателя', '');
+  res.json({ linked: false, teacher: null });
+});
+
 app.get('/api/admin/payment-adjustments', requireAdmin, async (_req, res) => {
   try { res.json(await paymentAdjustmentsRead()); }
   catch (error) { res.status(500).json({ error: error.message || 'Не удалось загрузить корректировки.' }); }
@@ -3020,6 +3082,8 @@ const notifier = createTelegramNotifier({
   listHomeworkFiles: listHomeworkAttachmentMetadata,
   readAllTests: readAllStudentTests,
   getTestWindow: getStudentTestWindow,
+  getAdminTeacherId: () => identity.adminTeacherId(),
+  sendToAdmins: (text) => identity.notifyAdmins(text),
 });
 const accountAccess = createAccountAccess({ getSupabase: () => supabase, dataDir, getAccounts: () => accounts, refreshAccounts, getUserSession, setUserSessionCookie, getSecret: () => sessionSecret, passwordsMatch });
 accountAccess.register(app);
