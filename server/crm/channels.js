@@ -51,6 +51,18 @@ export function createChannels({ env = process.env, telegram, fetchImpl = (...ar
           attachments: m.type === 'text' ? [] : [{ type: m.type, label: waLabel[m.type] || m.type, mediaId: media.id || '' }],
         });
       }
+      /* сообщения, отправленные из приложения WhatsApp Business на телефоне (режим сосуществования): поле smb_message_echoes */
+      for (const m of value.message_echoes || []) {
+        const media = m[m.type] || {};
+        const text = m.type === 'text' ? m.text?.body || '' : media.caption || '';
+        const to = String(m.to || '').replace(/\D/g, '');
+        if (!to) continue;
+        out.push({
+          echo: true, externalId: to, name: '', phone: to, messageId: m.id,
+          text, at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
+          attachments: m.type === 'text' || !m.type ? [] : [{ type: m.type, label: waLabel[m.type] || m.type, mediaId: media.id || '' }],
+        });
+      }
     }
     return out;
   }

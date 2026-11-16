@@ -170,6 +170,8 @@ test('Meta webhooks: signature check and payload parsing', () => {
   assert.equal(channels.status().whatsapp, true); assert.equal(channels.status().instagram, false);
   const wa = channels.parseWhatsApp({ entry: [{ changes: [{ value: { contacts: [{ wa_id: '77001234567', profile: { name: 'Мама' } }], messages: [{ from: '77001234567', id: 'wamid.1', timestamp: '1700000000', type: 'text', text: { body: 'Привет' } }, { from: '77001234567', id: 'wamid.2', timestamp: '1700000001', type: 'image', image: { id: 'm1', caption: 'чек' } }] } }] }] });
   assert.equal(wa.length, 2); assert.equal(wa[0].name, 'Мама'); assert.equal(wa[0].text, 'Привет'); assert.equal(wa[1].attachments[0].label, 'Фото'); assert.equal(wa[1].text, 'чек');
+  const echo = channels.parseWhatsApp({ entry: [{ changes: [{ field: 'smb_message_echoes', value: { message_echoes: [{ from: '77000373431', to: '77001234567', id: 'wamid.e1', timestamp: '1700000002', type: 'text', text: { body: 'Здравствуйте!' } }] } }] }] });
+  assert.equal(echo.length, 1); assert.equal(echo[0].echo, true); assert.equal(echo[0].externalId, '77001234567'); assert.equal(echo[0].text, 'Здравствуйте!');
   const ig = channels.parseInstagram({ object: 'instagram', entry: [{ messaging: [{ sender: { id: 'u1' }, recipient: { id: 'page' }, timestamp: 1700000000000, message: { mid: 'm1', text: 'Хочу на пробный' } }, { sender: { id: 'page' }, recipient: { id: 'u1' }, timestamp: 1700000001000, message: { mid: 'm2', text: 'Ответ', is_echo: true } }] }] });
   assert.equal(ig.length, 2); assert.equal(ig[0].externalId, 'u1'); assert.equal(ig[1].echo, true); assert.equal(ig[1].externalId, 'u1');
 });

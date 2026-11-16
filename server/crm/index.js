@@ -176,7 +176,7 @@ export function createCrm(deps) {
     if (!core) return;
     for (const item of items) {
       const result = await core.exclusive(() => core.ingest({
-        channel, externalId: item.externalId, dir: item.echo ? 'out' : 'in', author: item.echo ? 'Instagram' : '',
+        channel, externalId: item.externalId, dir: item.echo ? 'out' : 'in', author: item.echo ? (channel === 'whatsapp' ? 'WhatsApp Business (телефон)' : 'Instagram') : '',
         profile: { name: item.name || '', phone: item.phone || '' },
         message: { text: item.text, attachments: item.attachments, externalId: item.messageId, at: item.at }, fast: true,
       }));
