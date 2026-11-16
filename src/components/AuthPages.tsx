@@ -8,6 +8,7 @@ import PortalSettings from './PortalSettings';
 import { ParentChildrenView, ParentPrizesView } from './ParentPortalSections';
 import AdminDataCleanup from './AdminDataCleanup';
 import AdminPayments from './AdminPayments';
+import { isActiveTrial, activeTrialsInSlot } from '../shared/trials.js';
 import ManualQuizBuilder, { type ManualQuestion } from './ManualQuizBuilder';
 import { TestExplanationModal, type ReviewQuestion, type AnswerValue } from '../shared/quizReview';
 import InstagramLeadsTab from './InstagramLeadsTab';
@@ -790,7 +791,6 @@ export function AdminDashboardPage() {
   const selectedTeacher = teachers.find((teacher) => teacher.id === selectedStudent?.teacherId);
   const studentLessons = schedule.lessons.filter((lesson) => lesson.studentId === selectedStudent?.id);
   const teacherScheduleTarget = selectedStudent ? schedule.targets[selectedStudent.id] : undefined;
-  const isActiveTrial = (lesson: TrialLesson) => lesson.status === 'scheduled' || lesson.status === 'trial';
   const isTrialSlotTaken = (dayIndex: number, hour: number) => schedule.lessons.some((lesson) => lesson.teacherId === trialTeacherId && lesson.day === dayIndex && lesson.hour === hour) || trialLessons.some((lesson) => lesson.id !== editingTrialId && isActiveTrial(lesson) && lesson.teacherId === trialTeacherId && lesson.day === dayIndex && lesson.hour === hour);
   const trialHasEnded = (lesson: TrialLesson) => new Date(lesson.scheduledAt).getTime() + 60 * 60 * 1000 <= Date.now();
   const pastTrials = trialLessons.filter((lesson) => lesson.status === 'attended' || (isActiveTrial(lesson) && trialHasEnded(lesson)));
@@ -1228,7 +1228,7 @@ export function AdminDashboardPage() {
                 {success && <p role="status" className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</p>}
                 <div className="max-h-[70vh] overflow-auto rounded-xl border border-border"><table className="w-full min-w-[980px] border-collapse text-left text-xs"><thead className="sticky top-0 z-10 bg-primary-light text-muted"><tr><th className="sticky left-0 z-20 bg-primary-light px-3 py-3">Время</th>{SCHEDULE_DAYS.map((day) => <th key={day} className="border-l border-border px-3 py-3">{day}</th>)}</tr></thead><tbody>{SCHEDULE_HOURS.map((hour) => <tr key={hour} className="border-t border-border"><th className="sticky left-0 bg-primary-light px-3 py-3 font-bold text-muted">{String(hour).padStart(2, '0')}:00</th>{SCHEDULE_DAYS.map((day, dayIndex) => {
                   const regularLessons = schedule.lessons.filter((lesson) => lesson.teacherId === selectedTeacherSchedule.id && lesson.day === dayIndex && lesson.hour === hour);
-                  const trialSlotLessons = trialLessons.filter((lesson) => lesson.teacherId === selectedTeacherSchedule.id && lesson.day === dayIndex && lesson.hour === hour);
+                  const trialSlotLessons = activeTrialsInSlot<TrialLesson>(trialLessons, selectedTeacherSchedule.id, dayIndex, hour);
                   const slotFree = !regularLessons.length && !trialSlotLessons.some(isActiveTrial);
                   return <td key={day} onDragOver={(event) => { if (draggedLessonId && slotFree) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); if (draggedLessonId) void moveScheduledLesson(draggedLessonId, dayIndex, hour); setDraggedLessonId(null); }} className={`min-w-36 border-l border-border p-2 align-top transition ${draggedLessonId && slotFree ? 'bg-blue-50/70' : ''}`}><div className="space-y-1.5">{regularLessons.map((lesson) => {
                     const isBlock = lesson.kind === 'block';

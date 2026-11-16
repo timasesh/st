@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 import { validateHomeworkUpload, writeJsonAtomically } from './server/homework-files.js';
 import { mergeStudentProgress } from './server/student-progress.js';
 import { earnedStars, levelFor } from './src/shared/levels.js';
+import { isActiveTrial, activeTrialsInSlot } from './src/shared/trials.js';
 // Уровень считается на клиентах по earnedStars (баланс + потрачено на призы), см. src/shared/levels.js.
 const withEarned = (progress) => (progress ? { ...progress, earnedStars: earnedStars(progress) } : progress);
 import { registerHomeworkRoutes } from './server/routes/homework.js';
@@ -1241,7 +1242,7 @@ app.put('/api/admin/schedule', requireAdmin, async (req, res) => {
     if (student && student.teacherId !== teacherId) return res.status(400).json({ error: 'У ученика изменился преподаватель. Обновите страницу и выберите ученика заново.' });
     if (!teacher) return res.status(400).json({ error: 'У ученика не назначен преподаватель.' });
     const normalizedSlotKey = `${teacherId}:${lesson.day}:${lesson.hour}`;
-    if (trialLessons.some((trial) => (trial.status === 'scheduled' || trial.status === 'trial' || !trial.status) && trial.teacherId === teacherId && trial.day === lesson.day && trial.hour === lesson.hour)) {
+    if (activeTrialsInSlot(trialLessons, teacherId, lesson.day, lesson.hour).length > 0) {
       return res.status(409).json({ error: 'Этот слот занят пробным уроком. Выберите другое время.' });
     }
     if (occupied.has(normalizedSlotKey)) return res.status(409).json({ error: 'У преподавателя уже есть урок в этом часовом слоте.' });
@@ -1674,7 +1675,7 @@ async function createTrialLesson(input, actor = 'admin') {
   const plannedLessons = Array.isArray(schedule) ? schedule : schedule.lessons || [];
   const trials = await readTrialLessons();
   const occupied = plannedLessons.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)
-    || trials.some((lesson) => (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour);
+    || activeTrialsInSlot(trials, teacherId, day, hour).length > 0;
   if (occupied) throw new HttpError(409, 'Этот слот преподавателя уже занят. Выберите другое время.');
   const createdAt = new Date().toISOString();
   const trial = { id: crypto.randomUUID(), firstName, lastName, studentClass, parentPhone, teacherId, day, hour, lessonLink, lessonDescription, createdAt, scheduledAt: nextTrialSlotStart(day, hour, new Date(createdAt)), status: 'scheduled' };
@@ -1712,7 +1713,7 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
     const lastName = typeof req.body?.lastName === 'string' ? req.body.lastName.trim() : '';
     const studentClass = typeof req.body?.studentClass === 'string' ? req.body.studentClass.trim() : '';
     if (!firstName || firstName.length > 80 || lastName.length > 80 || !['5 класс', '6 класс', '7 класс', '8 класс', '9 класс'].includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) return res.status(400).json({ error: 'Проверьте имя, фамилию, класс и контакт родителя.' });
-    if (planned.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour) || trials.some((lesson) => lesson.id !== req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status) && lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour)) return res.status(409).json({ error: 'Этот слот уже занят.' });
+    if (planned.some((lesson) => lesson.teacherId === teacherId && lesson.day === day && lesson.hour === hour) || activeTrialsInSlot(trials, teacherId, day, hour).some((lesson) => lesson.id !== req.params.id)) return res.status(409).json({ error: 'Этот слот уже занят.' });
     trials[index] = { ...trials[index], firstName, lastName, studentClass, teacherId, day, hour, parentPhone, lessonLink, lessonDescription, scheduledAt: nextTrialSlotStart(day, hour), status: 'scheduled', attendance: undefined, attendanceAt: undefined, attendanceMarkedBy: undefined };
     const student = await ensureTrialStudentAccount(trials[index]);
     trials[index].studentId = student.id;
@@ -2749,7 +2750,7 @@ app.get('/api/auth/portal', async (req, res) => {
     });
     if (current.role === 'teacher') {
       const trialLessons = await readTrialLessons();
-      lessons.push(...trialLessons.filter((lesson) => lesson.teacherId === current.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status)).map((lesson) => ({
+      lessons.push(...trialLessons.filter((lesson) => lesson.teacherId === current.id && isActiveTrial(lesson)).map((lesson) => ({
         ...lesson,
         trial: true,
         scheduledAt: getTrialScheduledAt(lesson),
@@ -2942,7 +2943,7 @@ const crm = createCrm({
     const schedule = await readScheduleData();
     const occupied = [];
     for (const lesson of schedule.lessons || []) if (lesson.teacherId && Number.isInteger(lesson.day) && Number.isInteger(lesson.hour)) occupied.push({ teacherId: lesson.teacherId, day: lesson.day, hour: lesson.hour });
-    for (const trial of await readTrialLessons()) if (['scheduled', 'trial', undefined].includes(trial.status)) occupied.push({ teacherId: trial.teacherId, day: trial.day, hour: trial.hour });
+    for (const trial of await readTrialLessons()) if (isActiveTrial(trial)) occupied.push({ teacherId: trial.teacherId, day: trial.day, hour: trial.hour });
     const teachers = accounts.filter((account) => account.role === 'teacher' && account.status !== 'withdrawn').map((account) => ({ id: account.id, name: `${account.firstName} ${account.lastName}`.trim() }));
     return { teachers, occupied, hours: Array.from({ length: 14 }, (_, index) => index + 8) };
   },
