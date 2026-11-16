@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, CircleDollarSign, Gauge, Pencil, Plus, Search, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CircleDollarSign, Gauge, Pencil, Plus, RotateCcw, Search, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
 
 export type PayStudent = { id: string; firstName: string; lastName: string; studentClass?: string; status?: 'active' | 'withdrawn'; teacher?: { firstName: string; lastName: string } | null };
 export type PayLesson = { id: string; kind?: 'block'; studentId?: string; teacherId: string; day: number; hour: number };
@@ -107,6 +107,8 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [tick, setTick] = useState(0);
+  const [adjust, setAdjust] = useState<Record<string, number>>({});
+  const [editHeld, setEditHeld] = useState<{ id: string; value: string; auto: number } | null>(null);
 
   useEffect(() => { const timer = window.setInterval(() => setTick((value) => value + 1), 60000); return () => window.clearInterval(timer); }, []);
 
@@ -119,6 +121,22 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
       setError('');
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось загрузить оплаты.'); }
     finally { setLoading(false); }
+    try {
+      const response = await fetch('/api/admin/payment-adjustments', { credentials: 'same-origin' });
+      const result = await readJson(response);
+      if (response.ok && result && typeof result === 'object') setAdjust(result as Record<string, number>);
+    } catch { /* без корректировок расчёт идёт по расписанию */ }
+  };
+  const saveHeld = async (studentId: string, auto: number, wanted: string) => {
+    const value = toNumber(wanted);
+    if (!Number.isInteger(value) || value < 0) { setError('Проведённых занятий — целое число, не меньше 0.'); return; }
+    try {
+      const response = await fetch(`/api/admin/payment-adjustments/${studentId}`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delta: value - auto }) });
+      const result = await readJson(response);
+      if (!response.ok) throw new Error(result.error || 'Не удалось сохранить число проведённых занятий.');
+      setAdjust((current) => { const next = { ...current }; if (value - auto === 0) delete next[studentId]; else next[studentId] = value - auto; return next; });
+      setEditHeld(null); setError(''); setNotice('Число проведённых занятий обновлено.');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось сохранить число проведённых занятий.'); }
   };
   useEffect(() => { void load(); }, []);
 
@@ -139,7 +157,9 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
       const perWeek = slots.reduce((sum, list) => sum + list.length, 0);
       const list = [...(payByStudent.get(student.id) || [])].sort((a, b) => a.paidAt.localeCompare(b.paidAt) || a.createdAt.localeCompare(b.createdAt));
       const paid = list.reduce((sum, payment) => sum + payment.lessons, 0);
-      const held = list.length ? countHeld(slots, list[0].paidAt, now.today, now.hour) : 0;
+      const auto = list.length ? countHeld(slots, list[0].paidAt, now.today, now.hour) : 0;
+      const delta = adjust[student.id] || 0;
+      const held = list.length ? Math.max(0, auto + delta) : 0;
       const remaining = paid - held;
       let left = held;
       for (const payment of list) { const take = Math.min(payment.lessons, Math.max(0, left)); used.set(payment.id, take); left -= take; }
@@ -150,7 +170,7 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
       else if (remaining <= 0) level = 'over';
       else if (!perWeek) level = 'noschedule';
       else if (remaining <= SOON_LESSONS || (daysLeft !== null && daysLeft <= SOON_DAYS)) level = 'soon';
-      return { student, perWeek, paid, held, remaining, ends, level, last: list.length ? list[list.length - 1] : null };
+      return { student, perWeek, paid, held, auto, delta, remaining, ends, level, last: list.length ? list[list.length - 1] : null };
     });
     const rank: Record<Level, number> = { over: 0, soon: 1, none: 2, noschedule: 3, ok: 4 };
     rows.sort((a, b) => rank[a.level] - rank[b.level] || a.remaining - b.remaining || `${a.student.firstName} ${a.student.lastName}`.localeCompare(`${b.student.firstName} ${b.student.lastName}`, 'ru'));
@@ -176,7 +196,7 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
       monthLabel: `${MONTHS[monthDate.getUTCMonth()]} ${monthDate.getUTCFullYear()}`,
       due: rows.filter((row) => row.level === 'over' || row.level === 'soon').length,
     };
-  }, [students, lessons, payments, teachersCount, tick]);
+  }, [students, lessons, payments, teachersCount, tick, adjust]);
 
   const studentName = (id: string) => { const student = students.find((item) => item.id === id); return student ? `${student.firstName} ${student.lastName}` : 'Ученик удалён или выбыл'; };
   const sortedStudents = useMemo(() => [...students].sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`, 'ru')), [students]);
@@ -259,7 +279,7 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
 
       <section className="admin-card rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="font-display text-lg font-extrabold">Баланс занятий учеников</h2><p className="text-sm text-muted">Занятия списываются по расписанию, начиная с даты первой оплаты. Осталось ≤ {SOON_LESSONS} занятий или хватит меньше чем на {SOON_DAYS} дней — «Скоро оплата».</p></div>
+          <div><h2 className="font-display text-lg font-extrabold">Баланс занятий учеников</h2><p className="text-sm text-muted">Занятия списываются по расписанию, начиная с даты первой оплаты; если занятие отменили или перенесли, поправьте «Проведено» карандашом. Осталось ≤ {SOON_LESSONS} занятий или хватит меньше чем на {SOON_DAYS} дней — «Скоро оплата».</p></div>
           <button type="button" onClick={() => openForm()} className="clay-btn flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark"><Plus className="h-4 w-4" />Добавить оплату</button>
         </div>
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -275,7 +295,11 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
                   <td className="px-3 py-3"><strong className="block">{row.student.firstName} {row.student.lastName}</strong><span className="text-xs text-muted">{row.student.studentClass || '—'}{row.student.teacher ? ` · ${row.student.teacher.firstName} ${row.student.teacher.lastName}` : ''}</span></td>
                   <td className="px-3 py-3">{row.perWeek || '—'}</td>
                   <td className="px-3 py-3">{row.last ? row.paid : '—'}</td>
-                  <td className="px-3 py-3">{row.last ? row.held : '—'}</td>
+                  <td className="px-3 py-3">{row.last ? (editHeld?.id === row.student.id ? (
+                    <span className="inline-flex items-center gap-1"><input autoFocus inputMode="numeric" value={editHeld.value} onChange={(event) => setEditHeld({ ...editHeld, value: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter') void saveHeld(row.student.id, row.auto, editHeld.value); if (event.key === 'Escape') setEditHeld(null); }} className="admin-input w-16 rounded-lg border-2 border-border bg-primary-light px-2 py-1 text-sm focus:border-primary focus:outline-none" /><button type="button" onClick={() => void saveHeld(row.student.id, row.auto, editHeld.value)} className="rounded-lg bg-primary px-2 py-1 text-xs font-bold text-white">OK</button><button type="button" onClick={() => setEditHeld(null)} aria-label="Отмена" className="rounded-lg p-1 text-muted hover:bg-primary-light"><X className="h-4 w-4" /></button></span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">{row.held}{row.delta !== 0 && <span title={`По расписанию ${row.auto}, вручную ${row.delta > 0 ? '+' : ''}${row.delta}`} className="rounded-full bg-primary-light px-1.5 py-0.5 text-[10px] font-bold text-primary">{row.delta > 0 ? '+' : ''}{row.delta}</span>}<button type="button" onClick={() => setEditHeld({ id: row.student.id, value: String(row.held), auto: row.auto })} title="Изменить число проведённых занятий (отмены и переносы)" aria-label="Изменить число проведённых занятий" className="rounded-lg p-1 text-muted hover:bg-primary-light hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button>{row.delta !== 0 && <button type="button" onClick={() => void saveHeld(row.student.id, row.auto, String(row.auto))} title="Вернуть расчёт по расписанию" aria-label="Сбросить корректировку" className="rounded-lg p-1 text-muted hover:bg-primary-light hover:text-primary"><RotateCcw className="h-3.5 w-3.5" /></button>}</span>
+                  )) : '—'}</td>
                   <td className="px-3 py-3 font-bold">{row.last ? (row.remaining < 0 ? `долг ${-row.remaining}` : row.remaining) : '—'}</td>
                   <td className="whitespace-nowrap px-3 py-3">{row.last && row.ends ? (row.remaining <= 0 ? 'уже закончилось' : shortDate(row.ends)) : '—'}</td>
                   <td className="whitespace-nowrap px-3 py-3 text-xs text-muted">{row.last ? `${shortDate(row.last.paidAt)} · ${money(row.last.amount)}` : '—'}</td>

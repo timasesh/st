@@ -1991,6 +1991,48 @@ app.get('/api/teacher/students/:studentId/lesson-history', async (req, res) => {
   catch (error) { return res.status(500).json({ error: error.message || 'Не удалось загрузить историю занятий.' }); }
 });
 
+// ---- Корректировка проведённых занятий (отмены/переносы): ученик → разница к расчёту по расписанию ----
+const paymentAdjustmentsPath = path.join(dataDir, 'payment-adjustments.json');
+async function paymentAdjustmentsRead() {
+  if (supabase) {
+    const result = await supabase.from('app_settings').select('value').eq('key', 'payment_adjustments').maybeSingle();
+    if (result.error) throw new Error(`Не удалось загрузить корректировки: ${result.error.message}`);
+    try { const saved = result.data?.value ? JSON.parse(result.data.value) : {}; return saved && typeof saved === 'object' ? saved : {}; }
+    catch { return {}; }
+  }
+  const saved = await readJsonFileOr(paymentAdjustmentsPath, {});
+  return saved && typeof saved === 'object' ? saved : {};
+}
+async function paymentAdjustmentsWrite(map) {
+  if (supabase) {
+    const result = await supabase.from('app_settings').upsert({ key: 'payment_adjustments', value: JSON.stringify(map) });
+    if (result.error) throw new Error(`Не удалось сохранить корректировку: ${result.error.message}`);
+    return;
+  }
+  await fs.mkdir(dataDir, { recursive: true });
+  const temporaryPath = `${paymentAdjustmentsPath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(map), { mode: 0o600 });
+  await fs.rename(temporaryPath, paymentAdjustmentsPath);
+}
+app.get('/api/admin/payment-adjustments', requireAdmin, async (_req, res) => {
+  try { res.json(await paymentAdjustmentsRead()); }
+  catch (error) { res.status(500).json({ error: error.message || 'Не удалось загрузить корректировки.' }); }
+});
+app.put('/api/admin/payment-adjustments/:studentId', requireAdmin, async (req, res) => {
+  try {
+    await refreshAccounts();
+    const student = accounts.find((account) => account.id === req.params.studentId && account.role === 'student');
+    if (!student) return res.status(404).json({ error: 'Ученик не найден.' });
+    const delta = Number(req.body?.delta);
+    if (!Number.isInteger(delta) || delta < -1000 || delta > 1000) return res.status(400).json({ error: 'Корректировка — целое число от −1000 до 1000.' });
+    const map = await paymentAdjustmentsRead();
+    if (delta === 0) delete map[student.id]; else map[student.id] = delta;
+    await paymentAdjustmentsWrite(map);
+    await recordAdminAuditSafely(req.adminSession.sub, 'Изменено число проведённых занятий', `${student.firstName} ${student.lastName}: корректировка ${delta > 0 ? '+' : ''}${delta}`);
+    return res.json({ studentId: student.id, delta });
+  } catch (error) { return res.status(500).json({ error: error.message || 'Не удалось сохранить корректировку.' }); }
+});
+
 // ---- Оплаты учеников (Supabase payments или файл payments.json в DATA_DIR) ----
 const paymentsPath = path.join(dataDir, 'payments.json');
 const PAYMENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
