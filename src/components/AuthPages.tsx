@@ -8,6 +8,7 @@ import PortalSettings from './PortalSettings';
 import { ParentChildrenView, ParentPrizesView } from './ParentPortalSections';
 import AdminDataCleanup from './AdminDataCleanup';
 import AdminPayments from './AdminPayments';
+import { HoldLogo, TeacherLinkCard, readTeacherLink, saveTeacherLink, type TeacherLink } from './TeacherLink';
 import { isActiveTrial, activeTrialsInSlot } from '../shared/trials.js';
 import ManualQuizBuilder, { type ManualQuestion } from './ManualQuizBuilder';
 import { TestExplanationModal, type ReviewQuestion, type AnswerValue } from '../shared/quizReview';
@@ -224,7 +225,7 @@ function astanaClock(now: Date) {
   return { weekday, hour: Number(value('hour')), minute: Number(value('minute')) };
 }
 
-export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'parent' | 'teacher' }) {
+export function UserPortalPage({ expectedRole, embedded }: { expectedRole: 'student' | 'parent' | 'teacher'; embedded?: { onUnauthorized: () => void; onLogout: () => void; onLogoHold: () => void } }) {
   const [portal, setPortal] = useState<PortalPayload | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -291,15 +292,17 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
       const response = await fetch('/api/auth/portal', { credentials: 'same-origin' });
       const result = await readApiResponse(response);
       if (response.status === 401) {
+        if (embedded) { embedded.onUnauthorized(); return; }
         try { sessionStorage.setItem('study_task_login_notice', 'Сеанс завершился. Войдите в аккаунт, чтобы продолжить.'); } catch (reason) { console.error('[StudyTask] Could not save login notice:', reason); }
         window.location.replace(expectedRole === 'teacher' ? '/teacher_login' : '/login'); return;
       }
       if (!response.ok) throw new Error(result.error || 'Не удалось загрузить личный кабинет.');
-      if (result.account?.role !== expectedRole) { window.location.replace(result.account?.role === 'teacher' ? '/teacher/' : result.account?.role === 'parent' ? '/parent' : '/student'); return; }
+      if (result.account?.role !== expectedRole) { if (embedded) { embedded.onUnauthorized(); return; } window.location.replace(result.account?.role === 'teacher' ? '/teacher/' : result.account?.role === 'parent' ? '/parent' : '/student'); return; }
       setPortal(result as PortalPayload);
       setError('');
     } catch (reason) {
       getFriendlyError(reason, 'Не удалось загрузить личный кабинет.');
+      if (embedded) { embedded.onUnauthorized(); return; }
       try { sessionStorage.setItem('study_task_login_notice', 'Не удалось открыть личный кабинет. Войдите в аккаунт ещё раз. Если ошибка повторится, обратитесь к администратору.'); } catch (storageError) { console.error('[StudyTask] Could not save login notice:', storageError); }
       window.location.replace(expectedRole === 'teacher' ? '/teacher_login' : '/login');
     }
@@ -497,6 +500,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
 
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    if (embedded) { embedded.onLogout(); return; }
     window.location.assign(expectedRole === 'teacher' ? '/teacher_login' : '/login');
   };
 
@@ -541,7 +545,7 @@ export function UserPortalPage({ expectedRole }: { expectedRole: 'student' | 'pa
         </>
       ) : (
         <>
-      <header className="flex flex-wrap items-center justify-between gap-y-3 border-b border-border bg-white px-5 py-4 shadow-sm sm:px-8"><a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">{roleLabel}</span></span></a><div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">{isStudentRole() && <div className="flex items-center gap-4 rounded-2xl bg-primary-light px-3 py-2 sm:px-5"><div className="flex items-center gap-2 text-amber-500"><Star className="h-9 w-9 fill-current sm:h-11 sm:w-11" /><span className="text-3xl font-extrabold leading-none text-amber-600 sm:text-4xl">{portal?.progress?.stars ?? 0}</span></div><div className="min-w-28 sm:min-w-44"><div className="mb-1 flex items-center justify-between gap-2 text-xs font-extrabold"><span>Уровень {studentLevel}</span><span className="text-muted">{studentXp}/{levelXpRequired} XP</span></div><div role="progressbar" aria-label={`Опыт до уровня ${studentLevel + 1}`} aria-valuemin={0} aria-valuemax={levelXpRequired} aria-valuenow={studentXp} className="h-3 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-[width]" style={{ width: `${levelProgress}%` }} /></div></div></div>}<div className="relative"><button type="button" onClick={() => { const open = !messagesOpen; setMessagesOpen(open); if (open) void loadPortal(); }} aria-label="Открыть сообщения" aria-expanded={messagesOpen} className="relative grid h-10 w-10 place-items-center rounded-xl border border-border bg-white text-primary transition hover:bg-primary-light"><MessageCircle className="h-5 w-5" />{portal?.messages.some((message) => !message.read) && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-rose-500" />}</button>{messagesOpen && <div role="dialog" aria-label="Сообщения" className="absolute right-0 top-full z-50 mt-3 w-[min(92vw,420px)] overflow-hidden rounded-2xl border border-border bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-border px-4 py-3"><div><strong className="font-display">Сообщения</strong><p className="text-xs text-muted">{portal?.messages.filter((message) => !message.read).length || 0} непрочитанных</p></div><button type="button" onClick={() => setMessagesOpen(false)} aria-label="Закрыть сообщения" className="rounded-lg p-1.5 text-muted hover:bg-primary-light"><X className="h-4 w-4" /></button></div><div className="max-h-[min(65vh,520px)] space-y-2 overflow-y-auto p-3">{portal?.messages.length ? portal.messages.map((message) => <article key={message.id} className={`rounded-xl border p-3 ${message.read ? 'border-border bg-white' : 'border-blue-200 bg-blue-50/70'}`}><p className="text-xs text-muted">{message.sender} · {new Date(message.at).toLocaleString('ru-KZ', { timeZone: 'Asia/Qyzylorda' })}</p><p className="mt-2 whitespace-pre-wrap text-sm">{message.body}</p>{!message.read && <button type="button" disabled={savingMessageId === message.id} onClick={() => void markRead(message)} className="mt-2 rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50">Отметить прочитанным</button>}</article>) : <p className="py-8 text-center text-sm text-muted">Сообщений пока нет.</p>}</div></div>}</div><PortalSettings dark={portalDarkTheme} onThemeChange={changePortalTheme} /><button type="button" onClick={() => window.location.reload()} aria-label="Обновить страницу" title="Обновить страницу" className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-white text-primary hover:bg-primary-light"><RotateCw className="h-4 w-4" /></button><button type="button" onClick={logout} className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-primary-light">Выйти</button></div></header>
+      <header className="flex flex-wrap items-center justify-between gap-y-3 border-b border-border bg-white px-5 py-4 shadow-sm sm:px-8"><HoldLogo noNav={!!embedded} onHold={embedded?.onLogoHold}><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" draggable={false} /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">{roleLabel}</span></span></HoldLogo><div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">{isStudentRole() && <div className="flex items-center gap-4 rounded-2xl bg-primary-light px-3 py-2 sm:px-5"><div className="flex items-center gap-2 text-amber-500"><Star className="h-9 w-9 fill-current sm:h-11 sm:w-11" /><span className="text-3xl font-extrabold leading-none text-amber-600 sm:text-4xl">{portal?.progress?.stars ?? 0}</span></div><div className="min-w-28 sm:min-w-44"><div className="mb-1 flex items-center justify-between gap-2 text-xs font-extrabold"><span>Уровень {studentLevel}</span><span className="text-muted">{studentXp}/{levelXpRequired} XP</span></div><div role="progressbar" aria-label={`Опыт до уровня ${studentLevel + 1}`} aria-valuemin={0} aria-valuemax={levelXpRequired} aria-valuenow={studentXp} className="h-3 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-[width]" style={{ width: `${levelProgress}%` }} /></div></div></div>}<div className="relative"><button type="button" onClick={() => { const open = !messagesOpen; setMessagesOpen(open); if (open) void loadPortal(); }} aria-label="Открыть сообщения" aria-expanded={messagesOpen} className="relative grid h-10 w-10 place-items-center rounded-xl border border-border bg-white text-primary transition hover:bg-primary-light"><MessageCircle className="h-5 w-5" />{portal?.messages.some((message) => !message.read) && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-rose-500" />}</button>{messagesOpen && <div role="dialog" aria-label="Сообщения" className="absolute right-0 top-full z-50 mt-3 w-[min(92vw,420px)] overflow-hidden rounded-2xl border border-border bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-border px-4 py-3"><div><strong className="font-display">Сообщения</strong><p className="text-xs text-muted">{portal?.messages.filter((message) => !message.read).length || 0} непрочитанных</p></div><button type="button" onClick={() => setMessagesOpen(false)} aria-label="Закрыть сообщения" className="rounded-lg p-1.5 text-muted hover:bg-primary-light"><X className="h-4 w-4" /></button></div><div className="max-h-[min(65vh,520px)] space-y-2 overflow-y-auto p-3">{portal?.messages.length ? portal.messages.map((message) => <article key={message.id} className={`rounded-xl border p-3 ${message.read ? 'border-border bg-white' : 'border-blue-200 bg-blue-50/70'}`}><p className="text-xs text-muted">{message.sender} · {new Date(message.at).toLocaleString('ru-KZ', { timeZone: 'Asia/Qyzylorda' })}</p><p className="mt-2 whitespace-pre-wrap text-sm">{message.body}</p>{!message.read && <button type="button" disabled={savingMessageId === message.id} onClick={() => void markRead(message)} className="mt-2 rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50">Отметить прочитанным</button>}</article>) : <p className="py-8 text-center text-sm text-muted">Сообщений пока нет.</p>}</div></div>}</div><PortalSettings dark={portalDarkTheme} onThemeChange={changePortalTheme} /><button type="button" onClick={() => window.location.reload()} aria-label="Обновить страницу" title="Обновить страницу" className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-white text-primary hover:bg-primary-light"><RotateCw className="h-4 w-4" /></button><button type="button" onClick={logout} className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-primary-light">Выйти</button></div></header>
       <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-8"><div><p className="text-sm font-bold text-primary">Здравствуйте</p><h1 className="mt-1 font-display text-3xl font-extrabold">{account ? `${account.firstName} ${account.lastName}` : roleLabel}</h1>{isStudentRole() && <p className="mt-1 text-muted">{account?.studentClass || ''}</p>}</div>
         {expectedRole === 'parent' && <nav aria-label="Разделы кабинета родителя" className="flex flex-wrap gap-2"><button type="button" onClick={() => setParentTab('children')} className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${parentTab === 'children' ? 'bg-primary text-white shadow-sm' : 'border border-border bg-white text-muted hover:bg-primary-light'}`}><Users className="mr-2 inline h-4 w-4" />Дети <span className="ml-1 opacity-75">{portal?.relatedAccounts.length || 0}</span></button><button type="button" onClick={() => setParentTab('schedule')} className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${parentTab === 'schedule' ? 'bg-primary text-white shadow-sm' : 'border border-border bg-white text-muted hover:bg-primary-light'}`}><CalendarDays className="mr-2 inline h-4 w-4" />Расписание <span className="ml-1 opacity-75">{portal?.lessons.length || 0}</span></button><button type="button" onClick={() => setParentTab('prizes')} className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${parentTab === 'prizes' ? 'bg-primary text-white shadow-sm' : 'border border-border bg-white text-muted hover:bg-primary-light'}`}><Gift className="mr-2 inline h-4 w-4" />Призы</button></nav>}
         {expectedRole === 'teacher' && <nav aria-label="Разделы кабинета преподавателя" className="flex flex-wrap gap-2"><button type="button" onClick={() => setTeacherTab('lessons')} className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${teacherTab === 'lessons' ? 'bg-primary text-white shadow-sm' : 'border border-border bg-white text-muted hover:bg-primary-light'}`}><CalendarDays className="mr-2 inline h-4 w-4" />Занятия</button><button type="button" onClick={() => setTeacherTab('students')} className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${teacherTab === 'students' ? 'bg-primary text-white shadow-sm' : 'border border-border bg-white text-muted hover:bg-primary-light'}`}><Users className="mr-2 inline h-4 w-4" />Мои ученики <span className="ml-1 opacity-75">{portal?.relatedAccounts.length || 0}</span></button><button type="button" onClick={() => setTeacherTab('tests')} className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${teacherTab === 'tests' ? 'bg-primary text-white shadow-sm' : 'border border-border bg-white text-muted hover:bg-primary-light'}`}><FileQuestion className="mr-2 inline h-4 w-4" />Тесты</button>
@@ -633,6 +637,15 @@ function EmptyTrialState({ message }: { message: string }) {
 
 export function AdminDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
+  const [teacherLink, setTeacherLink] = useState<TeacherLink | null>(() => readTeacherLink());
+  const [teacherOpen, setTeacherOpen] = useState(false);
+  const [teacherNotice, setTeacherNotice] = useState('');
+  const unlinkTeacher = (notice = '') => { saveTeacherLink(null); setTeacherLink(null); setTeacherOpen(false); setTeacherNotice(notice); };
+  const toggleTeacherPanel = () => {
+    if (teacherOpen) { setTeacherOpen(false); return; }
+    if (teacherLink) { setTeacherOpen(true); return; }
+    setActiveView('settings'); setTeacherNotice('Сначала привяжите панель преподавателя: введите логин и пароль ниже.');
+  };
   const [activeRole, setActiveRole] = useState<AccountRole>('student');
   const [activeView, setActiveView] = useState<'dashboard' | 'accounts' | 'withdrawn' | 'crm' | 'settings' | 'schedule' | 'payments' | 'history' | 'trial' | 'tests' | 'leads' | 'cleanup' | 'sales'>('dashboard');
   const [showAccountModal, setShowAccountModal] = useState(false);
@@ -1083,7 +1096,7 @@ export function AdminDashboardPage() {
     <main className={`admin-dashboard min-h-screen bg-primary-light text-foreground ${darkTheme ? 'theme-dark' : ''}`}>
       <CrmNotifier onOpen={() => { setActiveView('sales'); setError(''); setSuccess(''); }} />
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-white px-5 py-4 shadow-sm sm:px-8">
-        <a href="/" className="flex items-center gap-3"><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">Панель администратора</span></span></a>
+        <HoldLogo onHold={() => toggleTeacherPanel()}><img src="/static/ST.webp" alt="StudyTask" className="h-10 w-10 rounded-lg object-contain" draggable={false} /><span><strong className="block font-display text-lg">StudyTask</strong><span className="text-xs text-muted">Панель администратора</span></span></HoldLogo>
         <button type="button" onClick={() => window.location.reload()} aria-label="Обновить страницу" title="Обновить страницу" className="grid h-10 w-10 place-items-center rounded-xl border border-border text-primary hover:bg-primary-light"><RotateCw className="h-4 w-4" /></button><button type="button" onClick={logout} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-primary-light"><LogOut className="h-4 w-4" /> Выйти</button>
       </header>
       <div className="flex min-h-[calc(100vh-73px)] w-full flex-col lg:flex-row">
@@ -1169,6 +1182,7 @@ export function AdminDashboardPage() {
             </section>
           ) : activeView === 'settings' ? (
             <div className="grid max-w-3xl gap-6">
+              <TeacherLinkCard link={teacherLink} notice={teacherNotice} onLinked={(link) => { saveTeacherLink(link); setTeacherLink(link); setTeacherNotice(''); setTeacherOpen(true); }} onUnlink={() => unlinkTeacher()} onOpen={() => setTeacherOpen(true)} />
               <section className="admin-card rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                 <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-primary-light p-2.5 text-primary">{darkTheme ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}</span><div><h2 className="font-display text-lg font-extrabold">Оформление</h2><p className="text-sm text-muted">Настройте внешний вид панели для этого браузера.</p></div></div>
                 <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border p-4"><span><strong className="block">Тёмная тема</strong><span className="text-sm text-muted">{darkTheme ? 'Включена' : 'Выключена'}</span></span><button type="button" role="switch" aria-checked={darkTheme} onClick={toggleAdminTheme} className={`relative h-7 w-12 rounded-full transition ${darkTheme ? 'bg-blue-600' : 'bg-slate-300'}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${darkTheme ? 'left-6' : 'left-1'}`} /></button></div>
@@ -1298,6 +1312,14 @@ export function AdminDashboardPage() {
           )}
         </section>
       </div>
+      <AnimatePresence>
+        {teacherOpen && teacherLink && (
+          <motion.div key="teacher-panel" className="fixed inset-0 z-[200] overflow-y-auto bg-white"
+            initial={{ clipPath: 'circle(0px at 56px 52px)' }} animate={{ clipPath: 'circle(150% at 56px 52px)' }} exit={{ clipPath: 'circle(0px at 56px 52px)' }} transition={{ duration: 0.7, ease: [0.76, 0, 0.24, 1] }}>
+            <UserPortalPage expectedRole="teacher" embedded={{ onUnauthorized: () => unlinkTeacher('Сеанс преподавателя завершился. Привяжите панель заново.'), onLogout: () => unlinkTeacher(), onLogoHold: () => setTeacherOpen(false) }} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
