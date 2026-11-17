@@ -205,6 +205,7 @@ export function createCrm(deps) {
     return result?.message;
   }
 
+  const SOURCE_NAMES = { instagram: 'Instagram', facebook: 'Facebook', telegram: 'Telegram', whatsapp: 'WhatsApp', google: 'Google', tiktok: 'TikTok', youtube: 'YouTube', yandex: 'Яндекс', direct: 'Прямой заход', admin: 'Админ-панель', manual: 'Вручную', gpt: 'Рекомендация GPT', '': 'Не определён' };
   async function updateLead(id, patch) {
     return core.exclusive(async () => {
       const lead = core.getLead(id);
@@ -214,6 +215,10 @@ export function createCrm(deps) {
         lead.archived = patch.archived; core.timeline(lead, 'archive', patch.archived ? 'Заявка в архиве' : 'Заявка возвращена из архива');
       }
       if (patch.grade !== undefined) { const g = Number(patch.grade); lead.grade = Number.isInteger(g) && g >= 1 && g <= 11 ? g : null; }
+      if (typeof patch.source === 'string') {
+        const source = clip(patch.source, 60).trim().toLowerCase();
+        if (source !== lead.source) { const was = lead.source; lead.source = source; core.timeline(lead, 'source', `Источник изменён: ${SOURCE_NAMES[was] ?? (was || 'не определён')} → ${SOURCE_NAMES[source] ?? (source || 'не определён')}`); }
+      }
       if (typeof patch.parentName === 'string') {
         lead.parentName = clip(patch.parentName, 80);
         const parent = core.maps.contact.get(lead.contactId);
@@ -461,7 +466,7 @@ export function createCrm(deps) {
     r.post('/leads/export', wrap(async (req, res) => {
       const ids = idsOf(req.body);
       const TYPES = { trial: 'Пробный урок', intensive: 'Интенсив', level_test: 'Тест уровня', career: 'Профориентация', message: 'Сообщение', manual: 'Вручную' };
-      const SOURCES = { instagram: 'Instagram', facebook: 'Facebook', telegram: 'Telegram', whatsapp: 'WhatsApp', google: 'Google', tiktok: 'TikTok', youtube: 'YouTube', yandex: 'Яндекс', direct: 'Прямой заход', admin: 'Админ-панель', manual: 'Вручную', '': 'Не определён' };
+      const SOURCES = SOURCE_NAMES;
       const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
       const statusLabel = Object.fromEntries(STATUSES.map((s) => [s.id, s.label]));
       const fmt = (iso) => (iso ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)) : '');

@@ -5,7 +5,7 @@ import { useCrm } from './store';
 import type { Lead, StatusId, TrialSlots } from './types';
 import { Chip, Drawer, Field, PhoneLink, SourceChip, StatusChip, TypeChip, useOpenChat } from './ui';
 import { LostDialog } from './LeadsView';
-import { DAYS, TYPE_LABEL, fmtDateTime, formatPhone, leadTitle, sourceLabel, trialLabel, waDigits, waUrl } from './util';
+import { DAYS, SOURCE_OPTIONS, TYPE_LABEL, fmtDateTime, formatPhone, leadTitle, sourceLabel, trialLabel, waDigits, waUrl } from './util';
 
 const TRIAL_STATUS: Record<string, string> = { scheduled: 'Запланирован', trial: 'Запланирован', attended: 'Проведён', no_show: 'Не пришёл', enrolled: 'Записался на занятия', declined: 'Отказ' };
 
@@ -92,7 +92,7 @@ export function LeadDrawer({ lead, onClose }: { lead: Lead; onClose: () => void 
     if (value !== current) void patch({ [key]: key === 'grade' ? (value ? Number(value) : null) : value });
   };
   const showTrial = lead.trial && !lead.trial.removed;
-  const utmRows: [string, string][] = [['Источник', lead.source ? sourceLabel(lead.source) : ''], ['Канал', lead.medium], ['Кампания', lead.campaign], ['Объявление', lead.content], ['Ключ', lead.term], ['Страница входа', lead.landing], ['Реферрер', lead.referrer], ...Object.entries(lead.click || {}).map(([k, v]): [string, string] => [k, v])];
+  const utmRows: [string, string][] = [['Канал', lead.medium], ['Кампания', lead.campaign], ['Объявление', lead.content], ['Ключ', lead.term], ['Страница входа', lead.landing], ['Реферрер', lead.referrer], ...Object.entries(lead.click || {}).map(([k, v]): [string, string] => [k, v])];
 
   return (
     <Drawer onClose={onClose} header={
@@ -167,6 +167,7 @@ export function LeadDrawer({ lead, onClose }: { lead: Lead; onClose: () => void 
         <h4>Откуда пришёл</h4>
         <dl className="crm-kv" style={{ margin: 0 }}>
           <dt>Тип</dt><dd>{TYPE_LABEL[lead.type]}</dd>
+          <dt>Источник</dt><dd><select className="crm-select" style={{ maxWidth: 240 }} aria-label="Источник заявки" value={lead.source || ''} onChange={(e) => void patch({ source: e.target.value }, 'Источник изменён')}>{[...(lead.source && !SOURCE_OPTIONS.includes(lead.source) ? [lead.source] : []), ...(!lead.source ? [''] : []), ...SOURCE_OPTIONS].map((s) => <option key={s || 'none'} value={s}>{sourceLabel(s)}</option>)}</select></dd>
           {utmRows.filter(([, v]) => v).map(([k, v]) => <><dt key={`${k}-t`}>{k}</dt><dd key={`${k}-d`}>{v}</dd></>)}
         </dl>
         {!lead.campaign && !lead.medium && <p className="crm-muted" style={{ margin: '8px 0 0', fontSize: 12 }}>UTM-меток нет: добавляйте их к ссылкам в рекламе и в био (например <code>?utm_source=instagram&amp;utm_campaign=sept</code>).</p>}

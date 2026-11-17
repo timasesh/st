@@ -8,8 +8,10 @@ export const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 export const LOST_REASONS = ['Дорого', 'Не отвечает', 'Передумали', 'Выбрали другой центр', 'Не подошло время', 'Другое'];
 export const SOURCE_LABEL: Record<string, string> = {
   instagram: 'Instagram', facebook: 'Facebook', telegram: 'Telegram', whatsapp: 'WhatsApp', google: 'Google', tiktok: 'TikTok', youtube: 'YouTube',
-  yandex: 'Яндекс', direct: 'Прямой заход', admin: 'Админ-панель', manual: 'Вручную', '': 'Не определён',
+  yandex: 'Яндекс', direct: 'Прямой заход', admin: 'Админ-панель', manual: 'Вручную', gpt: 'Рекомендация GPT', '': 'Не определён',
 };
+/** Источники, которые можно выбрать вручную в карточке заявки */
+export const SOURCE_OPTIONS = ['instagram', 'whatsapp', 'telegram', 'facebook', 'tiktok', 'youtube', 'google', 'yandex', 'gpt', 'рекомендация', 'звонок', 'офлайн', 'direct', 'другое'];
 export const sourceLabel = (source: string) => SOURCE_LABEL[source] ?? source;
 
 export const TEMPLATES = [

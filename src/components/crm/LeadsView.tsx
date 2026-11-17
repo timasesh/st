@@ -52,7 +52,7 @@ function NewLeadDialog({ onClose }: { onClose: () => void }) {
           <Field label="Класс"><select className="crm-select" value={form.grade} onChange={(e) => set('grade', e.target.value)}><option value="">—</option>{Array.from({ length: 11 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1} класс</option>)}</select></Field>
           <Field label="Откуда обращение">
             <select className="crm-select" value={form.source} onChange={(e) => set('source', e.target.value)}>
-              {['звонок', 'whatsapp', 'instagram', 'telegram', 'рекомендация', 'офлайн', 'другое'].map((s) => <option key={s} value={s}>{sourceLabel(s)}</option>)}
+              {['звонок', 'whatsapp', 'instagram', 'telegram', 'gpt', 'рекомендация', 'офлайн', 'другое'].map((s) => <option key={s} value={s}>{sourceLabel(s)}</option>)}
             </select>
           </Field>
         </div>
