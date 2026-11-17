@@ -16,7 +16,7 @@ function TrialBooker({ lead }: { lead: Lead }) {
   const [pick, setPick] = useState<{ day: number; hour: number } | null>(null);
   const [link, setLink] = useState('');
   const [description, setDescription] = useState('');
-  const [klass, setKlass] = useState(lead.grade && lead.grade >= 5 && lead.grade <= 9 ? `${lead.grade} класс` : '5 класс');
+  const [klass, setKlass] = useState(lead.grade && lead.grade >= 1 && lead.grade <= 11 ? `${lead.grade} класс` : '5 класс');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,7 +43,7 @@ function TrialBooker({ lead }: { lead: Lead }) {
       {error && <p className="crm-error" role="alert">{error}</p>}
       <div className="crm-grid2">
         <Field label="Преподаватель"><select className="crm-select" value={teacherId} onChange={(e) => { setTeacherId(e.target.value); setPick(null); }}>{slots.teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
-        <Field label="Класс ученика"><select className="crm-select" value={klass} onChange={(e) => setKlass(e.target.value)}>{[5, 6, 7, 8, 9].map((g) => <option key={g}>{g} класс</option>)}</select></Field>
+        <Field label="Класс ученика"><select className="crm-select" value={klass} onChange={(e) => setKlass(e.target.value)}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((g) => <option key={g}>{g} класс</option>)}</select></Field>
       </div>
       <div>
         <span className="crm-label">Свободное время (серое — занято)</span>

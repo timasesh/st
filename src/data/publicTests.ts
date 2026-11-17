@@ -2,6 +2,7 @@
 // Вопросы идут по возрастанию сложности. Добавить класс = добавить ключ в PUBLIC_TESTS.
 // В тексте: дроби {2/5}, степени x^{2}, индексы a_{1}. Картинка — поле visual.
 import type { Visual } from '../components/TestVisual';
+import { grade1, grade2, grade3, grade4 } from './publicTestsEarly';
 
 export type PublicQuestion = {
   text: string;
@@ -18,7 +19,7 @@ export type PublicTest = {
   questions: PublicQuestion[];
 };
 
-export const ALL_GRADES = [5, 6, 7, 8, 9, 10, 11] as const;
+export const ALL_GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 
 export const DIFFICULTY = (index: number, total = 10) => {
   const share = (index + 1) / total;
@@ -654,6 +655,10 @@ const grade11: PublicQuestion[] = [
 ];
 
 export const PUBLIC_TESTS: Record<number, PublicTest> = {
+  1: { grade: 1, questions: grade1 },
+  2: { grade: 2, questions: grade2 },
+  3: { grade: 3, questions: grade3 },
+  4: { grade: 4, questions: grade4 },
   5: { grade: 5, questions: grade5 },
   6: { grade: 6, questions: grade6 },
   7: { grade: 7, questions: grade7 },

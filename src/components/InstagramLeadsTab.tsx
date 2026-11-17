@@ -9,7 +9,7 @@ type TestLead = {
   missedTopics: string[]; startedAt: string; finishedAt: string | null;
 };
 
-const GRADES = [5, 6, 7, 8, 9, 10, 11];
+const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 const STATUS_FILTERS = [['all', 'Все'], ['finished', 'Прошли тест'], ['started', 'Не дошли до конца']] as const;
 const LEVEL_TONE: Record<string, string> = {
   'Отличный уровень': 'bg-emerald-100 text-emerald-700',

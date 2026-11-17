@@ -5,7 +5,7 @@ export const SUBJECTS: Subject[] = [
     id: 'math',
     name: 'Математика',
     iconName: 'Calculator',
-    description: 'Живые уроки математики для 5–9 классов: логика, дроби, уравнения и задачи в игровом формате.',
+    description: 'Живые уроки математики для 1–11 классов: логика, дроби, уравнения и задачи в игровом формате.',
     colorClass: 'from-primary to-accent-dark',
     bgClass: 'bg-blue-50/50',
     borderClass: 'border-blue-100',

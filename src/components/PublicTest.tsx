@@ -170,7 +170,7 @@ export default function PublicTest() {
                   );
                 })}
               </div>
-              <p className="text-center text-sm text-muted">Тесты для остальных классов добавляем — они откроются на этой же странице.</p>
+              <p className="text-center text-sm text-muted">Тесты есть для всех классов с 1 по 11. Если сомневаетесь, выберите тот класс, по программе которого учится ребёнок.</p>
             </motion.section>
           )}
 
@@ -335,7 +335,7 @@ export default function PublicTest() {
 
               <div className="clay-card space-y-4 bg-primary p-7 text-center sm:p-9" style={{ background: 'var(--color-primary)', borderColor: 'var(--color-primary-dark)' }}>
                 <h3 className="font-display text-2xl font-extrabold text-white">Закрыть пробелы вместе с Study Task</h3>
-                <p className="text-white/85">Бесплатный пробный урок: разберём ваши слабые темы и составим план. Математика 5–9 классов, онлайн.</p>
+                <p className="text-white/85">Бесплатный пробный урок: разберём ваши слабые темы и составим план. Математика 1–11 классов, онлайн.</p>
                 <a href={whatsappUrl(`Здравствуйте! Прошёл(ла) тест на study-task.kz для ${grade} класса: ${score} из ${total}. Хочу записаться на бесплатный пробный урок.`)} target="_blank" rel="noreferrer"
                   className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-6 py-4 text-lg font-extrabold text-primary shadow-lg transition hover:-translate-y-0.5 sm:w-auto"><MessageCircle className="h-5 w-5" /> Записаться на пробный урок</a>
               </div>

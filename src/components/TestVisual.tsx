@@ -43,6 +43,11 @@ export type Visual =
   | { type: 'cube'; edge: string; diag: string }
   | { type: 'cyl'; r: string; h: string }
   | { type: 'circle'; label: string; note?: string }
+  | { type: 'groups'; groups: number[]; shape?: 'apple' | 'star' | 'circle' | 'cookie'; crossed?: number; sign?: string; note?: string }
+  | { type: 'clock'; hour: number; minute: number }
+  | { type: 'pattern'; items: { s: 'c' | 'q' | 't' | '?'; c?: 'blue' | 'amber' | 'green' | 'rose' | 'purple'; big?: boolean }[]; note?: string }
+  | { type: 'blocks'; tens: number; ones: number }
+  | { type: 'cells'; cols: number; rows: number; shade: [number, number][]; note?: string }
   | { type: 'triangle'; angleA?: string; angleB?: string; angleC?: string; sideAB?: string; sideAC?: string; sideBC?: string; exterior?: string };
 
 const C = { primary: '#2563EB', light: '#DBEAFE', border: '#BFDBFE', navy: '#172554', amber: '#F59E0B', amberLight: '#FEF3C7', rose: '#E11D48', grid: '#E2E8F0', text: '#1E3A5F' };
@@ -373,6 +378,146 @@ function Cyl({ v }: { v: Extract<Visual, { type: 'cyl' }> }) {
   );
 }
 
+// ───────── Картинки для 1–4 классов ─────────
+const PAT_COLOR = { blue: C.primary, amber: C.amber, green: '#10B981', rose: C.rose, purple: '#8B5CF6' } as const;
+
+function Token({ shape, x, y, size }: { shape: NonNullable<Extract<Visual, { type: 'groups' }>['shape']>; x: number; y: number; size: number }) {
+  const r = size * 0.42;
+  if (shape === 'star') {
+    const pts = Array.from({ length: 10 }, (_, i) => { const a = -Math.PI / 2 + (i * Math.PI) / 5; const rr = i % 2 ? r * 0.45 : r * 1.12; return `${x + rr * Math.cos(a)},${y + rr * Math.sin(a)}`; }).join(' ');
+    return <polygon points={pts} fill={C.amber} stroke="#B45309" strokeWidth={1.5} strokeLinejoin="round" />;
+  }
+  if (shape === 'circle') return <circle cx={x} cy={y} r={r} fill={C.primary} stroke={C.navy} strokeWidth={1.5} />;
+  if (shape === 'cookie') return (
+    <g>
+      <circle cx={x} cy={y} r={r} fill="#E9B872" stroke="#9A6B2F" strokeWidth={1.5} />
+      <circle cx={x - r * 0.35} cy={y - r * 0.2} r={r * 0.14} fill="#6B4423" /><circle cx={x + r * 0.3} cy={y - r * 0.3} r={r * 0.14} fill="#6B4423" /><circle cx={x + r * 0.05} cy={y + r * 0.35} r={r * 0.14} fill="#6B4423" />
+    </g>
+  );
+  return (
+    <g>
+      <circle cx={x} cy={y + r * 0.1} r={r} fill={C.rose} stroke="#9F1239" strokeWidth={1.5} />
+      <path d={`M ${x} ${y - r * 0.85} Q ${x + r * 0.15} ${y - r * 1.3} ${x + r * 0.25} ${y - r * 1.4}`} stroke="#7C2D12" strokeWidth={2} fill="none" strokeLinecap="round" />
+      <ellipse cx={x + r * 0.55} cy={y - r * 1.05} rx={r * 0.38} ry={r * 0.2} fill="#10B981" transform={`rotate(-25 ${x + r * 0.55} ${y - r * 1.05})`} />
+    </g>
+  );
+}
+
+function Groups({ v }: { v: Extract<Visual, { type: 'groups' }> }) {
+  const shape = v.shape ?? 'apple', sz = 26, gap = 6, sep = v.sign ? 40 : 20;
+  const dims = v.groups.map((n) => { const per = n <= 3 ? n : n <= 8 ? Math.ceil(n / 2) : 5; const rows = Math.ceil(n / per); return { n, per, rows, w: per * (sz + gap) + gap, h: rows * (sz + gap) + gap }; });
+  const total = dims.reduce((a, d) => a + d.w, 0) + (dims.length - 1) * sep;
+  const k = Math.min(1, 336 / total);
+  let x = 180 - (total * k) / 2;
+  return (
+    <>
+      {dims.map((d, gi) => {
+        const gx = x; x += (d.w + sep) * k;
+        const top = 100 - (d.h * k) / 2;
+        return (
+          <g key={gi}>
+            <g transform={`translate(${gx} ${top}) scale(${k})`}>
+              <rect width={d.w} height={d.h} rx={12} fill="#fff" stroke={C.border} strokeWidth={3} />
+              {Array.from({ length: d.n }).map((_, i) => {
+                const cx = gap + (i % d.per) * (sz + gap) + sz / 2, cy = gap + Math.floor(i / d.per) * (sz + gap) + sz / 2;
+                const out = gi === 0 && v.crossed ? i >= d.n - v.crossed : false;
+                return (
+                  <g key={i} opacity={out ? 0.4 : 1}>
+                    <Token shape={shape} x={cx} y={cy} size={sz} />
+                    {out && <path d={`M ${cx - 11} ${cy - 11} L ${cx + 11} ${cy + 11} M ${cx + 11} ${cy - 11} L ${cx - 11} ${cy + 11}`} stroke={C.rose} strokeWidth={3.5} strokeLinecap="round" />}
+                  </g>
+                );
+              })}
+            </g>
+            {v.sign && gi < dims.length - 1 && <T x={gx + (d.w + sep / 2) * k - 0} y={104} fontSize={30} fill={C.primary}>{v.sign}</T>}
+          </g>
+        );
+      })}
+      {v.note && <T x={180} y={190} fontSize={15} fill={C.rose}>{v.note}</T>}
+    </>
+  );
+}
+
+function ClockV({ v }: { v: Extract<Visual, { type: 'clock' }> }) {
+  const cx = 180, cy = 104, r = 82;
+  const pt = (deg: number, len: number) => ({ x: cx + len * Math.sin((deg * Math.PI) / 180), y: cy - len * Math.cos((deg * Math.PI) / 180) });
+  const h = pt(((v.hour % 12) + v.minute / 60) * 30, 30), m = pt(v.minute * 6, 44);
+  return (
+    <>
+      <circle cx={cx} cy={cy} r={r} fill="#fff" stroke={C.navy} strokeWidth={5} />
+      {Array.from({ length: 60 }).map((_, i) => { const a = pt(i * 6, r - 3), b = pt(i * 6, r - (i % 5 === 0 ? 11 : 7)); return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={C.navy} strokeWidth={i % 5 === 0 ? 2.5 : 1} />; })}
+      {Array.from({ length: 12 }).map((_, i) => { const p = pt((i + 1) * 30, r - 24); return <T key={i} x={p.x} y={p.y + 6} fontSize={17}>{i + 1}</T>; })}
+      <line x1={cx} y1={cy} x2={h.x} y2={h.y} stroke={C.navy} strokeWidth={8} strokeLinecap="round" />
+      <line x1={cx} y1={cy} x2={m.x} y2={m.y} stroke={C.rose} strokeWidth={5} strokeLinecap="round" />
+      <circle cx={cx} cy={cy} r={6} fill={C.navy} />
+    </>
+  );
+}
+
+function PatternV({ v }: { v: Extract<Visual, { type: 'pattern' }> }) {
+  const n = v.items.length, gap = 10, w = Math.min(54, (336 - (n - 1) * gap) / n), start = 180 - (n * w + (n - 1) * gap) / 2, cy = 100;
+  return (
+    <>
+      {v.items.map((it, i) => {
+        const x = start + i * (w + gap), cx = x + w / 2;
+        if (it.s === '?') return (
+          <g key={i}>
+            <rect x={x} y={cy - w / 2} width={w} height={w} rx={12} fill={C.amberLight} stroke={C.amber} strokeWidth={3} strokeDasharray="6 5" />
+            <T x={cx} y={cy + 10} fontSize={30} fill="#B45309">?</T>
+          </g>
+        );
+        const col = PAT_COLOR[it.c ?? 'blue'], k = it.big === false ? 0.6 : 1, hs = (w / 2) * 0.92 * k;
+        return (
+          <g key={i}>
+            <rect x={x} y={cy - w / 2} width={w} height={w} rx={12} fill="#fff" stroke={C.border} strokeWidth={2.5} />
+            {it.s === 'c' && <circle cx={cx} cy={cy} r={hs} fill={col} />}
+            {it.s === 'q' && <rect x={cx - hs} y={cy - hs} width={hs * 2} height={hs * 2} rx={4} fill={col} />}
+            {it.s === 't' && <polygon points={`${cx},${cy - hs} ${cx + hs * 1.1},${cy + hs * 0.9} ${cx - hs * 1.1},${cy + hs * 0.9}`} fill={col} strokeLinejoin="round" />}
+          </g>
+        );
+      })}
+      {v.note && <T x={180} y={170} fontSize={15} fill={C.text}>{v.note}</T>}
+    </>
+  );
+}
+
+function BlocksV({ v }: { v: Extract<Visual, { type: 'blocks' }> }) {
+  const rodW = 16, rodGap = 8, cube = 18, onesCols = Math.min(5, Math.max(1, v.ones)), onesRows = Math.ceil(v.ones / 5) || 1;
+  const wTens = v.tens * (rodW + rodGap), wOnes = v.ones ? onesCols * (cube + 4) : 0, gapMid = v.tens && v.ones ? 34 : 0;
+  const x0 = 180 - (wTens + gapMid + wOnes) / 2, top = 40, seg = 9;
+  return (
+    <>
+      {Array.from({ length: v.tens }).map((_, t) => (
+        <g key={t}>{Array.from({ length: 10 }).map((__, i) => <rect key={i} x={x0 + t * (rodW + rodGap)} y={top + i * seg} width={rodW} height={seg} fill={C.primary} stroke="#fff" strokeWidth={1.5} />)}</g>
+      ))}
+      {Array.from({ length: v.ones }).map((_, i) => <rect key={i} x={x0 + wTens + gapMid + (i % 5) * (cube + 4)} y={top + 90 - cube - Math.floor(i / 5) * (cube + 4) + (onesRows - 1) * 0} width={cube} height={cube} rx={3} fill={C.amber} stroke="#B45309" strokeWidth={1.5} />)}
+      <T x={180} y={168} fontSize={14} fill={C.text}>синяя палочка = 10 кубиков · жёлтый кубик = 1</T>
+    </>
+  );
+}
+
+function CellsV({ v }: { v: Extract<Visual, { type: 'cells' }> }) {
+  const sz = Math.min(300 / v.cols, 130 / v.rows, 38), w = v.cols * sz, h = v.rows * sz, x0 = 180 - w / 2, y0 = 92 - h / 2;
+  const on = new Set(v.shade.map(([c, r]) => `${c},${r}`));
+  return (
+    <>
+      {Array.from({ length: v.rows }).map((_, r) => Array.from({ length: v.cols }).map((__, c) => (
+        <rect key={`${c},${r}`} x={x0 + c * sz} y={y0 + r * sz} width={sz} height={sz} fill={on.has(`${c},${r}`) ? C.primary : '#fff'} fillOpacity={on.has(`${c},${r}`) ? 0.85 : 1} stroke={C.border} strokeWidth={1.5} />
+      )))}
+      {Array.from({ length: v.rows }).map((_, r) => Array.from({ length: v.cols }).map((__, c) => {
+        if (!on.has(`${c},${r}`)) return null;
+        const X = x0 + c * sz, Y = y0 + r * sz, lines: string[] = [];
+        if (!on.has(`${c},${r - 1}`)) lines.push(`M ${X} ${Y} H ${X + sz}`);
+        if (!on.has(`${c},${r + 1}`)) lines.push(`M ${X} ${Y + sz} H ${X + sz}`);
+        if (!on.has(`${c - 1},${r}`)) lines.push(`M ${X} ${Y} V ${Y + sz}`);
+        if (!on.has(`${c + 1},${r}`)) lines.push(`M ${X + sz} ${Y} V ${Y + sz}`);
+        return <path key={`o${c},${r}`} d={lines.join(' ')} stroke={C.navy} strokeWidth={3.5} strokeLinecap="round" />;
+      }))}
+      {v.note && <T x={180} y={188} fontSize={15} fill={C.rose}>{v.note}</T>}
+    </>
+  );
+}
+
 const VIEWBOX: Record<string, string> = { numberline: '0 20 360 140', bar: '0 45 360 145', seq: '0 50 360 150', ratio: '0 30 360 160' };
 
 export function TestVisual({ visual }: { visual: Visual }) {
@@ -394,6 +539,11 @@ export function TestVisual({ visual }: { visual: Visual }) {
       case 'unit': return <Unit v={visual} />;
       case 'cube': return <Cube v={visual} />;
       case 'cyl': return <Cyl v={visual} />;
+      case 'groups': return <Groups v={visual} />;
+      case 'clock': return <ClockV v={visual} />;
+      case 'pattern': return <PatternV v={visual} />;
+      case 'blocks': return <BlocksV v={visual} />;
+      case 'cells': return <CellsV v={visual} />;
     }
   })();
   return (
