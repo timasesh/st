@@ -140,10 +140,14 @@ function scaleObj(o: Obj, ax: number, ay: number, sx: number, sy: number): Obj {
 // ---------- images ----------
 const imgCache = new Map<string, HTMLImageElement>();
 let onImgLoad: (() => void) | null = null;
+let imgVer = 0;
+/* границы объекта считаются один раз (объекты неизменяемы: при перемещении создаётся новый) */
+const bboxCache = new WeakMap<Obj, Box>();
+function bbox(o: Obj): Box { let b = bboxCache.get(o); if (!b) { b = bounds(o); bboxCache.set(o, b); } return b; }
 function getImg(src?: string): HTMLImageElement | null {
   if (!src || !src.startsWith('data:image/')) return null;
   let im = imgCache.get(src);
-  if (!im) { im = new Image(); im.onload = () => onImgLoad?.(); im.src = src; imgCache.set(src, im); }
+  if (!im) { im = new Image(); im.onload = () => { imgVer++; onImgLoad?.(); }; im.src = src; imgCache.set(src, im); }
   return im.complete && im.naturalWidth ? im : null;
 }
 async function prepareImage(file: File): Promise<{ src: string; w: number; h: number }> {
@@ -279,6 +283,8 @@ export default function StudyTaskBoard() {
   const spaceRef = useRef(false);
   const eraserEndRef = useRef(false);
   const drawQueued = useRef(false);
+  /* кэш статичной сцены (сетка + готовые объекты): при рисовании/наведении перерисовывается только живой штрих */
+  const sceneRef = useRef<{ cv: HTMLCanvasElement; key: string; objs: Obj[] | null } | null>(null);
   const st = useRef({ tool, color, width, fill, gridMode, penOnly, editor });
   st.current = { tool, color, width, fill, gridMode, penOnly, editor };
 
@@ -292,21 +298,44 @@ export default function StudyTaskBoard() {
     if (!cv || !ctx) return;
     const dpr = window.devicePixelRatio || 1;
     const { s, x: vx, y: vy } = viewRef.current;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width / dpr, cv.height / dpr);
     const W = cv.width / dpr, H = cv.height / dpr;
-    const { gridMode: gm } = st.current;
-    if (gm) {
-      let step = GRID * s; while (step < 14) step *= 2;
-      const ox = ((vx % step) + step) % step, oy = ((vy % step) + step) % step;
-      ctx.strokeStyle = '#dbe4f5'; ctx.fillStyle = '#b9c6e0'; ctx.lineWidth = 1;
-      if (gm === 1) { ctx.beginPath(); for (let x = ox; x < W; x += step) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, H); } for (let y = oy; y < H; y += step) { ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(W, Math.round(y) + 0.5); } ctx.stroke(); }
-      else for (let x = ox; x < W; x += step) for (let y = oy; y < H; y += step) ctx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
+    const objs = page().objs;
+    const prev = previewRef.current; const hid = hiddenRef.current;
+    let excl = '';
+    if ((prev && prev.size) || hid.size) { const ids: number[] = []; prev?.forEach((_, id) => ids.push(id)); hid.forEach((id) => ids.push(id)); excl = ids.sort((a, b) => a - b).join(','); }
+    const gm = st.current.gridMode;
+    const key = `${cv.width}x${cv.height}|${vx}|${vy}|${s}|${gm}|${curRef.current}|${imgVer}|${excl}`;
+    let scene = sceneRef.current;
+    if (!scene) { scene = { cv: document.createElement('canvas'), key: '', objs: null }; sceneRef.current = scene; }
+    if (scene.key !== key || scene.objs !== objs) {
+      if (scene.cv.width !== cv.width || scene.cv.height !== cv.height) { scene.cv.width = cv.width; scene.cv.height = cv.height; }
+      const sc = scene.cv.getContext('2d');
+      if (!sc) return;
+      sc.setTransform(dpr, 0, 0, dpr, 0, 0);
+      sc.fillStyle = '#ffffff'; sc.fillRect(0, 0, W, H);
+      if (gm) {
+        let step = GRID * s; while (step < 14) step *= 2;
+        const ox = ((vx % step) + step) % step, oy = ((vy % step) + step) % step;
+        sc.strokeStyle = '#dbe4f5'; sc.fillStyle = '#b9c6e0'; sc.lineWidth = 1;
+        if (gm === 1) { sc.beginPath(); for (let x = ox; x < W; x += step) { sc.moveTo(Math.round(x) + 0.5, 0); sc.lineTo(Math.round(x) + 0.5, H); } for (let y = oy; y < H; y += step) { sc.moveTo(0, Math.round(y) + 0.5); sc.lineTo(W, Math.round(y) + 0.5); } sc.stroke(); }
+        else for (let x = ox; x < W; x += step) for (let y = oy; y < H; y += step) sc.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
+      }
+      sc.save(); sc.translate(vx, vy); sc.scale(s, s);
+      const wx0 = -vx / s, wy0 = -vy / s, wx1 = (W - vx) / s, wy1 = (H - vy) / s;
+      for (const o of objs) {
+        if (hid.has(o.id) || prev?.has(o.id)) continue;
+        const b = bbox(o);
+        if (b[2] < wx0 || b[0] > wx1 || b[3] < wy0 || b[1] > wy1) continue; // вне экрана
+        drawObj(sc, o);
+      }
+      sc.restore();
+      scene.key = key; scene.objs = objs;
     }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(scene.cv, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.save(); ctx.translate(vx, vy); ctx.scale(s, s);
-    const prev = previewRef.current;
-    for (const o of page().objs) { if (hiddenRef.current.has(o.id)) continue; drawObj(ctx, prev?.get(o.id) || o); }
+    if (prev) prev.forEach((o, id) => { if (!hid.has(id)) drawObj(ctx, o); });
     if (liveRef.current) drawObj(ctx, liveRef.current);
     ctx.restore();
 
@@ -368,7 +397,7 @@ export default function StudyTaskBoard() {
       const arr = pagesRef.current.map((p) => p.objs);
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ pages: arr, cur: curRef.current })); }
       catch { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ pages: arr.map((l) => l.filter((o) => o.k !== 'img')), cur: curRef.current })); } catch { /* storage full or blocked */ } }
-    }, 500);
+    }, 1500);
   };
   const commit = (objs: Obj[]) => {
     const p = page();
@@ -555,8 +584,14 @@ export default function StudyTaskBoard() {
   };
   const eraseAt = (wx: number, wy: number, gone: Set<number>) => {
     const tol = Math.max(8, st.current.width * 2) / viewRef.current.s;
-    for (const o of page().objs) if (o.k !== 'img' && !gone.has(o.id) && hit(o, wx, wy, tol)) gone.add(o.id);
-    hiddenRef.current = new Set(gone);
+    let added = false;
+    for (const o of page().objs) {
+      if (o.k === 'img' || gone.has(o.id)) continue;
+      const b = bbox(o);
+      if (wx < b[0] - tol || wx > b[2] + tol || wy < b[1] - tol || wy > b[3] + tol) continue;
+      if (hit(o, wx, wy, tol)) { gone.add(o.id); added = true; }
+    }
+    if (added || hiddenRef.current.size !== gone.size) hiddenRef.current = new Set(gone);
   };
   const topHit = (wx: number, wy: number) => {
     const tol = 6 / viewRef.current.s; const list = page().objs;
@@ -639,7 +674,7 @@ export default function StudyTaskBoard() {
         if (Math.hypot(q.wx - last[0], q.wy - last[1]) * viewRef.current.s < 0.8) continue;
         pts.push([q.wx, q.wy, e.pointerType === 'pen' ? (ev.pressure || last[2]) : 0.5]);
       }
-      liveRef.current = { ...d.obj, pts: [...pts] };
+      liveRef.current = { ...d.obj };
     } else if (d.mode === 'shape') {
       let x2 = wx, y2 = wy; const o = d.obj; const dx = x2 - o.x1, dy = y2 - o.y1;
       if (e.shiftKey) {
