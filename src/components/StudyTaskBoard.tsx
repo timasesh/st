@@ -172,7 +172,8 @@ async function prepareImage(file: File): Promise<{ src: string; w: number; h: nu
 }
 
 // ---------- rendering ----------
-function pressureWidth(p: number) { return 0.35 + 1.3 * p; }
+// толщина не зависит от нажима: всегда та, что выбрана
+function pressureWidth(_p: number) { return 1; }
 function drawObj(ctx: CanvasRenderingContext2D, o: Obj) {
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = o.c; ctx.fillStyle = o.c; ctx.lineWidth = o.w;
@@ -182,7 +183,7 @@ function drawObj(ctx: CanvasRenderingContext2D, o: Obj) {
     if (p.length === 1) {
       ctx.beginPath(); ctx.arc(p[0][0], p[0][1], Math.max(0.6, (o.k === 'marker' ? o.w * 1.5 : o.w * pressureWidth(p[0][2]) / 2)), 0, Math.PI * 2); ctx.fill();
     } else if (p.length > 1) {
-      const varw = o.k === 'pen' && p.some((q) => q[2] !== p[0][2]);
+      const varw = false;
       if (!varw) {
         ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
         for (let i = 1; i < p.length - 1; i++) ctx.quadraticCurveTo(p[i][0], p[i][1], (p[i][0] + p[i + 1][0]) / 2, (p[i][1] + p[i + 1][1]) / 2);
@@ -273,6 +274,7 @@ export default function StudyTaskBoard() {
   const curRef = useRef(stored.current?.cur || 0);
   const viewRef = useRef<View>({ x: 60, y: 60, s: 1 });
   const selRef = useRef<number[]>([]);
+  const predRef = useRef<[number, number, number][]>([]);
   const dragRef = useRef<Drag | null>(null);
   const liveRef = useRef<Obj | null>(null);
   const previewRef = useRef<Map<number, Obj> | null>(null);
@@ -294,7 +296,7 @@ export default function StudyTaskBoard() {
   // ----- drawing -----
   const draw = useCallback(() => {
     drawQueued.current = false;
-    const cv = canvasRef.current; const ctx = cv?.getContext('2d');
+    const cv = canvasRef.current; const ctx = cv?.getContext('2d', { desynchronized: true } as CanvasRenderingContext2DSettings);
     if (!cv || !ctx) return;
     const dpr = window.devicePixelRatio || 1;
     const { s, x: vx, y: vy } = viewRef.current;
@@ -336,11 +338,11 @@ export default function StudyTaskBoard() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.save(); ctx.translate(vx, vy); ctx.scale(s, s);
     if (prev) prev.forEach((o, id) => { if (!hid.has(id)) drawObj(ctx, o); });
-    if (liveRef.current) drawObj(ctx, liveRef.current);
+    if (liveRef.current) drawObj(ctx, predRef.current.length && liveRef.current.pts ? { ...liveRef.current, pts: [...liveRef.current.pts, ...predRef.current] } : liveRef.current);
     ctx.restore();
 
     // selection overlay
-    const selected = page().objs.filter((o) => selRef.current.includes(o.id)).map((o) => previewRef.current?.get(o.id) || o);
+    const selected = !selRef.current.length ? [] : page().objs.filter((o) => selRef.current.includes(o.id)).map((o) => previewRef.current?.get(o.id) || o);
     const box = unionBox(selected);
     if (box && st.current.tool === 'select') {
       const [a, b, c, d] = [box[0] * s + vx, box[1] * s + vy, box[2] * s + vx, box[3] * s + vy];
@@ -618,7 +620,7 @@ export default function StudyTaskBoard() {
     let t: Tool = eraserEnd ? 'eraser' : st.current.tool;
     if (e.button === 1 || spaceRef.current || t === 'hand') { dragRef.current = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: viewRef.current.x, vy: viewRef.current.y }; return; }
     if (e.button !== 0 && !eraserEnd) return;
-    const p = e.pointerType === 'pen' ? (e.pressure || 0.5) : 0.5;
+    const p = 0.5;
     const { color: c, width: w, fill: f } = st.current;
     if (t === 'pen' || t === 'marker') {
       const obj: Obj = { id: nid(), k: t, c, w, fill: false, pts: [[wx, wy, p]], x1: wx, y1: wy, x2: wx, y2: wy };
@@ -671,10 +673,13 @@ export default function StudyTaskBoard() {
       const pts = d.obj.pts!;
       for (const ev of list) {
         const q = evPoint(ev); const last = pts[pts.length - 1];
-        if (Math.hypot(q.wx - last[0], q.wy - last[1]) * viewRef.current.s < 0.8) continue;
-        pts.push([q.wx, q.wy, e.pointerType === 'pen' ? (ev.pressure || last[2]) : 0.5]);
+        if (Math.hypot(q.wx - last[0], q.wy - last[1]) * viewRef.current.s < 0.3) continue;
+        pts.push([q.wx, q.wy, 0.5]);
       }
       liveRef.current = { ...d.obj };
+      // предсказанные точки (только для показа): линия идёт вплотную за пером
+      const pr = (e.nativeEvent as PointerEvent).getPredictedEvents?.() || [];
+      predRef.current = pr.slice(0, 3).map((ev) => { const q = evPoint(ev); return [q.wx, q.wy, 0.5] as [number, number, number]; });
     } else if (d.mode === 'shape') {
       let x2 = wx, y2 = wy; const o = d.obj; const dx = x2 - o.x1, dy = y2 - o.y1;
       if (e.shiftKey) {
@@ -703,7 +708,7 @@ export default function StudyTaskBoard() {
     const d = dragRef.current; dragRef.current = null;
     try { canvasRef.current?.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
     if (!d) return;
-    if (d.mode === 'draw') { const o = liveRef.current || d.obj; liveRef.current = null; commit([...page().objs, o]); }
+    if (d.mode === 'draw') { const o = liveRef.current || d.obj; liveRef.current = null; predRef.current = []; commit([...page().objs, o]); }
     else if (d.mode === 'shape') {
       const o = liveRef.current; liveRef.current = null;
       if (o && Math.hypot(o.x2 - o.x1, o.y2 - o.y1) * viewRef.current.s > 3) commit([...page().objs, o]); else requestDraw();
