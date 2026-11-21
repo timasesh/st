@@ -1257,7 +1257,7 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-white p-2 shadow-sm" role="tablist" aria-label="Страницы доски">
+      <div className={`${isFs ? "hidden" : "flex"} flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-white p-2 shadow-sm`} role="tablist" aria-label="Страницы доски">
         {pagesRef.current.map((_, i) => (
           <button key={i} type="button" role="tab" aria-selected={i === curRef.current} onClick={() => gotoPage(i)}
             className={`h-9 min-w-9 rounded-lg px-3 text-sm font-bold transition ${i === curRef.current ? 'bg-primary text-white shadow-sm' : 'border border-border bg-white text-muted hover:bg-primary-light'}`}>{i + 1}</button>
