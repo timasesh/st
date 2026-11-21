@@ -245,6 +245,7 @@ type Drag =
   | { mode: 'shape'; obj: Obj; shift: boolean }
   | { mode: 'erase'; gone: Set<number> }
   | { mode: 'laser' }
+  | { mode: 'pinch' }
   | { mode: 'move'; wx: number; wy: number; base: Obj[]; moved: boolean; sx: number; sy: number }
   | { mode: 'resize'; ax: number; ay: number; ox: number; oy: number; base: Obj[]; corner: number }
   | { mode: 'marquee'; wx: number; wy: number; additive: boolean };
@@ -263,7 +264,9 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
   const [gridMode, setGridMode] = useState<0 | 1 | 2>(1);
   const [penOnly, setPenOnly] = useState(false);
   const [help, setHelp] = useState(false);
-  const [isFs, setIsFs] = useState(false);
+  const [cssFs, setCssFs] = useState(false);
+  const isFs = cssFs;
+  const nativeFs = useRef(false);
   const [sel, setSelState] = useState<number[]>([]);
   const [editor, setEditor] = useState<{ id: number | null; x: number; y: number; text: string; fs: number; c: string } | null>(null);
 
@@ -293,6 +296,9 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
   const liveSent = useRef(0);
   const liveRaf = useRef(0);
   const lastCur = useRef(0);
+  const touchesRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ d0: number; s0: number; wx: number; wy: number } | null>(null);
+  const gestureRef = useRef(false);
   const userNames = useRef(new Map<string, string>());
   const dragRef = useRef<Drag | null>(null);
   const liveRef = useRef<Obj | null>(null);
@@ -689,7 +695,20 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
   };
   const zoomCenter = (f: number) => { const r = canvasRef.current?.getBoundingClientRect(); if (r) zoomAt(r.width / 2, r.height / 2, f); };
   const resetView = () => { viewRef.current = { x: 60, y: 60, s: 1 }; changed(); };
-  const toggleFullscreen = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void wrapRef.current?.requestFullscreen?.(); };
+  // полный экран: надёжный режим «поверх страницы» (работает и на iPhone), плюс системный полноэкранный, если браузер его даёт
+  const enterFs = () => {
+    setCssFs(true);
+    try {
+      const el = wrapRef.current as (HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void }) | null;
+      const r = el?.requestFullscreen ? el.requestFullscreen() : el?.webkitRequestFullscreen?.();
+      if (r && typeof (r as Promise<void>).then === 'function') (r as Promise<void>).then(() => { nativeFs.current = true; }).catch(() => undefined);
+    } catch { /* остаёмся в режиме поверх страницы */ }
+  };
+  const exitFs = () => {
+    nativeFs.current = false; setCssFs(false);
+    try { if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); } catch { /* ignore */ }
+  };
+  const toggleFullscreen = () => { if (cssFs) exitFs(); else enterFs(); };
   const exportPng = () => {
     const objs = page().objs; const box = unionBox(objs) || ([0, 0, 1200, 800] as Box);
     const pad = 64, sc = 2; const w = Math.ceil(box[2] - box[0] + pad * 2), h = Math.ceil(box[3] - box[1] + pad * 2);
@@ -778,7 +797,30 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
     return -1;
   };
 
+  // два пальца: масштаб и сдвиг листа; начатый первым пальцем штрих отменяется, линии не соединяются
+  const cancelStroke = () => {
+    const d = dragRef.current;
+    if (d && (d.mode === 'draw' || d.mode === 'shape')) endLive(d.obj.id);
+    liveRef.current = null; predRef.current = []; dragRef.current = null;
+    hiddenRef.current = new Set(); previewRef.current = null; marqueeRef.current = null;
+  };
+  const startPinch = () => {
+    const pts = (Array.from(touchesRef.current.values()) as { x: number; y: number }[]); if (pts.length < 2) return;
+    const r = canvasRef.current!.getBoundingClientRect(); const v = viewRef.current;
+    const cx = (pts[0].x + pts[1].x) / 2 - r.left, cy = (pts[0].y + pts[1].y) / 2 - r.top;
+    pinchRef.current = { d0: Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)), s0: v.s, wx: (cx - v.x) / v.s, wy: (cy - v.y) / v.s };
+    dragRef.current = { mode: 'pinch' };
+  };
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch') {
+      touchesRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touchesRef.current.size >= 2) {
+        if (dragRef.current?.mode !== 'pinch') { cancelStroke(); gestureRef.current = true; startPinch(); }
+        try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+        requestDraw(); return;
+      }
+      if (gestureRef.current) return;
+    }
     if (e.pointerType === 'touch' && st.current.penOnly) return;
     if (st.current.editor) { const el = document.getElementById('stb-editor') as HTMLTextAreaElement | null; finishEditor(el?.value || ''); }
     const cv = canvasRef.current!; cv.setPointerCapture(e.pointerId);
@@ -831,6 +873,18 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
   };
 
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch') {
+      if (touchesRef.current.has(e.pointerId)) touchesRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pc = pinchRef.current;
+      if (dragRef.current?.mode === 'pinch' && pc && touchesRef.current.size >= 2) {
+        const pts = (Array.from(touchesRef.current.values()) as { x: number; y: number }[]); const r = canvasRef.current!.getBoundingClientRect();
+        const cx = (pts[0].x + pts[1].x) / 2 - r.left, cy = (pts[0].y + pts[1].y) / 2 - r.top;
+        const ns = Math.max(0.15, Math.min(8, pc.s0 * Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) / pc.d0));
+        viewRef.current = { s: ns, x: cx - pc.wx * ns, y: cy - pc.wy * ns };
+        changed(); return;
+      }
+      if (gestureRef.current) return;
+    }
     const { sx, sy, wx, wy } = evPoint(e);
     hoverRef.current = { x: sx, y: sy, touch: e.pointerType === 'touch' };
     sendCursor(wx, wy);
@@ -876,6 +930,17 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
   };
 
   const onUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch') {
+      touchesRef.current.delete(e.pointerId);
+      if (dragRef.current?.mode === 'pinch') {
+        try { canvasRef.current?.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
+        if (touchesRef.current.size < 2) { dragRef.current = null; pinchRef.current = null; }
+        if (touchesRef.current.size === 0) gestureRef.current = false;
+        requestDraw(); return;
+      }
+      if (touchesRef.current.size === 0) gestureRef.current = false;
+      else if (gestureRef.current) return;
+    }
     const d = dragRef.current; dragRef.current = null;
     try { canvasRef.current?.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
     if (!d) return;
@@ -923,7 +988,7 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
       else { viewRef.current = { ...viewRef.current, x: viewRef.current.x - e.deltaX, y: viewRef.current.y - e.deltaY }; changed(); }
     };
     cv.addEventListener('wheel', wheel, { passive: false });
-    const fsc = () => { setIsFs(!!document.fullscreenElement); setTimeout(resize, 50); };
+    const fsc = () => { if (!document.fullscreenElement && nativeFs.current) { nativeFs.current = false; setCssFs(false); } setTimeout(resize, 50); };
     document.addEventListener('fullscreenchange', fsc);
     const onKeyUp = (e: KeyboardEvent) => { if (e.code === 'Space') spaceRef.current = false; };
     window.addEventListener('keyup', onKeyUp);
@@ -995,6 +1060,15 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
 
   useEffect(() => { wrapRef.current?.scrollIntoView({ block: 'start' }); }, []);
   useEffect(() => {
+    if (!cssFs) return;
+    const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !st.current.editor) exitFs(); };
+    window.addEventListener('keydown', k);
+    const t = window.setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', k); window.clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cssFs]);
+  useEffect(() => {
     if (shareToken) { connectRoom(shareToken, guestName || ''); return () => { collabRef.current?.close(); collabRef.current = null; }; }
     let saved: string | null = null;
     try { saved = localStorage.getItem(shareKey()); } catch { /* ignore */ }
@@ -1028,7 +1102,7 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
   const edView = editor ? viewRef.current : null;
 
   return (
-    <section ref={wrapRef} className={`flex flex-col gap-2 bg-bg ${isFs ? 'h-screen p-3' : ''}`} aria-label="Study Task board">
+    <section ref={wrapRef} className={`flex flex-col gap-2 bg-bg ${isFs ? 'fixed inset-0 z-[9999] p-2 sm:p-3' : ''}`} style={isFs ? { height: '100dvh', paddingTop: 'max(8px, env(safe-area-inset-top))' } : undefined} aria-label="Study Task board">
       <div className="rounded-2xl border border-border bg-white p-2 shadow-sm">
         <div className="flex flex-wrap items-center gap-1.5">
           {TOOLS.map(({ id, label, key, Icon }) => (
@@ -1129,6 +1203,7 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
         onDrop={(e) => { const fl = (Array.from(e.dataTransfer.files) as File[]).filter((f) => f.type.startsWith('image/')); if (!fl.length) return; e.preventDefault(); const q = evPoint(e); void insertImages(fl, { wx: q.wx, wy: q.wy }); }}>
         <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onPointerLeave={onLeave} onDoubleClick={onDouble}
           onContextMenu={(e) => e.preventDefault()} style={{ touchAction: 'none', cursor, display: 'block' }} aria-label="Белый лист" />
+        {isFs && <button type="button" onClick={exitFs} aria-label="Выйти из полноэкранного режима" title="Выйти из полноэкранного режима (Esc)" className="absolute right-3 top-3 z-20 grid h-12 w-12 place-items-center rounded-full bg-slate-900/85 text-white shadow-lg active:scale-95"><X className="h-6 w-6" /></button>}
         <img src="/static/ST.webp" alt="" aria-hidden="true" draggable={false} className="pointer-events-none absolute left-3 top-3 z-[5] h-9 w-9 select-none rounded-lg object-contain opacity-90" />
         {editor && edView && (
           <textarea id="stb-editor" autoFocus defaultValue={editor.text} onBlur={(e) => finishEditor(e.currentTarget.value)}
