@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useReducer, useRef, useState } from 'rea
 import {
   ArrowUpRight, ClipboardPaste, Copy, CopyPlus, Crosshair, Download, Eraser, Grid3x3, Hand, Highlighter, ImagePlus, Keyboard, Maximize2, Minimize2,
   Minus, MousePointer2, PaintBucket, PenLine, Plus, Redo2, Scissors, Share2, Square, Triangle, Circle, Trash2, Type, Undo2, Users, X, ZoomIn, ZoomOut,
+  ChevronDown,
 } from 'lucide-react';
 import { applyOps, diffObjs, diffToOp, invertDiff, isEmptyDiff, type BoardDiff } from '../shared/boardOps.js';
 import { BoardCollab, type CollabMsg, type CollabStatus, type CollabUser, type RoomPage } from './boardCollab';
@@ -266,6 +267,8 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
   const [help, setHelp] = useState(false);
   const [cssFs, setCssFs] = useState(false);
   const isFs = cssFs;
+  const [toolsOpen, setToolsOpen] = useState(false);
+  useEffect(() => { if (!cssFs) setToolsOpen(false); }, [cssFs]);
   const nativeFs = useRef(false);
   const [sel, setSelState] = useState<number[]>([]);
   const [editor, setEditor] = useState<{ id: number | null; x: number; y: number; text: string; fs: number; c: string } | null>(null);
@@ -1102,8 +1105,8 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
   const edView = editor ? viewRef.current : null;
 
   return (
-    <section ref={wrapRef} className={`flex flex-col gap-2 bg-bg ${isFs ? 'fixed inset-0 z-[9999] p-2 sm:p-3' : ''}`} style={isFs ? { height: '100dvh', paddingTop: 'max(8px, env(safe-area-inset-top))' } : undefined} aria-label="Study Task board">
-      <div className="rounded-2xl border border-border bg-white p-2 shadow-sm">
+    <section ref={wrapRef} className={`flex flex-col gap-2 bg-bg ${isFs ? 'fixed inset-0 z-[9999]' : ''}`} style={isFs ? { height: '100dvh' } : undefined} aria-label="Study Task board">
+      <div className={isFs ? (toolsOpen ? 'absolute inset-x-2 z-30 rounded-2xl border border-border bg-white p-2 shadow-2xl' : 'hidden') : 'rounded-2xl border border-border bg-white p-2 shadow-sm'} style={isFs ? { top: 'calc(max(8px, env(safe-area-inset-top)) + 52px)' } : undefined}>
         <div className="flex flex-wrap items-center gap-1.5">
           {TOOLS.map(({ id, label, key, Icon }) => (
             <button key={id} type="button" onClick={() => setTool(id)} title={`${label} (${key})`} aria-label={label} aria-pressed={tool === id}
@@ -1198,12 +1201,13 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
         </div>
       </div>
 
-      <div className={`relative overflow-hidden rounded-2xl border border-border bg-white shadow-sm ${isFs ? 'min-h-0 flex-1' : 'h-[max(560px,calc(100vh-200px))]'}`} ref={areaRef}
+      <div className={`relative overflow-hidden rounded-2xl border border-border bg-white shadow-sm ${isFs ? 'min-h-0 flex-1 !rounded-none !border-0' : 'h-[max(560px,calc(100vh-200px))]'}`} ref={areaRef}
         onDragOver={(e) => { if (Array.from(e.dataTransfer.types).includes('Files')) e.preventDefault(); }}
         onDrop={(e) => { const fl = (Array.from(e.dataTransfer.files) as File[]).filter((f) => f.type.startsWith('image/')); if (!fl.length) return; e.preventDefault(); const q = evPoint(e); void insertImages(fl, { wx: q.wx, wy: q.wy }); }}>
         <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onPointerLeave={onLeave} onDoubleClick={onDouble}
           onContextMenu={(e) => e.preventDefault()} style={{ touchAction: 'none', cursor, display: 'block' }} aria-label="Белый лист" />
-        {isFs && <button type="button" onClick={exitFs} aria-label="Выйти из полноэкранного режима" title="Выйти из полноэкранного режима (Esc)" className="absolute right-3 top-3 z-20 grid h-12 w-12 place-items-center rounded-full bg-slate-900/85 text-white shadow-lg active:scale-95"><X className="h-6 w-6" /></button>}
+        {isFs && <button type="button" onClick={() => setToolsOpen((v) => !v)} aria-label={toolsOpen ? 'Скрыть инструменты' : 'Показать инструменты'} aria-expanded={toolsOpen} className="absolute left-1/2 z-40 grid h-11 w-16 -translate-x-1/2 place-items-center rounded-full bg-slate-900/85 text-white shadow-lg active:scale-95" style={{ top: 'max(8px, env(safe-area-inset-top))' }}><ChevronDown className={`h-6 w-6 transition-transform ${toolsOpen ? 'rotate-180' : ''}`} /></button>}
+        {isFs && <button type="button" onClick={exitFs} aria-label="Выйти из полноэкранного режима" title="Выйти из полноэкранного режима (Esc)" className="absolute right-3 z-40 grid h-11 w-11 place-items-center rounded-full bg-slate-900/85 text-white shadow-lg active:scale-95" style={{ top: 'max(8px, env(safe-area-inset-top))' }}><X className="h-6 w-6" /></button>}
         <img src="/static/ST.webp" alt="" aria-hidden="true" draggable={false} className="pointer-events-none absolute left-3 top-3 z-[5] h-9 w-9 select-none rounded-lg object-contain opacity-90" />
         {editor && edView && (
           <textarea id="stb-editor" autoFocus defaultValue={editor.text} onBlur={(e) => finishEditor(e.currentTarget.value)}
