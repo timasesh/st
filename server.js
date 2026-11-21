@@ -21,6 +21,7 @@ import { createSkyQuestRecords } from './server/skyquest-records.js';
 import { createCrm } from './server/crm/index.js';
 import { registerCareer } from './server/career.js';
 import { HttpError } from './server/crm/util.js';
+import { createBoardRooms } from './server/board-rooms.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(ROOT, '.env.local') });
@@ -2251,6 +2252,8 @@ async function boardDelete(teacherId, id) {
   await fs.writeFile(temporaryPath, JSON.stringify(all), { mode: 0o600 });
   await fs.rename(temporaryPath, teacherBoardsPath);
 }
+const boardRooms = createBoardRooms({ get supabase() { return supabase; }, readJsonFileOr, writeJsonAtomically, dataDir, getUserSession });
+boardRooms.register(app);
 app.get('/api/teacher/boards', async (req, res) => {
   const teacher = boardTeacher(req, res); if (!teacher) return;
   try { return res.json({ boards: await boardsList(teacher.id) }); }
@@ -3137,11 +3140,13 @@ async function start() {
     app.use(vite.middlewares);
   }
 
-  app.listen(port, '0.0.0.0', () => {
+  const httpServer = app.listen(port, '0.0.0.0', () => {
     console.log(`StudyTask server listening on http://localhost:${port}`);
     void identity.setupWebhook();
     void notifier.start();
   });
+  boardRooms.attach(httpServer);
+  process.once('SIGTERM', () => { void boardRooms.flushAll().finally(() => process.exit(0)); });
 }
 
 start().catch((error) => {

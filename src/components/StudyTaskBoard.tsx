@@ -1,14 +1,21 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   ArrowUpRight, ClipboardPaste, Copy, CopyPlus, Crosshair, Download, Eraser, Grid3x3, Hand, Highlighter, ImagePlus, Keyboard, Maximize2, Minimize2,
-  Minus, MousePointer2, PaintBucket, PenLine, Plus, Redo2, Scissors, Square, Triangle, Circle, Trash2, Type, Undo2, X, ZoomIn, ZoomOut,
+  Minus, MousePointer2, PaintBucket, PenLine, Plus, Redo2, Scissors, Share2, Square, Triangle, Circle, Trash2, Type, Undo2, Users, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
+import { applyOps, diffObjs, diffToOp, invertDiff, isEmptyDiff, type BoardDiff } from '../shared/boardOps.js';
+import { BoardCollab, type CollabMsg, type CollabStatus, type CollabUser, type RoomPage } from './boardCollab';
 
 type Tool = 'select' | 'pen' | 'marker' | 'eraser' | 'line' | 'arrow' | 'rect' | 'tri' | 'ell' | 'text' | 'laser' | 'hand';
 type Kind = 'pen' | 'marker' | 'line' | 'arrow' | 'rect' | 'tri' | 'ell' | 'text' | 'img';
 type Pt = [number, number, number];
 interface Obj { id: number; k: Kind; c: string; w: number; fill: boolean; pts?: Pt[]; x1: number; y1: number; x2: number; y2: number; text?: string; fs?: number; src?: string }
-interface Page { objs: Obj[]; undo: Obj[][]; redo: Obj[][] }
+type Diff = BoardDiff<Obj>;
+interface Page { id: string; objs: Obj[]; undo: Diff[]; redo: Diff[] }
+const newPageId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+const mkPage = (objs: Obj[] = [], id: string = newPageId()): Page => ({ id, objs, undo: [], redo: [] });
+const CURSOR_COLORS = ['#e5484d', '#16a34a', '#8b5cf6', '#f59e0b', '#0ea5e9', '#db2777', '#0d9488'];
+const cursorColor = (id: string) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return CURSOR_COLORS[h % CURSOR_COLORS.length]; };
 interface View { x: number; y: number; s: number }
 type Box = [number, number, number, number];
 
@@ -242,7 +249,8 @@ type Drag =
   | { mode: 'resize'; ax: number; ay: number; ox: number; oy: number; base: Obj[]; corner: number }
   | { mode: 'marquee'; wx: number; wy: number; additive: boolean };
 
-export default function StudyTaskBoard() {
+export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?: string; guestName?: string } = {}) {
+  const guest = !!shareToken;
   const wrapRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -259,8 +267,8 @@ export default function StudyTaskBoard() {
   const [sel, setSelState] = useState<number[]>([]);
   const [editor, setEditor] = useState<{ id: number | null; x: number; y: number; text: string; fs: number; c: string } | null>(null);
 
-  const stored = useRef(savedPages());
-  const boardIdRef = useRef<string | null>((() => { try { return localStorage.getItem(STORAGE_KEY + '-id'); } catch { return null; } })());
+  const stored = useRef(shareToken ? null : savedPages());
+  const boardIdRef = useRef<string | null>(shareToken ? null : (() => { try { return localStorage.getItem(STORAGE_KEY + '-id'); } catch { return null; } })());
   const [boards, setBoards] = useState<SavedBoard[]>([]);
   const [boardsOpen, setBoardsOpen] = useState(false);
   const [boardsLoading, setBoardsLoading] = useState(false);
@@ -270,11 +278,22 @@ export default function StudyTaskBoard() {
   const [boardMsg, setBoardMsg] = useState('');
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   
-  const pagesRef = useRef<Page[]>((stored.current?.pages || [[]]).map((objs) => ({ objs, undo: [], redo: [] })));
+  const pagesRef = useRef<Page[]>((stored.current?.pages || [[]]).map((objs) => mkPage(objs)));
   const curRef = useRef(stored.current?.cur || 0);
   const viewRef = useRef<View>({ x: 60, y: 60, s: 1 });
   const selRef = useRef<number[]>([]);
   const predRef = useRef<[number, number, number][]>([]);
+  const collabRef = useRef<BoardCollab<Obj> | null>(null);
+  const [shareState, setShareState] = useState<{ token: string; status: CollabStatus; users: CollabUser[] } | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareErr, setShareErr] = useState('');
+  const remoteLive = useRef(new Map<string, Obj & { pg: string; t: number }>());
+  const cursors = useRef(new Map<string, { x: number; y: number; pg: string; name: string; t: number }>());
+  const liveSent = useRef(0);
+  const liveRaf = useRef(0);
+  const lastCur = useRef(0);
+  const userNames = useRef(new Map<string, string>());
   const dragRef = useRef<Drag | null>(null);
   const liveRef = useRef<Obj | null>(null);
   const previewRef = useRef<Map<number, Obj> | null>(null);
@@ -338,6 +357,7 @@ export default function StudyTaskBoard() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.save(); ctx.translate(vx, vy); ctx.scale(s, s);
     if (prev) prev.forEach((o, id) => { if (!hid.has(id)) drawObj(ctx, o); });
+    if (remoteLive.current.size) { const pgId = page().id; remoteLive.current.forEach((o) => { if (o.pg === pgId) drawObj(ctx, o); }); }
     if (liveRef.current) drawObj(ctx, predRef.current.length && liveRef.current.pts ? { ...liveRef.current, pts: [...liveRef.current.pts, ...predRef.current] } : liveRef.current);
     ctx.restore();
 
@@ -376,6 +396,19 @@ export default function StudyTaskBoard() {
       ctx.restore();
       requestDraw();
     }
+    // курсоры других участников
+    if (cursors.current.size) {
+      const nowT = performance.now(), pgId = page().id;
+      cursors.current.forEach((cu, id) => {
+        if (cu.pg !== pgId || nowT - cu.t > 8000) return;
+        const x = cu.x * s + vx, y = cu.y * s + vy; if (x < -40 || y < -40 || x > W + 40 || y > H + 40) return;
+        const col = cursorColor(id);
+        ctx.save(); ctx.fillStyle = col; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 3, y + 17); ctx.lineTo(x + 7.5, y + 12.5); ctx.lineTo(x + 14, y + 12); ctx.closePath(); ctx.stroke(); ctx.fill();
+        if (cu.name) { ctx.font = '600 12px system-ui, sans-serif'; const tw = ctx.measureText(cu.name).width; ctx.beginPath(); ctx.roundRect(x + 12, y + 16, tw + 12, 20, 6); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(cu.name, x + 18, y + 30); }
+        ctx.restore();
+      });
+    }
     // cursor preview
     const hv = hoverRef.current;
     if (hv && !hv.touch) {
@@ -394,6 +427,7 @@ export default function StudyTaskBoard() {
   const changed = () => { bump(); requestDraw(); };
   const save = useRef<number | undefined>(undefined);
   const scheduleSave = () => {
+    if (guest) return;
     window.clearTimeout(save.current);
     save.current = window.setTimeout(() => {
       const arr = pagesRef.current.map((p) => p.objs);
@@ -401,28 +435,161 @@ export default function StudyTaskBoard() {
       catch { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ pages: arr.map((l) => l.filter((o) => o.k !== 'img')), cur: curRef.current })); } catch { /* storage full or blocked */ } }
     }, 1500);
   };
+  const sendDiff = (pageId: string, d: Diff) => {
+    const c = collabRef.current; if (!c) return;
+    const op = diffToOp<Obj>(d);
+    if (!op.add!.length && !op.del!.length && !op.upd!.length) return;
+    c.send({ t: 'ops', pg: pageId, ...op }, true);
+  };
   const commit = (objs: Obj[]) => {
     const p = page();
-    p.undo.push(p.objs); if (p.undo.length > HIST) p.undo.shift();
-    p.redo = []; p.objs = objs;
+    const d = diffObjs<Obj>(p.objs, objs);
+    if (!isEmptyDiff(d)) { p.undo.push(d); if (p.undo.length > HIST) p.undo.shift(); p.redo = []; sendDiff(p.id, d); }
+    p.objs = objs;
     previewRef.current = null; hiddenRef.current = new Set();
     const ids = new Set(objs.map((o) => o.id));
     setSel(selRef.current.filter((id) => ids.has(id)));
     scheduleSave(); changed();
   };
+  // отмена и возврат работают с изменениями, а не со снимками: чужие правки при этом не затрагиваются
   const undo = () => {
-    const p = page(); const prev = p.undo.pop(); if (!prev) return;
-    p.redo.push(p.objs); p.objs = prev; afterHistory();
+    const p = page(); const d = p.undo.pop(); if (!d) return;
+    const inv = invertDiff<Obj>(d); p.objs = applyOps<Obj>(p.objs, diffToOp<Obj>(inv)); p.redo.push(d); sendDiff(p.id, inv); afterHistory();
   };
   const redo = () => {
-    const p = page(); const next = p.redo.pop(); if (!next) return;
-    p.undo.push(p.objs); p.objs = next; afterHistory();
+    const p = page(); const d = p.redo.pop(); if (!d) return;
+    p.objs = applyOps<Obj>(p.objs, diffToOp<Obj>(d)); p.undo.push(d); sendDiff(p.id, d); afterHistory();
   };
   const afterHistory = () => {
     const ids = new Set(page().objs.map((o) => o.id));
     setSel(selRef.current.filter((id) => ids.has(id)));
     previewRef.current = null; hiddenRef.current = new Set(); scheduleSave(); changed();
   };
+  // ----- общий доступ по ссылке -----
+  const shareKey = () => `studytask-board-share:${boardIdRef.current || 'draft'}`;
+  const shareLink = (token: string) => `${window.location.origin}/board/${token}`;
+  const adoptPages = (pages: RoomPage<Obj>[]) => {
+    const curId = pagesRef.current[curRef.current]?.id;
+    pagesRef.current = pages.length ? pages.map((rp) => mkPage(rp.objs, rp.id)) : [mkPage()];
+    const i = pagesRef.current.findIndex((x) => x.id === curId);
+    curRef.current = i >= 0 ? i : 0;
+    setSel([]); previewRef.current = null; hiddenRef.current = new Set(); remoteLive.current.clear(); changed();
+  };
+  const onRemote = (m: CollabMsg) => {
+    const from = String(m.from || '');
+    if (m.t === 'ops') {
+      const pg = pagesRef.current.find((x) => x.id === m.pg); if (!pg) return;
+      const op = { add: (m.add as { o: Obj; i: number }[]) || [], del: (m.del as number[]) || [], upd: (m.upd as Obj[]) || [] };
+      pg.objs = applyOps<Obj>(pg.objs, op);
+      for (const a of op.add) remoteLive.current.delete(`${from}:${a.o.id}`);
+      for (const u of op.upd) remoteLive.current.delete(`${from}:${u.id}`);
+      const ids = new Set(page().objs.map((o) => o.id));
+      if (selRef.current.some((id) => !ids.has(id))) setSel(selRef.current.filter((id) => ids.has(id)));
+      changed();
+    } else if (m.t === 'page+') {
+      const id = String(m.id); if (pagesRef.current.some((x) => x.id === id)) return;
+      const curId = page().id; const at = Math.min(Math.max(0, Number(m.at) || 0), pagesRef.current.length);
+      pagesRef.current.splice(at, 0, mkPage([], id)); curRef.current = pagesRef.current.findIndex((x) => x.id === curId); changed();
+    } else if (m.t === 'page-') {
+      const idx = pagesRef.current.findIndex((x) => x.id === m.id); if (idx < 0 || pagesRef.current.length < 2) return;
+      const curId = page().id; pagesRef.current.splice(idx, 1);
+      const ci = pagesRef.current.findIndex((x) => x.id === curId);
+      if (ci >= 0) curRef.current = ci; else { curRef.current = Math.min(idx, pagesRef.current.length - 1); setSel([]); previewRef.current = null; }
+      changed();
+    } else if (m.t === 'live') {
+      const key = `${from}:${m.id}`; let lo = remoteLive.current.get(key);
+      if (!lo) { lo = { id: Number(m.id), k: m.k as Kind, c: String(m.c), w: Number(m.w) || 4, fill: !!m.fill, pts: [], x1: 0, y1: 0, x2: 0, y2: 0, pg: String(m.pg), t: 0 }; remoteLive.current.set(key, lo); }
+      if (Array.isArray(m.pts)) {
+        if (Number(m.s) === 0) lo.pts = [];
+        if (Number(m.s) === (lo.pts?.length || 0)) for (const q of m.pts as number[][]) lo.pts!.push([q[0], q[1], 0.5]);
+      } else { lo.x1 = Number(m.x1); lo.y1 = Number(m.y1); lo.x2 = Number(m.x2); lo.y2 = Number(m.y2); }
+      lo.pg = String(m.pg); lo.t = performance.now(); requestDraw();
+    } else if (m.t === 'liveEnd') { remoteLive.current.delete(`${from}:${m.id}`); requestDraw(); }
+    else if (m.t === 'cur') {
+      if (m.pg === null || m.pg === undefined) cursors.current.delete(from);
+      else { const prev = cursors.current.get(from); cursors.current.set(from, { x: Number(m.x), y: Number(m.y), pg: String(m.pg), name: prev?.name || userNames.current.get(from) || '', t: performance.now() }); }
+      requestDraw();
+    } else if (m.t === 'leave') {
+      cursors.current.delete(from); remoteLive.current.forEach((_, k) => { if (k.startsWith(`${from}:`)) remoteLive.current.delete(k); }); requestDraw();
+    } else if (m.t === 'users') {
+      const users = (m.users as CollabUser[]) || [];
+      userNames.current = new Map(users.map((u) => [u.id, u.name]));
+      cursors.current.forEach((cu, id) => { const u = users.find((x) => x.id === id); if (u) cu.name = u.name; });
+      setShareState((prev) => (prev ? { ...prev, users } : prev)); requestDraw();
+    }
+  };
+  const disconnectShare = () => {
+    collabRef.current?.close(); collabRef.current = null;
+    remoteLive.current.clear(); cursors.current.clear(); setShareState(null); setShareOpen(false);
+  };
+  const connectRoom = (token: string, name: string) => {
+    collabRef.current?.close();
+    remoteLive.current.clear(); cursors.current.clear();
+    setShareState({ token, status: 'connecting', users: [] });
+    const c = new BoardCollab<Obj>(token, name, {
+      onHello: (h, queued) => {
+        adoptPages(h.pages); userNames.current = new Map(h.users.map((u) => [u.id, u.name]));
+        setShareState((prev) => (prev ? { ...prev, users: h.users } : prev));
+        for (const q of queued) { onRemote(q); c.send(q); }
+      },
+      onMsg: onRemote,
+      onStatus: (status) => {
+        setShareState((prev) => (prev ? { ...prev, status } : prev));
+        if (status === 'gone' && !guest) { try { localStorage.removeItem(shareKey()); } catch { /* ignore */ } collabRef.current = null; setShareState(null); flash('Ссылка отключена'); }
+      },
+    });
+    collabRef.current = c;
+  };
+  const flushLive = () => {
+    const c = collabRef.current; const o = liveRef.current; if (!c || !o) return;
+    const pg = page().id;
+    if (o.pts) {
+      const from = liveSent.current;
+      if (o.pts.length > from) {
+        c.send({ t: 'live', pg, id: o.id, k: o.k, c: o.c, w: o.w, s: from, pts: o.pts.slice(from).map((q) => [Math.round(q[0] * 10) / 10, Math.round(q[1] * 10) / 10]) });
+        liveSent.current = o.pts.length;
+      }
+    } else c.send({ t: 'live', pg, id: o.id, k: o.k, c: o.c, w: o.w, fill: o.fill, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2 });
+  };
+  const scheduleLive = () => {
+    if (!collabRef.current || liveRaf.current) return;
+    liveRaf.current = requestAnimationFrame(() => { liveRaf.current = 0; flushLive(); });
+  };
+  const endLive = (id: number) => {
+    if (liveRaf.current) { cancelAnimationFrame(liveRaf.current); liveRaf.current = 0; }
+    collabRef.current?.send({ t: 'liveEnd', id }); liveSent.current = 0;
+  };
+  const sendCursor = (wx: number, wy: number) => {
+    const c = collabRef.current; if (!c) return;
+    const n = performance.now(); if (n - lastCur.current < 40) return; lastCur.current = n;
+    c.send({ t: 'cur', pg: page().id, x: Math.round(wx), y: Math.round(wy) });
+  };
+  const startShare = async () => {
+    setShareBusy(true); setShareErr('');
+    try {
+      const d = await apiFetch<{ token: string }>('/api/teacher/board-share', { method: 'POST', body: JSON.stringify({ boardId: boardIdRef.current, pages: pagesRef.current.map((x) => ({ id: x.id, objs: x.objs })) }) });
+      try { localStorage.setItem(shareKey(), d.token); } catch { /* ignore */ }
+      connectRoom(d.token, 'Преподаватель');
+    } catch (e) { setShareErr((e as Error).message); }
+    finally { setShareBusy(false); }
+  };
+  const stopShare = async () => {
+    if (!shareState || !window.confirm('Отключить ссылку? Все, кто сейчас на доске, потеряют доступ, а ссылка перестанет работать.')) return;
+    try { await apiFetch(`/api/teacher/board-share/${shareState.token}`, { method: 'DELETE' }); } catch (e) { setShareErr((e as Error).message); return; }
+    try { localStorage.removeItem(shareKey()); } catch { /* ignore */ }
+    disconnectShare(); flash('Ссылка отключена');
+  };
+  const copyLink = async () => {
+    if (!shareState) return;
+    try { await navigator.clipboard.writeText(shareLink(shareState.token)); flash('Ссылка скопирована'); }
+    catch { window.prompt('Скопируйте ссылку:', shareLink(shareState.token)); }
+  };
+  const bindShare = (boardId: string) => {
+    if (!shareState) return;
+    try { localStorage.setItem(`studytask-board-share:${boardId}`, shareState.token); } catch { /* ignore */ }
+    void apiFetch(`/api/teacher/board-share/${shareState.token}/bind`, { method: 'POST', body: JSON.stringify({ boardId }) }).catch(() => undefined);
+  };
+
   const selectedObjs = () => page().objs.filter((o) => selRef.current.includes(o.id));
   const copySel = () => { const s = selectedObjs(); if (!s.length) return false; clipboard = JSON.parse(JSON.stringify(s)); pasteCount = 0; try { void navigator.clipboard?.writeText('studytask-board').catch(() => undefined); } catch { /* ignore */ } return true; };
   const deleteSel = () => { if (!selRef.current.length) return; const ids = new Set(selRef.current); commit(page().objs.filter((o) => !ids.has(o.id))); setSel([]); };
@@ -471,7 +638,7 @@ export default function StudyTaskBoard() {
     setBusy(true);
     try {
       await apiFetch(`/api/teacher/boards/${id}`, { method: 'PUT', body: JSON.stringify({ name, pages: pagesRef.current.map((p) => p.objs) }) });
-      setBoardId(id); setBoardName(name); flash(boardIdRef.current === id && !asNew && boards.some((b) => b.id === id) ? 'Доска обновлена' : 'Доска сохранена'); scheduleSave();
+      setBoardId(id); bindShare(id); setBoardName(name); flash(boardIdRef.current === id && !asNew && boards.some((b) => b.id === id) ? 'Доска обновлена' : 'Доска сохранена'); scheduleSave();
       if (boardsOpen) void refreshBoards(); else setBoards((list) => (list.some((b) => b.id === id) ? list.map((b) => (b.id === id ? { ...b, name, updated: Date.now(), pageCount: pagesRef.current.length } : b)) : [{ id, name, updated: Date.now(), pageCount: pagesRef.current.length }, ...list]));
     } catch (e) { flash(`Не сохранено: ${(e as Error).message}`); }
     finally { setBusy(false); }
@@ -480,14 +647,15 @@ export default function StudyTaskBoard() {
     setBusy(true);
     try {
       const d = await apiFetch<{ board: { id: string; name: string; pages: Obj[][] } }>(`/api/teacher/boards/${b.id}`);
-      pagesRef.current = (d.board.pages.length ? d.board.pages : [[]]).map((objs) => ({ objs, undo: [], redo: [] }));
+      disconnectShare();
+      pagesRef.current = (d.board.pages.length ? d.board.pages : [[]]).map((objs) => mkPage(objs));
       curRef.current = 0; setBoardId(b.id); setBoardName(d.board.name); setSel([]); previewRef.current = null; viewRef.current = { x: 60, y: 60, s: 1 };
       scheduleSave(); setBoardsOpen(false); changed();
     } catch (e) { setBoardsErr((e as Error).message); }
     finally { setBusy(false); }
   };
   const newBoard = () => {
-    pagesRef.current = [{ objs: [], undo: [], redo: [] }]; curRef.current = 0; setBoardId(null); setBoardName(''); setSel([]); previewRef.current = null;
+    disconnectShare(); pagesRef.current = [mkPage()]; curRef.current = 0; setBoardId(null); setBoardName(''); setSel([]); previewRef.current = null;
     scheduleSave(); setBoardsOpen(false); changed();
   };
   const renameBoard = async (id: string, name: string) => {
@@ -508,10 +676,11 @@ export default function StudyTaskBoard() {
   };
   const clearPage = () => { if (page().objs.length) { commit([]); setSel([]); } };
   const gotoPage = (i: number) => { if (i < 0 || i >= pagesRef.current.length) return; curRef.current = i; setSel([]); previewRef.current = null; scheduleSave(); changed(); };
-  const addPage = () => { pagesRef.current.push({ objs: [], undo: [], redo: [] }); gotoPage(pagesRef.current.length - 1); };
+  const addPage = () => { const pg = mkPage(); pagesRef.current.push(pg); collabRef.current?.send({ t: 'page+', id: pg.id, at: pagesRef.current.length - 1 }, true); gotoPage(pagesRef.current.length - 1); };
   const removePage = () => {
     if (pagesRef.current.length < 2) { clearPage(); return; }
     if (!window.confirm('Удалить страницу вместе с содержимым? Отменить это действие нельзя.')) return;
+    collabRef.current?.send({ t: 'page-', id: page().id }, true);
     pagesRef.current.splice(curRef.current, 1); curRef.current = Math.min(curRef.current, pagesRef.current.length - 1); setSel([]); scheduleSave(); changed();
   };
   const zoomAt = (sx: number, sy: number, f: number) => {
@@ -624,12 +793,12 @@ export default function StudyTaskBoard() {
     const { color: c, width: w, fill: f } = st.current;
     if (t === 'pen' || t === 'marker') {
       const obj: Obj = { id: nid(), k: t, c, w, fill: false, pts: [[wx, wy, p]], x1: wx, y1: wy, x2: wx, y2: wy };
-      liveRef.current = obj; dragRef.current = { mode: 'draw', obj };
+      liveRef.current = obj; dragRef.current = { mode: 'draw', obj }; liveSent.current = 0; scheduleLive();
     } else if (t === 'eraser') {
       const gone = new Set<number>(); eraseAt(wx, wy, gone); dragRef.current = { mode: 'erase', gone };
     } else if (t === 'line' || t === 'arrow' || t === 'rect' || t === 'tri' || t === 'ell') {
       const obj: Obj = { id: nid(), k: t, c, w, fill: f, x1: wx, y1: wy, x2: wx, y2: wy };
-      liveRef.current = obj; dragRef.current = { mode: 'shape', obj, shift: false };
+      liveRef.current = obj; dragRef.current = { mode: 'shape', obj, shift: false }; scheduleLive();
     } else if (t === 'text') {
       const h = topHit(wx, wy); if (h && h.k === 'text') openEditor(wx, wy, h); else openEditor(wx, wy);
       e.preventDefault();
@@ -664,6 +833,7 @@ export default function StudyTaskBoard() {
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const { sx, sy, wx, wy } = evPoint(e);
     hoverRef.current = { x: sx, y: sy, touch: e.pointerType === 'touch' };
+    sendCursor(wx, wy);
     const d = dragRef.current;
     if (!d) { requestDraw(); return; }
     if (d.mode === 'pan') { viewRef.current = { ...viewRef.current, x: d.vx + e.clientX - d.sx, y: d.vy + e.clientY - d.sy }; }
@@ -679,6 +849,7 @@ export default function StudyTaskBoard() {
       liveRef.current = { ...d.obj };
       // предсказанные точки (только для показа): линия идёт вплотную за пером
       const pr = (e.nativeEvent as PointerEvent).getPredictedEvents?.() || [];
+      scheduleLive();
       predRef.current = pr.slice(0, 3).map((ev) => { const q = evPoint(ev); return [q.wx, q.wy, 0.5] as [number, number, number]; });
     } else if (d.mode === 'shape') {
       let x2 = wx, y2 = wy; const o = d.obj; const dx = x2 - o.x1, dy = y2 - o.y1;
@@ -686,7 +857,7 @@ export default function StudyTaskBoard() {
         if (o.k === 'line' || o.k === 'arrow') { const ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 12)) * (Math.PI / 12); const len = Math.hypot(dx, dy); x2 = o.x1 + len * Math.cos(ang); y2 = o.y1 + len * Math.sin(ang); }
         else { const m = Math.max(Math.abs(dx), Math.abs(dy)); x2 = o.x1 + Math.sign(dx || 1) * m; y2 = o.y1 + Math.sign(dy || 1) * m; }
       }
-      liveRef.current = { ...o, x2, y2 };
+      liveRef.current = { ...o, x2, y2 }; scheduleLive();
     } else if (d.mode === 'erase') { eraseAt(wx, wy, d.gone); }
     else if (d.mode === 'laser') { laserRef.current.push({ x: sx, y: sy, t: performance.now() }); }
     else if (d.mode === 'move') {
@@ -708,10 +879,11 @@ export default function StudyTaskBoard() {
     const d = dragRef.current; dragRef.current = null;
     try { canvasRef.current?.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
     if (!d) return;
-    if (d.mode === 'draw') { const o = liveRef.current || d.obj; liveRef.current = null; predRef.current = []; commit([...page().objs, o]); }
+    if (d.mode === 'draw') { const o = liveRef.current || d.obj; flushLive(); liveRef.current = null; predRef.current = []; commit([...page().objs, o]); endLive(o.id); }
     else if (d.mode === 'shape') {
       const o = liveRef.current; liveRef.current = null;
       if (o && Math.hypot(o.x2 - o.x1, o.y2 - o.y1) * viewRef.current.s > 3) commit([...page().objs, o]); else requestDraw();
+      endLive(d.obj.id);
     } else if (d.mode === 'erase') {
       if (d.gone.size) commit(page().objs.filter((o) => !d.gone.has(o.id))); else { hiddenRef.current = new Set(); requestDraw(); }
     } else if (d.mode === 'move' || d.mode === 'resize') {
@@ -727,7 +899,7 @@ export default function StudyTaskBoard() {
     } else requestDraw();
     eraserEndRef.current = false;
   };
-  const onLeave = () => { hoverRef.current = null; requestDraw(); };
+  const onLeave = () => { hoverRef.current = null; collabRef.current?.send({ t: 'cur', pg: null }); requestDraw(); };
   const onDouble = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (st.current.tool !== 'select') return;
     const { wx, wy } = evPoint(e); const h = topHit(wx, wy);
@@ -823,6 +995,27 @@ export default function StudyTaskBoard() {
 
   useEffect(() => { wrapRef.current?.scrollIntoView({ block: 'start' }); }, []);
   useEffect(() => {
+    if (shareToken) { connectRoom(shareToken, guestName || ''); return () => { collabRef.current?.close(); collabRef.current = null; }; }
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(shareKey()); } catch { /* ignore */ }
+    if (saved) connectRoom(saved, 'Преподаватель');
+    return () => { collabRef.current?.close(); collabRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareToken]);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const now = performance.now(); let ch = cursors.current.size > 0;
+      remoteLive.current.forEach((o, k) => { if (now - o.t > 10000) { remoteLive.current.delete(k); ch = true; } });
+      if (ch) requestDraw();
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [requestDraw]);
+  useEffect(() => {
+    if (guest || !guestName || !collabRef.current) return;
+    collabRef.current.send({ t: 'name', name: guestName });
+  }, [guestName, guest]);
+  useEffect(() => {
+    if (guest) return;
     void refreshBoards().then((list) => { const id = boardIdRef.current; const found = list?.find((b) => b.id === id); if (found) setBoardName(found.name); else if (list && id) setBoardId(null); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -856,6 +1049,44 @@ export default function StudyTaskBoard() {
           <span className="mx-1 h-7 w-px bg-border" />
           <button type="button" className={`${btn} gap-1.5 text-xs font-bold`} onClick={() => fileRef.current?.click()} title="Вставить картинку или схему (также Ctrl+V для скриншота или перетащить файл на лист)" aria-label="Вставить картинку"><ImagePlus className="h-4 w-4" /><span className="hidden sm:inline">Картинка</span></button>
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const fl = (Array.from(e.target.files || []) as File[]); e.target.value = ''; void insertImages(fl); }} />
+          <div className="relative ml-auto flex items-center gap-1.5">
+            {guest ? (
+              <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-primary-light px-3 text-xs font-bold text-primary" title="Вы работаете на общей доске вместе с остальными">
+                <Users className="h-4 w-4" />{shareState?.status === 'gone' ? 'Доступ закрыт' : shareState?.status === 'open' ? `На доске: ${shareState.users.length}` : 'Подключение…'}
+              </span>
+            ) : (
+              <>
+                <button type="button" onClick={() => setShareOpen((v) => !v)} aria-expanded={shareOpen} title="Поделиться доской по ссылке"
+                  className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-bold transition ${shareState ? 'border-primary bg-primary text-white' : 'border-border bg-white text-primary hover:bg-primary-light'}`}>
+                  <Share2 className="h-4 w-4" />{shareState ? `Доска открыта · ${Math.max(1, shareState.users.length)}` : 'Поделиться'}
+                </button>
+                {shareOpen && (
+                  <div className="absolute right-0 top-full z-30 mt-2 w-[min(92vw,380px)] rounded-2xl border border-border bg-white p-4 text-sm shadow-2xl">
+                    <div className="mb-2 flex items-center justify-between"><strong className="font-display">Общий доступ к доске</strong><button type="button" onClick={() => setShareOpen(false)} aria-label="Закрыть" className="rounded p-1 text-muted hover:bg-primary-light"><X className="h-4 w-4" /></button></div>
+                    {!shareState ? (
+                      <>
+                        <p className="text-xs text-muted">Создайте ссылку: все, кто её откроет, смогут рисовать на этой доске вместе с вами со всеми инструментами. Изменения видны сразу.</p>
+                        <button type="button" onClick={() => void startShare()} disabled={shareBusy} className="mt-3 w-full rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary-dark disabled:opacity-60">{shareBusy ? 'Создаём ссылку…' : 'Создать ссылку'}</button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex gap-1.5">
+                          <input readOnly value={shareLink(shareState.token)} onFocus={(e) => e.currentTarget.select()} className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-2 text-xs outline-none" aria-label="Ссылка на доску" />
+                          <button type="button" onClick={() => void copyLink()} className="rounded-lg bg-primary px-3 text-xs font-bold text-white hover:bg-primary-dark">Копировать</button>
+                        </div>
+                        <p className="mt-2 text-xs text-muted">{shareState.status === 'open' ? 'Подключено' : shareState.status === 'reconnecting' ? 'Связь потеряна, переподключаемся…' : 'Подключение…'} · любой, у кого есть ссылка, может рисовать.</p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {shareState.users.map((u) => <span key={u.id} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold"><span className="h-2 w-2 rounded-full" style={{ background: cursorColor(u.id) }} />{u.name}</span>)}
+                        </div>
+                        <button type="button" onClick={() => void stopShare()} className="mt-3 w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">Отключить ссылку</button>
+                      </>
+                    )}
+                    {shareErr && <p role="alert" className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs font-semibold text-rose-700">{shareErr}</p>}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2">
           <div className="flex items-center gap-1" role="group" aria-label="Цвет">
@@ -954,10 +1185,10 @@ export default function StudyTaskBoard() {
         ))}
         <button type="button" onClick={addPage} className={btn} title="Новый чистый лист" aria-label="Добавить страницу"><Plus className="h-4 w-4" /></button>
         <span className="ml-auto flex flex-wrap items-center gap-2">
-          <input value={boardName} onChange={(e) => setBoardName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void saveBoard(); }} placeholder="Название доски" maxLength={60} aria-label="Название доски" className="h-9 w-44 rounded-lg border border-border px-3 text-sm outline-none focus:border-primary" />
-          <button type="button" onClick={() => void saveBoard()} disabled={busy} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary-dark" title="Сохранить в список досок">{boardIdRef.current ? 'Обновить' : 'Сохранить'}</button>
-          {boardIdRef.current && <button type="button" onClick={() => void saveBoard(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted hover:bg-primary-light" title="Сохранить копией под этим названием">Как новую</button>}
-          <button type="button" onClick={() => { const next = !boardsOpen; setBoardsOpen(next); if (next) void refreshBoards(); }} aria-expanded={boardsOpen} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-primary hover:bg-primary-light">Мои доски{boards.length ? ` (${boards.length})` : ''}</button>
+          {!guest && <input value={boardName} onChange={(e) => setBoardName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void saveBoard(); }} placeholder="Название доски" maxLength={60} aria-label="Название доски" className="h-9 w-44 rounded-lg border border-border px-3 text-sm outline-none focus:border-primary" />}
+          {!guest && <button type="button" onClick={() => void saveBoard()} disabled={busy} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary-dark" title="Сохранить в список досок">{boardIdRef.current ? 'Обновить' : 'Сохранить'}</button>}
+          {!guest && boardIdRef.current && <button type="button" onClick={() => void saveBoard(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted hover:bg-primary-light" title="Сохранить копией под этим названием">Как новую</button>}
+          {!guest && <button type="button" onClick={() => { const next = !boardsOpen; setBoardsOpen(next); if (next) void refreshBoards(); }} aria-expanded={boardsOpen} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-primary hover:bg-primary-light">Мои доски{boards.length ? ` (${boards.length})` : ''}</button>}
           {boardMsg && <span role="status" className="text-xs font-bold text-emerald-600">{boardMsg}</span>}
           <button type="button" onClick={clearPage} disabled={!p.objs.length} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted hover:bg-primary-light disabled:opacity-40" title="Очистить страницу (можно отменить Ctrl+Z)">Очистить страницу</button>
           <button type="button" onClick={removePage} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">Удалить страницу</button>
