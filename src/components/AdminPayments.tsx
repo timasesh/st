@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, CircleDollarSign, Gauge, Pencil, Plus, RotateCcw, Search, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
+import ProfitHistoryModal from './ProfitHistoryModal';
+import { AlertTriangle, BarChart3, CalendarDays, CircleDollarSign, Gauge, Pencil, Plus, RotateCcw, Search, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
 
 export type PayStudent = { id: string; firstName: string; lastName: string; studentClass?: string; status?: 'active' | 'withdrawn'; teacher?: { firstName: string; lastName: string } | null };
 export type PayLesson = { id: string; kind?: 'block'; studentId?: string; teacherId: string; day: number; hour: number };
@@ -98,6 +99,7 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
   const [search, setSearch] = useState('');
   const [onlyDue, setOnlyDue] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [profitOpen, setProfitOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formStudent, setFormStudent] = useState('');
   const [formDate, setFormDate] = useState('');
@@ -293,7 +295,10 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
       <section className="admin-card rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div><h2 className="font-display text-lg font-extrabold">Баланс занятий учеников</h2><p className="text-sm text-muted">Занятия списываются по расписанию, начиная с даты первой оплаты; если занятие отменили или перенесли, поправьте «Проведено» карандашом. Осталось ≤ {SOON_LESSONS} занятий или хватит меньше чем на {SOON_DAYS} дней — «Скоро оплата».</p></div>
+          <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setProfitOpen(true)} className="flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-sm font-bold text-primary transition hover:bg-primary-light"><BarChart3 className="h-4 w-4" />История прибыли</button>
           <button type="button" onClick={() => openForm()} className="clay-btn flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark"><Plus className="h-4 w-4" />Добавить оплату</button>
+          </div>
         </div>
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-56 max-w-md flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Поиск по имени ученика" className={`${fieldClass} pl-9`} /></div>
@@ -345,6 +350,8 @@ export default function AdminPayments({ students, lessons, teachersCount }: { st
           </div>
         ) : <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted">{loading ? 'Загружаем…' : 'Оплат пока нет. Нажмите «Добавить оплату».'}</p>}
       </section>
+
+      {profitOpen && <ProfitHistoryModal payments={payments} today={nowInAlmaty().today} onClose={() => setProfitOpen(false)} />}
 
       {formOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormOpen(false); }}>
