@@ -149,7 +149,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               </button>
 
               <a
-                href={whatsappUrl('Здравствуйте! Хочу записаться на пробный урок математики.')}
+                href={whatsappUrl('Здравствуйте! Хочу записаться на пробный урок.')}
                 target="_blank"
                 rel="noreferrer"
                 className="glass px-7 py-4 rounded-2xl font-bold text-lg sm:text-xl whitespace-nowrap text-navy hover:bg-[#fff6d6] transition-colors w-full sm:w-auto cursor-pointer flex items-center justify-center gap-2 min-h-14"

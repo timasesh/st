@@ -4,6 +4,7 @@ import '../tg/tg.css';
 import PhoneInput from '../shared/PhoneInput';
 import { fullPhone, phoneProblem, prefixOk } from '../shared/phone';
 import { getAttribution } from '../shared/attribution';
+import { SUBJECT_LIST } from '../shared/subjects';
 
 /* Страница записи на пробный урок (study-task.kz/trial) — в стиле мини-приложения StudyTask («доска»). */
 const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
@@ -13,6 +14,7 @@ export default function TrialBooking() {
   const [studentName, setStudentName] = useState('');
   const [parentName, setParentName] = useState('');
   const [grade, setGrade] = useState<number | null>(null);
+  const [subject, setSubject] = useState<string>('math');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -28,7 +30,7 @@ export default function TrialBooking() {
     if (problem) { if (prefixOk(phone)) setError(problem); return; }
     setBusy(true);
     try {
-      const response = await fetch('/api/public/trial-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentName, parentName, grade, phone: fullPhone(phone), attribution: getAttribution() }) });
+      const response = await fetch('/api/public/trial-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentName, parentName, grade, subject, phone: fullPhone(phone), attribution: getAttribution() }) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || 'Не удалось отправить заявку.');
       setDone(true);
@@ -41,7 +43,7 @@ export default function TrialBooking() {
     <div className="app" style={{ paddingBottom: 40 }}>
       <div className="row" style={{ margin: '6px 0 14px' }}>
         <img src="/static/ST.webp" alt="StudyTask" width={46} height={46} style={{ borderRadius: 12, border: '2.5px solid var(--navy)' }} />
-        <div className="grow"><h3>StudyTask</h3><p className="muted small">математика 1–11 классы · Алматы</p></div>
+        <div className="grow"><h3>StudyTask</h3><p className="muted small">математика, физика, информатика, программирование · Алматы</p></div>
       </div>
 
       {done ? (
@@ -63,6 +65,9 @@ export default function TrialBooking() {
           <div className="card stack">
             <label className="field"><span>Имя и фамилия ученика</span><input className="input" autoComplete="name" maxLength={80} value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Например, Алия Серикова" required /></label>
             <label className="field"><span>Имя родителя</span><input className="input" autoComplete="off" maxLength={80} value={parentName} onChange={(e) => setParentName(e.target.value)} placeholder="Например, Мадина" required /></label>
+            <div className="field"><span>Предмет</span>
+              <div className="seg" role="radiogroup" aria-label="Предмет" style={{ gridAutoFlow: 'row', gridTemplateColumns: 'repeat(2, 1fr)' }}>{SUBJECT_LIST.map((item) => <button key={item.id} type="button" role="radio" aria-checked={subject === item.id} className={subject === item.id ? 'on' : ''} onClick={() => setSubject(item.id)}>{item.name}</button>)}</div>
+            </div>
             <div className="field"><span>Класс</span>
               <div className="seg" role="radiogroup" aria-label="Класс" style={{ gridAutoFlow: 'row', gridTemplateColumns: 'repeat(6, 1fr)' }}>{GRADES.map((g) => <button key={g} type="button" role="radio" aria-checked={grade === g} className={grade === g ? 'on' : ''} onClick={() => setGrade(g)}>{g}</button>)}</div>
             </div>

@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 import { validateHomeworkUpload, writeJsonAtomically } from './server/homework-files.js';
 import { mergeStudentProgress } from './server/student-progress.js';
 import { createStudentSubjects } from './server/student-subjects.js';
+import { SUBJECT_LIST } from './src/shared/subjects.js';
 import { earnedStars, levelFor } from './src/shared/levels.js';
 import { isActiveTrial, activeTrialsInSlot } from './src/shared/trials.js';
 // Уровень считается на клиентах по earnedStars (баланс + потрачено на призы), см. src/shared/levels.js.
@@ -1493,6 +1494,7 @@ app.post('/api/public/trial-requests', async (req, res) => {
     const parentName = clean(req.body?.parentName, 80);
     const phone = cleanLeadPhone(req.body?.phone);
     const grade = Number(req.body?.grade);
+    const subject = SUBJECT_LIST.find((item) => item.id === req.body?.subject) || SUBJECT_LIST[0];
     if (studentName.length < 3 || !studentName.includes(' ')) return res.status(400).json({ error: 'Укажите имя и фамилию ученика.' });
     if (parentName.length < 2) return res.status(400).json({ error: 'Укажите имя родителя.' });
     if (!Number.isInteger(grade) || grade < 1 || grade > 11) return res.status(400).json({ error: 'Выберите класс от 1 до 11.' });
@@ -1503,10 +1505,10 @@ app.post('/api/public/trial-requests', async (req, res) => {
     if (recent.length >= 5) return res.status(429).json({ error: 'Слишком много заявок. Попробуйте позже или напишите нам в WhatsApp.' });
     recent.push(Date.now());
     trialRequestLog.set(ip, recent);
-    const request = { id: crypto.randomUUID(), studentName, parentName, grade, phone, status: 'new', createdAt: new Date().toISOString() };
+    const request = { id: crypto.randomUUID(), studentName, parentName, grade, subject: subject.id, phone, status: 'new', createdAt: new Date().toISOString() };
     await mutateTrialRequests((items) => { items.push(request); });
-    void crm.captureForm({ kind: 'trial', legacyId: request.id, studentName, parentName, phone, grade, attribution: req.body?.attribution, createdAt: request.createdAt }).catch((error) => console.warn('CRM trial request:', error.message));
-    const msg = `🎯 <b>Новая запись на пробный урок</b>\n\n👤 Ученик: <b>${tgEsc(studentName)}</b>\n🎓 Класс: ${grade}\n👪 Родитель: ${tgEsc(parentName)}\n📞 +${tgEsc(phone)}`;
+    void crm.captureForm({ kind: 'trial', legacyId: request.id, studentName, parentName, phone, grade, topic: subject.name, attribution: req.body?.attribution, createdAt: request.createdAt }).catch((error) => console.warn('CRM trial request:', error.message));
+    const msg = `🎯 <b>Новая запись на пробный урок</b>\n\n👤 Ученик: <b>${tgEsc(studentName)}</b>\n🎓 Класс: ${grade}\n📚 Предмет: ${tgEsc(subject.name)}\n👪 Родитель: ${tgEsc(parentName)}\n📞 +${tgEsc(phone)}`;
     void identity.notifyAdmins(msg).catch((error) => console.warn('notify trial request:', error.message));
     return res.status(201).json({ ok: true });
   } catch (error) {

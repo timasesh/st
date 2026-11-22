@@ -20,7 +20,7 @@ export default function ContactForm() {
                 Напишите — ответим
               </h2>
               <p className="text-muted">
-                Расскажем про расписание, геймификацию и тарифы по математике для 1–11 классов.
+                Расскажем про расписание, геймификацию и тарифы по математике, физике, информатике и программированию.
                 Обычно отвечаем в WhatsApp за пару минут.
               </p>
             </div>
@@ -62,7 +62,7 @@ export default function ContactForm() {
                 Напишите нам в один клик
               </h3>
               <p className="text-muted text-sm">
-                Подберём время для одного бесплатного пробного урока математики на 60 минут.
+                Подберём время для одного бесплатного пробного урока на 60 минут: математика, физика, информатика или программирование.
               </p>
             </div>
 
@@ -96,7 +96,7 @@ export default function ContactForm() {
             </div>
 
             <a
-              href={whatsappUrl('Здравствуйте! Меня интересуют уроки математики в центре StudyTask')}
+              href={whatsappUrl('Здравствуйте! Меня интересуют уроки в центре StudyTask')}
               target="_blank"
               rel="noreferrer"
               className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-[1.25rem] font-display font-bold text-base transition-all flex items-center justify-center gap-2 cursor-pointer min-h-12 focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-400/40"

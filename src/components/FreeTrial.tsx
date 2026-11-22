@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Gift, BookOpen, Award, CheckCircle, ArrowRight, Heart } from 'lucide-react';
 import { TRIAL_GRADE_OPTIONS, whatsappUrl } from '../constants';
+import { SUBJECT_LIST } from '../shared/subjects';
 
 interface FreeTrialProps {
   onUnlockDiagnosticAchievement: () => void;
@@ -12,6 +13,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
     parentName: '',
     studentName: '',
     studentClass: '5 класс',
+    subject: 'math',
     phone: '',
   });
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -23,7 +25,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
 
     setLoading(true);
     const message = [
-      'Здравствуйте! Хочу записаться на пробный урок математики.',
+      `Здравствуйте! Хочу записаться на пробный урок: ${SUBJECT_LIST.find((x) => x.id === formData.subject)?.name || 'математика'}.`,
       `Родитель: ${formData.parentName}`,
       `Ученик: ${formData.studentName}`,
       `Класс: ${formData.studentClass}`,
@@ -58,7 +60,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                 </h3>
 
                 <p className="opacity-90 leading-relaxed text-base">
-                  Один урок математики на 60 минут: живое занятие, квиз и звёзды. Без оплаты и без обязательств.
+                  Один урок на 60 минут по выбранному предмету: живое занятие, квиз и звёзды. Без оплаты и без обязательств.
                 </p>
 
                 <div className="space-y-4 pt-2">
@@ -69,7 +71,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                     <div>
                       <h4 className="font-display font-bold text-base">1 пробный урок</h4>
                       <p className="opacity-80 text-xs mt-0.5">
-                        60 минут с преподавателем. Математика, 1–11 классы, онлайн.
+                        60 минут с преподавателем. Математика, физика, информатика или программирование, онлайн.
                       </p>
                     </div>
                   </div>
@@ -148,6 +150,12 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                         </div>
 
                         <div className="space-y-1.5">
+                          <span className="block text-sm font-bold text-foreground">Предмет</span>
+                          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Предмет">
+                            {SUBJECT_LIST.map((item) => <button key={item.id} type="button" role="radio" aria-checked={formData.subject === item.id} onClick={() => setFormData({ ...formData, subject: item.id })} className={`rounded-xl border-2 px-3.5 py-2 text-sm font-bold transition-colors ${formData.subject === item.id ? 'border-primary bg-primary text-white' : 'border-border bg-primary-light text-foreground hover:border-primary/60'}`}>{item.name}</button>)}
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
                           <label htmlFor="studentClass" className="block text-sm font-bold text-foreground">
                             Класс
                           </label>
@@ -182,7 +190,7 @@ export default function FreeTrial({ onUnlockDiagnosticAchievement }: FreeTrialPr
                         />
                       </div>
 
-                      <p className="text-xs text-muted">Предмет: математика. Набор открыт для 1–11 классов.</p>
+                      <p className="text-xs text-muted">Математика (алгебра и геометрия) — 1–11 классы. По физике, информатике и программированию подберём уровень на пробном уроке.</p>
 
                       <button
                         type="submit"
