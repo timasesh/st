@@ -118,7 +118,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
                 <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 animate-ping" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
               </span>
-              Математика, 1–11 классы: набор открыт
+              Математика, физика, IT: набор открыт
             </motion.div>
 
             <Headline />
@@ -129,7 +129,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
               transition={{ duration: 0.6, delay: 0.5 }}
               className="text-navy text-xl sm:text-2xl leading-[1.5] max-w-2xl mx-auto lg:mx-0"
             >
-              Живые уроки математики для 1–11 классов онлайн. После каждого занятия квиз,
+              Живые уроки онлайн: математика (алгебра и геометрия) для 1–11 классов, физика, информатика и программирование. После каждого занятия квиз,
               за него звёзды, а звёзды поднимают в рейтинге. Первый пробный урок бесплатно.
             </motion.p>
 

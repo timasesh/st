@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { validateHomeworkUpload, writeJsonAtomically } from './server/homework-files.js';
 import { mergeStudentProgress } from './server/student-progress.js';
+import { createStudentSubjects } from './server/student-subjects.js';
 import { earnedStars, levelFor } from './src/shared/levels.js';
 import { isActiveTrial, activeTrialsInSlot } from './src/shared/trials.js';
 // Уровень считается на клиентах по earnedStars (баланс + потрачено на призы), см. src/shared/levels.js.
@@ -1113,6 +1114,7 @@ app.get('/api/admin/accounts', requireAdmin, async (_req, res) => {
   try {
     await refreshAccounts();
     await identity.ensureAll();
+    await studentSubjects.load();
     res.json((await getVisibleRosterAccounts()).map(adminAccount));
   } catch (error) { res.status(503).json({ error: error.message || 'Не удалось загрузить аккаунты.' }); }
 });
@@ -1845,6 +1847,7 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
     salt: salt.toString('base64'), passwordHash: passwordHash.toString('base64'), createdAt: new Date().toISOString(),
   };
   await writeAccounts([...accounts, account]);
+  if (role === 'student') await studentSubjects.set(account.id, Array.isArray(req.body?.subjects) ? req.body.subjects : []);
   await accountAccess.remember(account.id, password);
   if (role === 'student' || role === 'parent') await identity.ensureStid(account.id);
   await recordAdminAuditSafely(req.adminSession.sub, 'Создан аккаунт', `${role}: ${account.firstName} ${account.lastName}`);
@@ -1903,6 +1906,7 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
     return account;
   });
   await writeAccounts(nextAccounts);
+  if (current.role === 'student') { await studentSubjects.load(); if (Array.isArray(req.body?.subjects)) await studentSubjects.set(current.id, req.body.subjects); }
   if (typeof password === 'string' && password.length) await accountAccess.remember(updated.id, password);
   await recordAdminAuditSafely(req.adminSession.sub, 'Изменён аккаунт', `${current.role}: ${updated.firstName} ${updated.lastName}`);
   return res.json({ account: adminAccount(updated) });
@@ -3097,7 +3101,8 @@ createSkyQuestRecords({
   getSecret: () => sessionSecret, readBalances: readSkyQuestProgress, recordScore: recordSkyQuestScore,
 }).register(app);
 createSchoolSprint({ getSupabase: () => supabase, dataDir, getAccounts: () => accounts, refreshAccounts, getUserSession }).register(app);
-const adminAccount = (account) => account.role === 'student' || account.role === 'parent' ? { ...publicAccount(account), stid: identity.stidOf(account.id), telegramLinked: identity.isLinked(account.id) } : publicAccount(account);
+const studentSubjects = createStudentSubjects({ getSupabase: () => supabase, readJsonFileOr, writeJsonAtomically, dataDir });
+const adminAccount = (account) => account.role === 'student' || account.role === 'parent' ? { ...publicAccount(account), stid: identity.stidOf(account.id), telegramLinked: identity.isLinked(account.id), ...(account.role === 'student' ? { subjects: studentSubjects.get(account.id) } : {}) } : publicAccount(account);
 
 async function start() {
   await initializeAuth();

@@ -3,6 +3,7 @@ import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 const InteractivePlatform = lazy(() => import('./components/InteractivePlatform'));
 const Features = lazy(() => import('./components/Features'));
+const Subjects = lazy(() => import('./components/Subjects'));
 const HowItWorks = lazy(() => import('./components/HowItWorks'));
 const Pricing = lazy(() => import('./components/Pricing'));
 const FreeTrial = lazy(() => import('./components/FreeTrial'));
@@ -292,6 +293,9 @@ export default function App() {
 
         {belowFoldReady ? (
         <Suspense fallback={<div className="min-h-[100vh]" aria-hidden="true" />}>
+        {/* Subjects: math (algebra, geometry), physics, informatics, programming */}
+        <Subjects />
+
         {/* Live Interactive Gamification Cockpit */}
         <InteractivePlatform
           stars={stars}
