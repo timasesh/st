@@ -519,6 +519,14 @@ export function createCrm(deps) {
       res.json(await core.getMessages(req.params.id, { before, limit: Math.min(Number(req.query.limit) || 80, 200) }));
     }));
     r.post('/conversations/:id/messages', wrap(async (req, res) => res.status(201).json(await sendMessage(req.params.id, req.body?.text, actorOf(req)))));
+    r.post('/conversations/read-all', wrap(async (req, res) => res.json(await core.exclusive(async () => {
+      const channel = String(req.body?.channel || '');
+      const changed = [];
+      for (const conv of core.maps.conv.values()) {
+        if (conv.unread && (!channel || conv.channel === channel)) { conv.unread = 0; await core.put('conv', conv); changed.push(core.view('conv', conv)); }
+      }
+      return { convs: changed };
+    }))));
     r.post('/conversations/:id/read', wrap(async (req, res) => res.json(await core.exclusive(async () => {
       const conv = core.maps.conv.get(req.params.id);
       if (!conv) throw err(404, 'Диалог не найден.');

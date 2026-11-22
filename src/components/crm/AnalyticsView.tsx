@@ -28,7 +28,7 @@ export function AnalyticsView() {
   }, [groupBy, days, toast]);
 
   const max = data ? Math.max(1, ...data.series.map((s) => s.leads)) : 1;
-  const pct = (n: number) => `${Math.round(n * 100)}%`;
+  const pct = (n: number) => { const v = n * 100; return `${Number.isInteger(Math.round(v * 10) / 10) ? Math.round(v) : (Math.round(v * 10) / 10).toString().replace('.', ',')}%`; };
   const total: AnalyticsRow | undefined = data?.total;
 
   return (

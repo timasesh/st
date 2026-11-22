@@ -139,6 +139,10 @@ export function InboxView() {
     try { upsertConv(await crmApi<Conversation>(`/conversations/${id}/read`, { method: 'POST', body: {} })); } catch { /* не критично */ }
   }, [upsertConv]);
 
+  const readAll = useCallback(async () => {
+    try { const r = await crmApi<{ convs: Conversation[] }>('/conversations/read-all', { method: 'POST', body: { channel } }); r.convs.forEach(upsertConv); } catch (reason) { toast((reason as Error).message, 'bad'); }
+  }, [channel, upsertConv, toast]);
+
   useEffect(() => {
     if (!selectedId) { setMessages([]); return undefined; }
     let alive = true;
@@ -237,6 +241,7 @@ export function InboxView() {
             <div className="crm-conv-head">
               <div className="crm-row" style={{ justifyContent: 'space-between' }}>
                 <h3>Диалоги</h3>
+                {totalUnread > 0 && <button type="button" className="crm-btn sm" onClick={() => void readAll()} title="Отметить все диалоги этого канала прочитанными">Прочитать все</button>}
                 <div className="crm-seg" role="group" aria-label="Фильтр">
                   <button type="button" aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>Все</button>
                   <button type="button" aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>Новые{totalUnread > 0 ? ` · ${totalUnread}` : ''}</button>

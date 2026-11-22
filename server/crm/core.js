@@ -456,7 +456,7 @@ export async function createCrmCore({ kv, emit = () => {} }) {
     const series = [];
     const start = new Date(Math.max(fromMs || Date.now() - 29 * 86400000, Date.now() - 119 * 86400000));
     for (let t = start.getTime(); t <= toMs && series.length < 120; t += 86400000) { const d = dayKey(new Date(t).toISOString()); if (!series.length || series[series.length - 1].day !== d) series.push({ day: d, leads: days.get(d) || 0 }); }
-    const withRate = (r) => ({ ...r, conversion: r.leads ? Math.round((r.paid / r.leads) * 1000) / 10 : 0 });
+    const withRate = (r) => ({ ...r, conversion: r.leads ? Math.min(1, Math.round((r.paid / r.leads) * 1000) / 1000) : 0 });
     return {
       groupBy, total: withRate(total), series,
       rows: [...rows.entries()].map(([key, r]) => ({ key, ...withRate(r) })).sort((a, b) => b.leads - a.leads),

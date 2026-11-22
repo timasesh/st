@@ -904,10 +904,7 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
         pts.push([q.wx, q.wy, 0.5]);
       }
       liveRef.current = { ...d.obj };
-      // предсказанные точки (только для показа): линия идёт вплотную за пером
-      const pr = (e.nativeEvent as PointerEvent).getPredictedEvents?.() || [];
       scheduleLive();
-      predRef.current = pr.slice(0, 3).map((ev) => { const q = evPoint(ev); return [q.wx, q.wy, 0.5] as [number, number, number]; });
     } else if (d.mode === 'shape') {
       let x2 = wx, y2 = wy; const o = d.obj; const dx = x2 - o.x1, dy = y2 - o.y1;
       if (e.shiftKey) {
