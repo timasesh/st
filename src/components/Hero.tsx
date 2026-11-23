@@ -198,7 +198,7 @@ export default function Hero({ onBookTrial, stars }: HeroProps) {
                 <div className="absolute -inset-10 -z-10 hero-glow" aria-hidden />
                 <LoopVideo
                   name="hero-loop"
-                  alt="Как проходит обучение в StudyTask: урок, квиз, звёзды и приз"
+                  alt="Как проходит обучение в StudyTask: урок, квиз, звёзды и рейтинг"
                   className="rounded-[1.2rem]"
                 />
               </motion.div>

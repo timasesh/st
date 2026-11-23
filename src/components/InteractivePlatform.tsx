@@ -15,14 +15,12 @@ import {
   CheckCircle2,
   Sparkles,
   Trophy,
-  ShoppingBag,
   Star,
   Zap,
   Play,
   Check,
   X,
   RefreshCw,
-  Gift,
   ArrowRight,
   Paperclip,
   BookOpen,
@@ -34,11 +32,10 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { SUBJECTS } from '../data';
 import { Subject } from '../types';
-import { KIT_1, KIT_PRICE } from './GiftKit';
 import { GRADE_OPTIONS, whatsappUrl } from '../constants';
 import FlappyBirdGame from './FlappyBirdGame';
+import SchoolSprintGame from './SchoolSprintGame';
 
-type KitItem = (typeof KIT_1)[number];
 
 // Map icon names to Lucide icons
 const IconMap: Record<string, React.ComponentType<any>> = {
@@ -57,20 +54,17 @@ const IconMap: Record<string, React.ComponentType<any>> = {
   CheckCircle2,
   Sparkles,
   Trophy,
-  ShoppingBag,
 };
 
 interface InteractivePlatformProps {
   stars: number;
   xp: number;
   level: number;
-  claimedPrizes: string[];
   unlockedAchievements: string[];
   userName: string;
   userClass: string;
   onAddRewards: (starsAdded: number, xpAdded: number) => void;
   onUnlockAchievement: (id: string) => void;
-  onClaimPrize: (id: string, cost: number) => void;
   onChangeUserName: (name: string) => void;
   onChangeUserClass: (userClass: string) => void;
   onResetProgress: () => void;
@@ -80,18 +74,17 @@ export default function InteractivePlatform({
   stars,
   xp,
   level,
-  claimedPrizes,
   unlockedAchievements,
   userName,
   userClass,
   onAddRewards,
   onUnlockAchievement,
-  onClaimPrize,
   onChangeUserName,
   onChangeUserClass,
   onResetProgress,
 }: InteractivePlatformProps) {
-  const [activeTab, setActiveTab] = useState<'game' | 'quizzes' | 'shop'>('game');
+  const [activeTab, setActiveTab] = useState<'game' | 'quizzes'>('game');
+  const [gameKind, setGameKind] = useState<'sky' | 'sprint'>('sky');
   const [selectedSubject, setSelectedSubject] = useState<Subject>(SUBJECTS[0]);
   
   // Quiz state
@@ -104,9 +97,6 @@ export default function InteractivePlatform({
   const [quizResultStars, setQuizResultStars] = useState(0);
   const [quizResultXp, setQuizResultXp] = useState(0);
   const [errorStreak, setErrorStreak] = useState(0);
-
-  // Shop state
-  const [justPurchased, setJustPurchased] = useState<string | null>(null);
 
   // Homework modal
   const [showHomeworkModal, setShowHomeworkModal] = useState(false);
@@ -179,14 +169,6 @@ export default function InteractivePlatform({
         onUnlockAchievement('ach-nerd'); // Perfect score
       }
     }
-  };
-
-  // Buy Item in Shop
-  const handleBuyItem = (prize: KitItem) => {
-    if (stars < prize.stars) return;
-    onClaimPrize(prize.id, prize.stars);
-    onUnlockAchievement('ach-shopper'); // Unlock shooper achievement
-    setJustPurchased(prize.name);
   };
 
   // Save Name
@@ -304,7 +286,7 @@ export default function InteractivePlatform({
                   }`}
                 >
                   <Gamepad2 className="w-4.5 h-4.5" />
-                  <span>Sky Quest</span>
+                  <span>Игры</span>
                   <span className="ml-auto bg-white/25 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide">
                     NEW
                   </span>
@@ -329,24 +311,6 @@ export default function InteractivePlatform({
                   )}
                 </button>
 
-                <button
-                  onClick={() => {
-                    setQuizActive(false);
-                    setQuizCompleted(false);
-                    setActiveTab('shop');
-                  }}
-                  className={`flex items-center space-x-3 w-full px-4 py-3 rounded-xl font-semibold text-sm transition-all text-left ${
-                    activeTab === 'shop'
-                      ? 'bg-primary text-white shadow-md shadow-blue-900/30'
-                      : 'text-blue-300/70 hover:bg-blue-950/80 hover:text-white'
-                  }`}
-                >
-                  <ShoppingBag className="w-4.5 h-4.5" />
-                  <span>Мерч</span>
-                  <span className="ml-auto bg-amber-500/20 text-amber-400 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30">
-                    24 990 ₸
-                  </span>
-                </button>
               </div>
 
             </div>
@@ -404,7 +368,21 @@ export default function InteractivePlatform({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -15 }}
                 >
-                  <FlappyBirdGame onReward={onAddRewards} />
+                  <div className="mb-4 inline-flex rounded-xl border-2 border-border bg-surface p-1 text-sm font-bold">
+                    {([['sky', '🚀 Sky Quest'], ['sprint', '🏃 School Sprint']] as const).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setGameKind(id)}
+                        className={`px-4 py-2 rounded-lg cursor-pointer transition-colors ${
+                          gameKind === id ? 'bg-primary text-white' : 'text-muted hover:text-foreground'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {gameKind === 'sky' ? <FlappyBirdGame onReward={onAddRewards} /> : <SchoolSprintGame />}
                 </motion.div>
               )}
               
@@ -698,22 +676,11 @@ export default function InteractivePlatform({
 
                     {/* Fun note */}
                     <p className="text-xs text-muted/80 italic">
-                      Звёзды повышают твоё место в рейтинге. А фирменный мерч можно купить отдельным набором во вкладке <strong className="text-primary">"Мерч"</strong>.
+                      Звёзды повышают твоё место в рейтинге.
                     </p>
                   </div>
 
                   <div className="flex justify-center space-x-3 pt-6 border-t border-border">
-                    <button
-                      onClick={() => {
-                        setQuizCompleted(false);
-                        setQuizActive(false);
-                        setActiveTab('shop');
-                      }}
-                      className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm transition-all flex items-center space-x-2 cursor-pointer shadow-md shadow-amber-100"
-                    >
-                      <ShoppingBag className="w-4 h-4" />
-                      <span>Посмотреть мерч</span>
-                    </button>
 
                     <button
                       onClick={() => {
@@ -730,76 +697,6 @@ export default function InteractivePlatform({
               )}
 
               {/* SHOP TAB */}
-              {activeTab === 'shop' && (
-                <motion.div
-                  key="shop-view"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  className="space-y-6"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <span className="inline-block text-[10px] font-bold text-primary bg-primary-light px-2.5 py-0.5 rounded-full border-2 border-border mb-1">Набор 1</span>
-                      <h3 className="text-xl font-bold text-foreground font-display">Фирменный мерч Study Task</h3>
-                      <p className="text-xs text-muted">Мерч покупается отдельно. Звёзды за тесты и домашку дают место в рейтинге.</p>
-                    </div>
-                    <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-2 text-center shadow-[0_3px_0_#FCD34D]">
-                      <div className="text-[10px] font-bold text-amber-700">Весь набор</div>
-                      <div className="font-display font-extrabold text-amber-700 text-xl leading-tight">
-                        {KIT_PRICE.toLocaleString('ru-RU')} ₸
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {KIT_1.map((prize) => {
-                      const variants = prize.images.length ? prize.images : [undefined];
-
-                      return (
-                        <div
-                          key={prize.id}
-                          className={`bg-white border-2 rounded-2xl p-4 flex flex-col gap-3 transition-all ${
-                            'border-border hover:border-blue-200 hover:shadow-md'
-                          }`}
-                        >
-                          <div className={`grid gap-2 ${variants.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                            {variants.map((src, v) => (
-                              <div key={v} className="aspect-square rounded-xl bg-primary-light border-2 border-border overflow-hidden flex items-center justify-center">
-                                {src ? (
-                                  <img
-                                    src={src}
-                                    alt={`${prize.name}${variants.length > 1 ? `, вариант ${v + 1}` : ''}`}
-                                    loading="lazy"
-                                    className="w-full h-full object-contain p-2"
-                                  />
-                                ) : (
-                                  <Gift className="w-8 h-8 text-muted/50" />
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                          {variants.length > 1 && (
-                            <span className="text-[11px] text-muted">Вариантов на выбор: {variants.length}</span>
-                          )}
-
-                          <h4 className="font-bold text-foreground text-sm">{prize.name}</h4>
-
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-center pt-2">
-                    <button
-                      type="button"
-                      onClick={() => window.open(whatsappUrl(`Здравствуйте! Хочу заказать фирменный набор StudyTask — ${KIT_PRICE.toLocaleString('ru-RU')} ₸.`), '_blank')}
-                      className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm transition-all cursor-pointer shadow-md shadow-amber-100"
-                    >
-                      Заказать набор в WhatsApp
-                    </button>
-                  </div>
-                </motion.div>
-              )}
 
             </AnimatePresence>
 
@@ -808,57 +705,6 @@ export default function InteractivePlatform({
         </div>
 
       </div>
-
-      <AnimatePresence>
-        {justPurchased && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-navy/60 p-4 backdrop-blur-sm"
-            onClick={() => setJustPurchased(null)}
-          >
-            <motion.div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="order-confirmation-title"
-              initial={{ opacity: 0, scale: 0.94, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 16 }}
-              onClick={(event) => event.stopPropagation()}
-              className="clay-card relative w-full max-w-md space-y-5 bg-surface p-7 text-center"
-            >
-              <button
-                type="button"
-                aria-label="Закрыть окно"
-                onClick={() => setJustPurchased(null)}
-                className="absolute right-3 top-3 rounded-lg p-2 text-muted hover:bg-primary-light hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
-                <Gift className="h-8 w-8" />
-              </div>
-              <div className="space-y-2">
-                <h3 id="order-confirmation-title" className="font-display text-xl font-extrabold text-foreground">
-                  Заказ оформлен!
-                </h3>
-                <p className="font-semibold text-primary">{justPurchased}</p>
-                <p className="text-sm leading-relaxed text-muted">
-                  Мы собираем ваш заказ. Доставка займёт до 24 часов.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setJustPurchased(null)}
-                className="w-full rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-white hover:bg-primary-dark"
-              >
-                Понятно
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {showHomeworkModal && (

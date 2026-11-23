@@ -1,7 +1,6 @@
 import React, { useRef } from 'react';
 import { motion, useReducedMotion, useScroll, useSpring } from 'motion/react';
-import { Laptop, ClipboardCheck, Gift, ArrowRight } from 'lucide-react';
-import GiftKit from './GiftKit';
+import { Laptop, ClipboardCheck, Trophy, ArrowRight } from 'lucide-react';
 import LoopVideo from './LoopVideo';
 
 const STEPS = [
@@ -23,7 +22,7 @@ const STEPS = [
     number: '3',
     title: 'Звёзды и рейтинг',
     description: 'За правильные ответы и активность — звёзды. Чем их больше, тем выше твоё место в рейтинге.',
-    icon: Gift,
+    icon: Trophy,
     color: 'text-amber-600 bg-amber-50 border-amber-200',
   },
 ];
@@ -57,7 +56,7 @@ export default function HowItWorks() {
             <div className="relative rounded-[2rem] p-2.5 bg-gradient-to-br from-navy to-blue-900 shadow-[0_40px_90px_rgba(23,37,84,0.35)]">
               <LoopVideo
                 name="how-it-works"
-                alt="Как это работает: урок, квиз, звёзды и приз"
+                alt="Как это работает: урок, квиз, звёзды и рейтинг"
                 aspect="aspect-video"
                 className="rounded-[1.5rem]"
               />
@@ -99,8 +98,6 @@ export default function HowItWorks() {
             </ol>
           </div>
         </div>
-
-        <GiftKit />
 
         <div className="mt-10 text-center bento-card !rounded-3xl p-6 max-w-3xl mx-auto">
           <p className="text-muted text-sm mb-4">

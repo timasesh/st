@@ -3,7 +3,7 @@ import { answerList, isAnswerCorrect, type AnswerValue, type ReviewQuestion } fr
 import { levelFor, earnedStars, LEVEL_NAMES, LEVEL_STARS, RANKS, MAX_LEVEL, levelImage, isMilestone, rankOf } from '../shared/levels.js';
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRight, BookOpen, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, Clock3, FileQuestion, Gift, Lock, LogOut, MessageCircle,
+  ArrowRight, BookOpen, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, Clock3, FileQuestion, Lock, LogOut, MessageCircle,
   Paperclip, Play, RefreshCw, Rocket, Settings, Sparkles, Star, Trophy, X,
 } from 'lucide-react';
 
@@ -24,7 +24,7 @@ const openExternal = (url: string) => { if (tg) tg.openLink(url); else window.op
 
 /* ───────── Типы ───────── */
 type Tab = 'home' | 'plan' | 'tests' | 'hw' | 'levels' | 'sky';
-type PTab = 'kids' | 'plan' | 'hist' | 'prizes';
+type PTab = 'kids' | 'plan' | 'hist';
 type Lesson = { id: string; day: number; hour: number; title: string; lessonLink?: string; lessonDescription?: string; attendance?: boolean; studentId?: string; student?: { firstName?: string } | null };
 type Child = { id: string; firstName: string; lastName: string; studentClass?: string; teacher?: { firstName: string; lastName: string } | null; progress?: { stars?: number } };
 type HistoryEntry = { id: string; date: string; time: string; topic?: string; homeworkGrade?: string; testGrade?: string; nextHomework?: string; attendance?: boolean; attendanceReason?: string; attachment?: { filename: string } | null };
@@ -42,13 +42,6 @@ type Portal = {
 
 /* ───────── Утилиты ───────── */
 const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
-const KIT = [
-  { id: 'stickers', name: 'Стикерпак', stars: 5, img: '/static/gifts/stickers.webp' },
-  { id: 'notebook', name: 'Блокнот', stars: 7, img: '/static/gifts/notebook.webp' },
-  { id: 'tshirt', name: 'Фирменная футболка', stars: 10, img: '/static/gifts/tshirt.webp' },
-  { id: 'backpack', name: 'Фирменный рюкзак', stars: 12, img: '/static/gifts/backpack.webp' },
-];
-const KIT_COST = KIT.reduce((s, i) => s + i.stars, 0);
 const pad = (n: number) => String(n).padStart(2, '0');
 const hh = (h: number) => `${pad(h)}:00–${pad(h + 1)}:00`;
 
@@ -394,34 +387,6 @@ function Levels({ portal, refresh, say }: { portal: Portal; refresh: () => Promi
   </div>;
 }
 
-/* ───────── Призы ───────── */
-function Prizes({ portal, refresh, say }: { portal: Portal; refresh: () => Promise<void>; say: (t: string, k: 'ok' | 'bad') => void }) {
-  const stars = portal.progress?.stars ?? 0;
-  const locked = Boolean(portal.account.trialAccount);
-  const [busy, setBusy] = useState(false);
-  const buy = async () => {
-    if (!window.confirm(`Оформить полный набор за ${KIT_COST} звёзд?`)) return;
-    setBusy(true);
-    try { await api('/api/student/prize-kit', { method: 'POST', body: JSON.stringify({ itemIds: KIT.map((i) => i.id) }) }); notify('success'); say(`Набор оформлен! Списано ${KIT_COST} звёзд.`, 'ok'); await refresh(); }
-    catch (x) { notify('error'); say(errText(x, 'Не удалось оформить набор.'), 'bad'); }
-    finally { setBusy(false); }
-  };
-  const enough = stars >= KIT_COST;
-  return <div>
-    <Head kicker="Магазин наград" title="Призы" sub="Призы выдаются только полным комплектом." />
-    <div className={locked ? 'locked' : ''}>
-      {locked && <div className="veil"><div><Lock size={34} /><h3>Призы пока закрыты</h3><p className="small muted" style={{ marginTop: 4 }}>Они откроются, когда ты запишешься на занятия после пробного урока.</p></div></div>}
-      <div className="stack" aria-hidden={locked || undefined}>
-        <div className="card"><div className="row between"><span>Твои звёзды</span><span className="pill gold"><Star size={15} fill="currentColor" /> {stars}</span></div>
-          <div className="xp" style={{ margin: '8px 0 4px' }}><i style={{ width: `${Math.min(100, stars / KIT_COST * 100)}%` }} /></div>
-          <p className="tiny muted">{enough ? 'Звёзд хватает на полный набор!' : `Для набора нужно ${KIT_COST}, не хватает ${KIT_COST - stars}.`}</p></div>
-        <div className="gifts">{KIT.map((g) => <div key={g.id} className="gift"><div className="pic"><img src={g.img} alt={g.name} loading="lazy" /></div><p className="small" style={{ margin: '6px 0 2px' }}>{g.name}</p><span className="pill gold"><Star size={13} fill="currentColor" /> {g.stars}</span></div>)}</div>
-        <div className="card flat row between"><span>Полный набор</span><b className="hand" style={{ fontSize: 28 }}>{KIT_COST} <Star size={18} fill="currentColor" style={{ verticalAlign: -2 }} /></b></div>
-        <button className="btn block" disabled={locked || !enough || busy} onClick={() => void buy()}><Gift size={20} /> {busy ? 'Оформляем…' : 'Получить набор'}</button>
-      </div>
-    </div>
-  </div>;
-}
 
 /* ───────── Игры и рейтинг ───────── */
 type Row = { rank: number; name: string; value: number; me: boolean };
@@ -539,7 +504,7 @@ function ParentKids({ portal, now, go }: { portal: Portal; now: Date; go: (t: PT
             <span className="pill gold"><Star size={15} fill="currentColor" /> {k.progress?.stars ?? 0}</span></div>
           {next ? <div className="slot"><span className="time">{pad(next.hour)}:00</span><div className="grow"><p>{next.title}</p><p className="tiny muted">{next.d === 0 ? 'Сегодня' : dateOf(now, next.d)} · {hh(next.hour)}</p></div></div>
             : <p className="small muted">Занятий в расписании пока нет.</p>}
-          <div className="row" style={{ gap: 8 }}><button className="btn ghost small grow" onClick={() => go('hist')}>История уроков</button><button className="btn ghost small grow" onClick={() => go('prizes')}>Призы</button></div>
+          <div className="row" style={{ gap: 8 }}><button className="btn ghost small grow" onClick={() => go('hist')}>История уроков</button></div>
         </div>;
       })}
   </div>;
@@ -569,34 +534,6 @@ function ParentHistory({ portal }: { portal: Portal }) {
   </div>;
 }
 
-function ParentPrizes({ portal, refresh, say }: { portal: Portal; refresh: () => Promise<void>; say: (t: string, k: 'ok' | 'bad') => void }) {
-  const kids = portal.relatedAccounts || [];
-  const [kid, setKid] = useState(kids[0]?.id || '');
-  const [busy, setBusy] = useState(false);
-  const child = kids.find((k) => k.id === kid) || kids[0];
-  const stars = child?.progress?.stars ?? 0;
-  const enough = stars >= KIT_COST;
-  const buy = async () => {
-    if (!child || !window.confirm(`Оформить полный набор для ${child.firstName} за ${KIT_COST} звёзд?`)) return;
-    setBusy(true);
-    try { await api(`/api/parent/students/${child.id}/prize-kit`, { method: 'POST', body: JSON.stringify({ itemIds: KIT.map((i) => i.id) }) }); notify('success'); say(`Набор оформлен! Списано ${KIT_COST} звёзд.`, 'ok'); await refresh(); }
-    catch (x) { notify('error'); say(errText(x, 'Не удалось оформить набор.'), 'bad'); }
-    finally { setBusy(false); }
-  };
-  if (!child) return <div><Head kicker="Магазин наград" title="Призы" /><Empty icon={Gift} title="Ученик не привязан" text="Призы появятся, когда аккаунт будет связан с ребёнком." /></div>;
-  return <div>
-    <Head kicker="Магазин наград" title="Призы" sub="Призы выдаются только полным комплектом." />
-    <ChildPick kids={kids} value={child.id} onChange={setKid} />
-    <div className="stack">
-      <div className="card"><div className="row between"><span>Звёзды: {child.firstName}</span><span className="pill gold"><Star size={15} fill="currentColor" /> {stars}</span></div>
-        <div className="xp" style={{ margin: '8px 0 4px' }}><i style={{ width: `${Math.min(100, stars / KIT_COST * 100)}%` }} /></div>
-        <p className="tiny muted">{enough ? 'Звёзд хватает на полный набор!' : `Для набора нужно ${KIT_COST}, не хватает ${KIT_COST - stars}.`}</p></div>
-      <div className="gifts">{KIT.map((g) => <div key={g.id} className="gift"><div className="pic"><img src={g.img} alt={g.name} loading="lazy" /></div><p className="small" style={{ margin: '6px 0 2px' }}>{g.name}</p><span className="pill gold"><Star size={13} fill="currentColor" /> {g.stars}</span></div>)}</div>
-      <div className="card flat row between"><span>Полный набор</span><b className="hand" style={{ fontSize: 28 }}>{KIT_COST} <Star size={18} fill="currentColor" style={{ verticalAlign: -2 }} /></b></div>
-      <button className="btn block" disabled={!enough || busy} onClick={() => void buy()}><Gift size={20} /> {busy ? 'Оформляем…' : 'Оформить набор'}</button>
-    </div>
-  </div>;
-}
 
 function ParentShell({ portal, now, reload, say, onLogout }: { portal: Portal; now: Date; reload: (quiet?: boolean) => Promise<void>; say: (t: string, k: 'ok' | 'bad') => void; onLogout: () => void }) {
   const [tab, setTab] = useState<PTab>('kids');
@@ -607,7 +544,7 @@ function ParentShell({ portal, now, reload, say, onLogout }: { portal: Portal; n
   const unread = msgs.filter((m) => !m.read).length;
   const NAV: { id: PTab; label: string; icon: typeof BookOpen }[] = [
     { id: 'kids', label: 'Дети', icon: BookOpen }, { id: 'plan', label: 'План', icon: Clock3 },
-    { id: 'hist', label: 'Уроки', icon: Paperclip }, { id: 'prizes', label: 'Призы', icon: Gift },
+    { id: 'hist', label: 'Уроки', icon: Paperclip },
   ];
   const view = { ...portal, messages: msgs };
   return <>
@@ -622,7 +559,6 @@ function ParentShell({ portal, now, reload, say, onLogout }: { portal: Portal; n
         {tab === 'kids' && <ParentKids portal={view} now={now} go={setTab} />}
         {tab === 'plan' && <Plan portal={view} now={now} />}
         {tab === 'hist' && <ParentHistory portal={view} />}
-        {tab === 'prizes' && <ParentPrizes portal={view} refresh={() => reload(true)} say={say} />}
       </main>
     </div>
     <nav className="nav" aria-label="Разделы"><div className="nav-in">{NAV.map(({ id, label, icon: Icon }) =>

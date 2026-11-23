@@ -21,7 +21,7 @@ const SLIDES: Record<LoginRole, Slide[]> = {
   student: [
     { icon: Video, title: 'Живые уроки', text: 'Занимайтесь с преподавателем онлайн в удобное время.' },
     { icon: FileQuestion, title: 'Тесты и домашние задания', text: 'Проверяйте знания и закрепляйте каждую тему.' },
-    { icon: Trophy, title: 'Звёзды, уровни и призы', text: 'Учёба превращается в игру, где виден каждый шаг.' },
+    { icon: Trophy, title: 'Звёзды, рейтинг и уровни', text: 'Учёба превращается в игру, где виден каждый шаг.' },
     { icon: BarChart3, title: 'Прогресс виден родителям', text: 'Расписание, оценки и посещаемость — в одном кабинете.' },
   ],
   teacher: [
@@ -33,7 +33,7 @@ const SLIDES: Record<LoginRole, Slide[]> = {
   admin: [
     { icon: UserCog, title: 'Управление платформой', text: 'Ученики, родители и преподаватели в одной панели.' },
     { icon: CalendarDays, title: 'Расписание школы', text: 'Назначайте уроки и переносите их перетаскиванием.' },
-    { icon: Gift, title: 'Призы и мотивация', text: 'Следите за звёздами, наградами и прогрессом учеников.' },
+    { icon: Trophy, title: 'Рейтинг и уровни', text: 'Следите за звёздами, рейтингом и прогрессом учеников.' },
     { icon: ShieldCheck, title: 'Защищённый доступ', text: 'Закрытая зона с отдельным входом для администраторов.' },
   ],
 };
@@ -55,7 +55,7 @@ const CHIPS: Record<LoginRole, Chip[]> = {
   admin: [
     { icon: Users, text: 'Новый ученик', className: 'left-[3%] top-[10%]', delay: '0s', tone: 'text-emerald-300' },
     { icon: CheckCircle2, text: 'Расписание сохранено', className: 'right-[1%] top-[22%]', delay: '-1.6s', tone: 'text-sky-300' },
-    { icon: Gift, text: 'Приз выдан', className: 'left-[1%] bottom-[14%]', delay: '-3.1s', tone: 'text-amber-300' },
+    { icon: Trophy, text: 'Новый уровень', className: 'left-[1%] bottom-[14%]', delay: '-3.1s', tone: 'text-amber-300' },
     { icon: Lock, text: 'Доступ защищён', className: 'right-[4%] bottom-[8%]', delay: '-2.2s', tone: 'text-teal-300' },
   ],
 };

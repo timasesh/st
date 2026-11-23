@@ -174,16 +174,6 @@ export default function App() {
     }
   };
 
-  // Spend stars in shop
-  const handleClaimPrize = (id: string, cost: number) => {
-    if (stars >= cost) {
-      setStars((prev) => prev - cost);
-      if (!claimedPrizes.includes(id)) {
-        setClaimedPrizes((prev) => [...prev, id]);
-      }
-    }
-  };
-
   // Custom User details sync
   const handleLoginSuccess = (name: string, studentClass: string, accountId: string, savedProgress: Partial<StoredProgress> | null, role: 'student' | 'parent' | 'teacher') => {
     const accountProgress = role === 'student' ? (savedProgress || DEFAULT_PROGRESS) : null;
@@ -301,13 +291,11 @@ export default function App() {
           stars={stars}
           xp={xp}
           level={level}
-          claimedPrizes={claimedPrizes}
           unlockedAchievements={unlockedAchievements}
           userName={userName}
           userClass={userClass}
           onAddRewards={handleAddRewards}
           onUnlockAchievement={handleUnlockAchievement}
-          onClaimPrize={handleClaimPrize}
           onChangeUserName={setUserName}
           onChangeUserClass={setUserClass}
           onResetProgress={handleResetProgress}
@@ -365,7 +353,7 @@ export default function App() {
                     Ты вырос до {level}-го уровня
                   </h3>
                   <p className="text-muted text-sm">
-                    Отличная работа — открылись новые призы в магазине.
+                    Отличная работа — твой уровень вырос, так держать!
                   </p>
                 </div>
 

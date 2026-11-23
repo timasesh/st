@@ -126,7 +126,7 @@ export default function Pricing() {
         </div>
 
         <p className="text-center text-xs text-muted mt-8 max-w-2xl mx-auto">
-          Единая цена за занятие, без пакетов и скидок. Фирменный мерч StudyTask покупается отдельно.
+          Единая цена за занятие, без пакетов и скидок.
         </p>
       </div>
     </section>

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { HelpCircle, Star, Award, ShieldCheck, Check } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
-import LoopVideo from './LoopVideo';
 
 const FEATURE_ITEMS = [
   {
@@ -145,7 +144,7 @@ export default function Features() {
                 <h3 className="font-display font-extrabold text-2xl sm:text-4xl tracking-tight">{FEATURE_ITEMS[2].title}</h3>
                 <p className="text-blue-100/80 leading-relaxed max-w-xl">{FEATURE_ITEMS[2].description}</p>
                 <div className="flex flex-wrap gap-2 pt-2">
-                  {[['Стикерпак', 5], ['Блокнот', 7], ['Футболка', 10], ['Рюкзак', 12]].map(([n, s]) => (
+                  {[['Рейтинг учеников', 'топ'], ['Уровни', 'lvl'], ['Достижения', '★']].map(([n, s]) => (
                     <span key={n} className="inline-flex items-center gap-1.5 rounded-full bg-white/10 border border-white/15 px-3.5 py-1.5 text-sm font-bold">
                       {n}
                       <span className="inline-flex items-center gap-1 text-amber-300"><Star className="w-3.5 h-3.5 fill-amber-300" />{s}</span>
@@ -154,8 +153,17 @@ export default function Features() {
                 </div>
               </div>
               <div className="md:col-span-5">
-                <div className="rounded-[1.75rem] overflow-hidden border border-white/15 shadow-[0_30px_70px_rgba(2,6,40,0.5)] max-w-sm mx-auto">
-                  <LoopVideo name="gifts-reveal" alt="Фирменный набор StudyTask: стикерпак, блокнот, футболка и рюкзак" />
+                <div className="rounded-[1.75rem] border border-white/15 bg-white/10 p-5 max-w-sm mx-auto space-y-2.5" aria-hidden>
+                  <div className="text-xs font-extrabold uppercase tracking-wider text-blue-100/70">Рейтинг недели</div>
+                  {[['1', 'Ученик А', 'Уровень 7', 'w-[92%]'], ['2', 'Ученик Б', 'Уровень 6', 'w-[78%]'], ['3', 'Ты', 'Уровень 5', 'w-[64%]']].map(([n, name, lvl, w]) => (
+                    <div key={n} className="rounded-xl bg-white/10 px-3 py-2.5">
+                      <div className="flex items-center justify-between text-sm font-bold">
+                        <span>{n}. {name}</span>
+                        <span className="text-amber-300">{lvl}</span>
+                      </div>
+                      <div className="mt-2 h-1.5 rounded-full bg-white/15"><div className={`h-full rounded-full bg-amber-300 ${w}`} /></div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
