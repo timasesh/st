@@ -32,6 +32,7 @@ const newBoardId = () => `b${Date.now().toString(36)}${Math.random().toString(36
 
 const COLORS = ['#111827', '#1649E8', '#E5484D', '#16A34A', '#F59E0B', '#8B5CF6', '#0EA5E9'];
 const WIDTHS = [2, 4, 8, 14, 24];
+const WORLD_W = 3200, WORLD_H = 2000; // рабочая область доски
 const GRID = 40;
 const FONT = 'system-ui, "Segoe UI", Roboto, sans-serif';
 const HIST = 200;
@@ -327,8 +328,20 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
     const cv = canvasRef.current; const ctx = cv?.getContext('2d', { desynchronized: true } as CanvasRenderingContext2DSettings);
     if (!cv || !ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    const { s, x: vx, y: vy } = viewRef.current;
     const W = cv.width / dpr, H = cv.height / dpr;
+    // доска ограничена: нельзя уехать за края рабочей области
+    {
+      const m = 48, v0 = viewRef.current;
+      const minS = Math.max(0.15, Math.min(W / (WORLD_W + 2 * m), H / (WORLD_H + 2 * m)));
+      const ns = Math.max(minS, Math.min(6, v0.s));
+      const clampAxis = (p: number, size: number, world: number) => {
+        const ww = world * ns;
+        return ww + 2 * m <= size ? (size - ww) / 2 : Math.min(m, Math.max(size - ww - m, p));
+      };
+      const nx = clampAxis(v0.x, W, WORLD_W), ny = clampAxis(v0.y, H, WORLD_H);
+      if (ns !== v0.s || nx !== v0.x || ny !== v0.y) viewRef.current = { s: ns, x: nx, y: ny };
+    }
+    const { s, x: vx, y: vy } = viewRef.current;
     const objs = page().objs;
     const prev = previewRef.current; const hid = hiddenRef.current;
     let excl = '';
@@ -342,13 +355,17 @@ export default function StudyTaskBoard({ shareToken, guestName }: { shareToken?:
       const sc = scene.cv.getContext('2d');
       if (!sc) return;
       sc.setTransform(dpr, 0, 0, dpr, 0, 0);
-      sc.fillStyle = '#ffffff'; sc.fillRect(0, 0, W, H);
+      sc.fillStyle = '#e6ecf7'; sc.fillRect(0, 0, W, H);
+      sc.fillStyle = '#ffffff'; sc.fillRect(vx, vy, WORLD_W * s, WORLD_H * s);
+      sc.strokeStyle = '#b9c6e0'; sc.lineWidth = 1; sc.strokeRect(vx - 0.5, vy - 0.5, WORLD_W * s + 1, WORLD_H * s + 1);
       if (gm) {
+        sc.save(); sc.beginPath(); sc.rect(vx, vy, WORLD_W * s, WORLD_H * s); sc.clip();
         let step = GRID * s; while (step < 14) step *= 2;
         const ox = ((vx % step) + step) % step, oy = ((vy % step) + step) % step;
         sc.strokeStyle = '#dbe4f5'; sc.fillStyle = '#b9c6e0'; sc.lineWidth = 1;
         if (gm === 1) { sc.beginPath(); for (let x = ox; x < W; x += step) { sc.moveTo(Math.round(x) + 0.5, 0); sc.lineTo(Math.round(x) + 0.5, H); } for (let y = oy; y < H; y += step) { sc.moveTo(0, Math.round(y) + 0.5); sc.lineTo(W, Math.round(y) + 0.5); } sc.stroke(); }
         else for (let x = ox; x < W; x += step) for (let y = oy; y < H; y += step) sc.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
+        sc.restore();
       }
       sc.save(); sc.translate(vx, vy); sc.scale(s, s);
       const wx0 = -vx / s, wy0 = -vy / s, wx1 = (W - vx) / s, wy1 = (H - vy) / s;
