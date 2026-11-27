@@ -8,15 +8,16 @@ const JITSI_HOST = 'meet.jit.si';
 type RoomInfo = {
   room: string; displayName: string; role: 'student' | 'parent' | 'teacher'; subject: string;
   student: { id: string; name: string }; teacher: { name: string } | null;
+  jaas?: { appId: string; jwt: string } | null;
 };
 
 declare global { interface Window { JitsiMeetExternalAPI?: any } }
 
-function loadJitsi(): Promise<void> {
+function loadJitsi(src: string): Promise<void> {
   if (window.JitsiMeetExternalAPI) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = `https://${JITSI_HOST}/external_api.js`;
+    s.src = src;
     s.async = true;
     s.onload = () => resolve();
     s.onerror = () => reject(new Error('Не удалось загрузить видеосвязь. Проверьте интернет.'));
@@ -45,10 +46,13 @@ export default function LessonRoom() {
   useEffect(() => {
     if (!info || !holder.current) return;
     let disposed = false;
-    loadJitsi().then(() => {
+    const jaas = info.jaas;
+    const host = jaas ? '8x8.vc' : JITSI_HOST;
+    loadJitsi(jaas ? `https://8x8.vc/${jaas.appId}/external_api.js` : `https://${JITSI_HOST}/external_api.js`).then(() => {
       if (disposed || !holder.current || !window.JitsiMeetExternalAPI) return;
-      apiRef.current = new window.JitsiMeetExternalAPI(JITSI_HOST, {
-        roomName: info.room,
+      apiRef.current = new window.JitsiMeetExternalAPI(host, {
+        roomName: jaas ? `${jaas.appId}/${info.room}` : info.room,
+        ...(jaas ? { jwt: jaas.jwt } : {}),
         parentNode: holder.current,
         width: '100%',
         height: '100%',
@@ -80,7 +84,7 @@ export default function LessonRoom() {
             <PenTool className="h-4 w-4" /> Доска
           </button>
         )}
-        {info && (
+        {info && !info.jaas && (
           <a href={`https://${JITSI_HOST}/${info.room}`} target="_blank" rel="noopener noreferrer" className="hidden items-center gap-1.5 text-xs font-semibold text-muted hover:text-foreground sm:inline-flex">
             <ExternalLink className="h-3.5 w-3.5" /> Открыть отдельно
           </a>

@@ -2312,8 +2312,27 @@ app.get('/api/lesson-room', async (req, res) => {
   const digest = crypto.createHmac('sha256', sessionSecret).update(`lesson-room|${student.id}|${student.teacherId}`).digest('hex').slice(0, 20);
   const room = `StudyTask-${digest}`;
   const displayName = [me.firstName, me.lastName].filter(Boolean).join(' ') || 'Участник';
+  // JaaS (8x8): если заданы ключи, выдаём подписанный токен — вход без логина, преподаватель = модератор
+  let jaas = null;
+  const jaasAppId = process.env.JAAS_APP_ID, jaasKeyId = process.env.JAAS_KEY_ID, jaasKey = process.env.JAAS_PRIVATE_KEY;
+  if (jaasAppId && jaasKeyId && jaasKey) {
+    try {
+      const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+      const now = Math.floor(Date.now() / 1000);
+      const head = b64({ alg: 'RS256', typ: 'JWT', kid: jaasKeyId });
+      const body = b64({
+        aud: 'jitsi', iss: 'chat', sub: jaasAppId, room, iat: now, nbf: now - 10, exp: now + 4 * 3600,
+        context: {
+          user: { id: me.id, name: displayName, moderator: me.role === 'teacher' ? 'true' : 'false' },
+          features: { livestreaming: 'false', recording: 'false', transcription: 'false', 'outbound-call': 'false' },
+        },
+      });
+      const signature = crypto.sign('RSA-SHA256', Buffer.from(`${head}.${body}`), jaasKey.replace(/\\n/g, '\n')).toString('base64url');
+      jaas = { appId: jaasAppId, jwt: `${head}.${body}.${signature}` };
+    } catch (error) { console.error('JaaS token error:', error.message); }
+  }
   return res.json({
-    room, displayName, role: me.role,
+    room, displayName, role: me.role, jaas,
     subject: `Урок: ${[student.firstName, student.lastName].filter(Boolean).join(' ')}`,
     student: { id: student.id, name: [student.firstName, student.lastName].filter(Boolean).join(' ') },
     teacher: teacher ? { name: [teacher.firstName, teacher.lastName].filter(Boolean).join(' ') } : null,
