@@ -4,7 +4,7 @@ import { levelFor, earnedStars, LEVEL_NAMES, LEVEL_STARS, RANKS, MAX_LEVEL, leve
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight, BookOpen, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, Clock3, FileQuestion, Lock, LogOut, MessageCircle,
-  Paperclip, Play, RefreshCw, Rocket, Settings, Sparkles, Star, Trophy, X,
+  Paperclip, Play, RefreshCw, Video, Rocket, Settings, Sparkles, Star, Trophy, X,
 } from 'lucide-react';
 
 /* ───────── Telegram ───────── */
@@ -20,6 +20,15 @@ type TgWebApp = {
 const tg: TgWebApp | undefined = (window as unknown as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
 const tap = (kind: 'light' | 'medium' = 'light') => { try { tg?.HapticFeedback?.impactOccurred(kind); } catch { /* ignore */ } };
 const notify = (kind: 'success' | 'error' | 'warning') => { try { tg?.HapticFeedback?.notificationOccurred(kind); } catch { /* ignore */ } };
+const openLessonOnSite = async (studentId?: string) => {
+  const to = studentId ? `/lesson/${studentId}` : '/lesson';
+  try {
+    const r = await fetch('/api/auth/web-link', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }) });
+    const d = await r.json();
+    if (!r.ok || !d.url) throw new Error(d.error || 'fail');
+    openExternal(d.url);
+  } catch { openExternal(`${location.origin}${to}`); }
+};
 const openExternal = (url: string) => { if (tg) tg.openLink(url); else window.open(url, '_blank', 'noopener'); };
 
 /* ───────── Типы ───────── */
@@ -165,6 +174,7 @@ function Home({ portal, now, go, openHw, startTest }: { portal: Portal; now: Dat
       <h2 style={{ margin: '4px 0 6px' }}>{next.title}</h2>
       <p className="row small" style={{ gap: 6 }}><Clock3 size={16} /> {next.d === 0 ? 'Сегодня' : dateOf(now, next.d)} · {hh(next.hour)}</p>
       {next.lessonDescription && <p className="small muted" style={{ marginTop: 6 }}>{next.lessonDescription}</p>}
+      {portal.account.role === 'student' && <button className="btn block" style={{ marginTop: 12 }} onClick={() => { tap('medium'); void openLessonOnSite(); }}><Video size={18} /> Видеоурок на сайте</button>}
       {next.lessonLink && <button className="btn gold block" style={{ marginTop: 12 }} onClick={() => { tap('medium'); openExternal(next.lessonLink!); }}><Play size={18} fill="currentColor" /> {live ? 'Подключиться' : 'Открыть ссылку на занятие'}</button>}
     </div> : <Empty icon={CalendarDays} title="Занятий пока нет" text={portal.account.trialAccount ? 'После пробного урока появится расписание.' : 'Когда преподаватель добавит занятие, оно появится здесь.'} />}
 
@@ -504,7 +514,7 @@ function ParentKids({ portal, now, go }: { portal: Portal; now: Date; go: (t: PT
             <span className="pill gold"><Star size={15} fill="currentColor" /> {k.progress?.stars ?? 0}</span></div>
           {next ? <div className="slot"><span className="time">{pad(next.hour)}:00</span><div className="grow"><p>{next.title}</p><p className="tiny muted">{next.d === 0 ? 'Сегодня' : dateOf(now, next.d)} · {hh(next.hour)}</p></div></div>
             : <p className="small muted">Занятий в расписании пока нет.</p>}
-          <div className="row" style={{ gap: 8 }}><button className="btn ghost small grow" onClick={() => go('hist')}>История уроков</button></div>
+          <div className="row" style={{ gap: 8 }}><button className="btn small grow" onClick={() => { tap(); void openLessonOnSite(k.id); }}><Video size={14} /> Видеоурок</button><button className="btn ghost small grow" onClick={() => go('hist')}>История уроков</button></div>
         </div>;
       })}
   </div>;

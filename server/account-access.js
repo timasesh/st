@@ -102,7 +102,9 @@ export function createAccountAccess({ getSupabase, dataDir, getAccounts, refresh
       if (!user) return res.status(401).json({ error: 'Сеанс завершён. Войдите в аккаунт снова.' });
       const t = sign({ sub: user.account.id, exp: Date.now() + LINK_TTL_MS, n: crypto.randomBytes(8).toString('hex') });
       const dest = user.account.role === 'student' ? '/student' : user.account.role === 'parent' ? '/parent' : '/student';
-      return res.json({ url: `${(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim()}://${req.get('host')}/api/auth/web-login?t=${encodeURIComponent(t)}&to=${encodeURIComponent(dest)}` });
+      const wanted = typeof req.body?.to === 'string' ? req.body.to : '';
+      const finalDest = /^\/lesson(\/[A-Za-z0-9-]{1,64})?$/.test(wanted) ? wanted : dest;
+      return res.json({ url: `${(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim()}://${req.get('host')}/api/auth/web-login?t=${encodeURIComponent(t)}&to=${encodeURIComponent(finalDest)}` });
     });
 
     app.get('/api/auth/web-login', async (req, res) => {
@@ -115,7 +117,8 @@ export function createAccountAccess({ getSupabase, dataDir, getAccounts, refresh
       if (!account) return res.redirect(302, '/');
       usedLinks.set(p.n, p.exp);
       setUserSessionCookie(res, account);
-      const to = ['/student', '/parent'].includes(req.query.to) ? req.query.to : '/student';
+      const q = typeof req.query.to === 'string' ? req.query.to : '';
+      const to = ['/student', '/parent'].includes(q) || /^\/lesson(\/[A-Za-z0-9-]{1,64})?$/.test(q) ? q : '/student';
       return res.redirect(302, to);
     });
   }
