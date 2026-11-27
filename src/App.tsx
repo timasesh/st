@@ -14,6 +14,7 @@ const AdminLoginPage = lazy(() => import('./components/AuthPages').then((module)
 const UserPortalPage = lazy(() => import('./components/AuthPages').then((module) => ({ default: module.UserPortalPage })));
 const PublicTest = lazy(() => import('./components/PublicTest'));
 const SharedBoardPage = lazy(() => import('./components/SharedBoardPage'));
+const LessonRoom = lazy(() => import('./components/LessonRoom'));
 const TrialBooking = lazy(() => import('./components/TrialBooking'));
 const IntensiveSignup = lazy(() => import('./components/IntensiveSignup'));
 const CareerTest = lazy(() => import('./components/CareerTest'));
@@ -231,6 +232,9 @@ export default function App() {
     handleAddRewards(15, 100); // 100 XP triggers high progress
   };
 
+  if (window.location.pathname === '/lesson' || window.location.pathname.startsWith('/lesson/')) {
+    return withPageLoading(<LessonRoom />);
+  }
   if (window.location.pathname.startsWith('/board/') && window.location.pathname.length > 8) {
     return withPageLoading(<SharedBoardPage />);
   }

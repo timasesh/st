@@ -2295,6 +2295,30 @@ app.delete('/api/teacher/boards/:id', async (req, res) => {
   catch (error) { return res.status(500).json({ error: error.message || 'Не удалось удалить доску.' }); }
 });
 
+// Видеоурок на сайте (Jitsi). Комната — на пару «ученик + преподаватель»; имя комнаты подписано секретом, угадать нельзя.
+app.get('/api/lesson-room', async (req, res) => {
+  await refreshAccounts();
+  const user = getUserSession(req);
+  if (!user) return res.status(401).json({ error: 'Войдите в кабинет, чтобы подключиться к уроку.' });
+  const me = user.account;
+  const wanted = typeof req.query.studentId === 'string' ? req.query.studentId : '';
+  let student = null;
+  if (me.role === 'student') student = me;
+  else if (me.role === 'parent') student = accounts.find((a) => a.role === 'student' && (me.children || []).includes(a.id) && (!wanted || a.id === wanted));
+  else if (me.role === 'teacher') student = accounts.find((a) => a.role === 'student' && a.id === wanted && a.teacherId === me.id);
+  if (!student || student.status === 'withdrawn') return res.status(404).json({ error: 'Урок не найден или нет доступа.' });
+  if (!student.teacherId) return res.status(404).json({ error: 'За учеником не закреплён преподаватель.' });
+  const teacher = accounts.find((a) => a.id === student.teacherId && a.role === 'teacher');
+  const digest = crypto.createHmac('sha256', sessionSecret).update(`lesson-room|${student.id}|${student.teacherId}`).digest('hex').slice(0, 20);
+  const room = `StudyTask-${digest}`;
+  const displayName = [me.firstName, me.lastName].filter(Boolean).join(' ') || 'Участник';
+  return res.json({
+    room, displayName, role: me.role,
+    subject: `Урок: ${[student.firstName, student.lastName].filter(Boolean).join(' ')}`,
+    student: { id: student.id, name: [student.firstName, student.lastName].filter(Boolean).join(' ') },
+    teacher: teacher ? { name: [teacher.firstName, teacher.lastName].filter(Boolean).join(' ') } : null,
+  });
+});
 app.get('/api/parent/students/:studentId/lesson-history', async (req, res) => {
   await refreshAccounts();
   const user = getUserSession(req);

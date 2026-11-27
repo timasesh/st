@@ -218,7 +218,7 @@ function drawObj(ctx: CanvasRenderingContext2D, o: Obj) {
     if (o.k === 'rect') ctx.rect(a, b, c - a, d - b);
     else if (o.k === 'ell') ctx.ellipse((a + c) / 2, (b + d) / 2, Math.max(0.5, (c - a) / 2), Math.max(0.5, (d - b) / 2), 0, 0, Math.PI * 2);
     else { const t = triPts(o); ctx.moveTo(...t[0]); ctx.lineTo(...t[1]); ctx.lineTo(...t[2]); ctx.closePath(); }
-    if (o.fill) { ctx.save(); ctx.globalAlpha = 0.18; ctx.fill(); ctx.restore(); }
+    if (o.fill) { ctx.save(); ctx.globalAlpha = 0.3; ctx.fill(); ctx.restore(); }
     ctx.stroke();
   } else if (o.k === 'img') {
     const [a, b, c, d] = norm(o); const im = getImg(o.src);
