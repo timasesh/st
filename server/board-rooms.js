@@ -55,7 +55,7 @@ export function createBoardRooms(deps) {
     if (!saved || !Array.isArray(saved.pages)) return null;
     room = rooms.get(token);
     if (room) return room;
-    room = { token, owner: saved.owner, boardId: saved.boardId || null, created: saved.created, pages: saved.pages, clients: new Map(), dirty: false, saveTimer: null, unloadTimer: null, seq: 0 };
+    room = { token, owner: saved.owner, lesson: !!saved.lesson, boardId: saved.boardId || null, created: saved.created, pages: saved.pages, clients: new Map(), dirty: false, saveTimer: null, unloadTimer: null, seq: 0 };
     rooms.set(token, room);
     return room;
   }
@@ -64,7 +64,7 @@ export function createBoardRooms(deps) {
     if (!room.dirty || room.deleted) return;
     room.dirty = false;
     try {
-      const body = { owner: room.owner, boardId: room.boardId, created: room.created, updated: Date.now(), pages: room.pages };
+      const body = { owner: room.owner, lesson: !!room.lesson, boardId: room.boardId, created: room.created, updated: Date.now(), pages: room.pages };
       if (JSON.stringify(body).length > MAX_STATE_BYTES) { console.error('board room too large to save', room.token.slice(0, 6)); return; }
       await storeSet(`board_room:${room.token}`, body);
     } catch (error) { room.dirty = true; console.error('board room save failed:', error.message); }
@@ -84,11 +84,18 @@ export function createBoardRooms(deps) {
     switch (msg.t) {
       case 'ops': {
         const page = pageOf(room, cleanId(msg.pg)); if (!page) return;
+        const mine = (id) => { const o = page.objs.find((x) => x.id === id); return !!o && !!client.author && o.a === client.author; };
         const op = {
           add: Array.isArray(msg.add) ? msg.add.filter((x) => x && isObj(x.o)).slice(0, 5000) : [],
           del: Array.isArray(msg.del) ? msg.del.filter(Number.isFinite).slice(0, 20000) : [],
           upd: Array.isArray(msg.upd) ? msg.upd.filter(isObj).slice(0, 5000) : [],
         };
+        // автор объекта проставляется сервером; не владелец доски стирает и меняет только своё
+        if (client.author) for (const x of op.add) x.o.a = client.author;
+        if (!client.priv) {
+          op.del = op.del.filter(mine);
+          op.upd = op.upd.filter((o) => mine(o.id)).map((o) => ({ ...o, a: client.author }));
+        }
         const next = applyOps(page.objs, op);
         if (next.length > MAX_OBJS_PER_PAGE) return;
         page.objs = next; touch(room);
@@ -103,6 +110,7 @@ export function createBoardRooms(deps) {
         return;
       }
       case 'page-': {
+        if (!client.priv) return;
         const id = cleanId(msg.id); const idx = room.pages.findIndex((p) => p.id === id);
         if (idx < 0 || room.pages.length < 2) return;
         room.pages.splice(idx, 1); touch(room);
@@ -126,7 +134,13 @@ export function createBoardRooms(deps) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 20 * 1024 * 1024 });
   wss.on('connection', (ws, req, room) => {
     const url = new URL(req.url, 'http://x');
-    const client = { id: crypto.randomBytes(5).toString('hex'), name: cleanName(url.searchParams.get('name')) || `Гость ${++room.seq}`, ws, alive: true };
+    const aid = url.searchParams.get('aid') || '';
+    let viewer = null; try { viewer = getUserSession(req); } catch { /* ignore */ }
+    const client = {
+      id: crypto.randomBytes(5).toString('hex'), name: cleanName(url.searchParams.get('name')) || `Гость ${++room.seq}`, ws, alive: true,
+      author: /^[A-Za-z0-9_-]{8,40}$/.test(aid) ? aid : '',
+      priv: !room.lesson || (!!viewer && viewer.account.id === room.owner), // в доске занятия владелец (преподаватель) может всё, остальные — только своё
+    };
     room.clients.set(client.id, client);
     ws.on('pong', () => { client.alive = true; });
     ws.send(JSON.stringify({ t: 'hello', id: client.id, name: client.name, pages: room.pages, users: usersOf(room) }));
@@ -245,7 +259,7 @@ export function createBoardRooms(deps) {
     const existingToken = await storeGet(key);
     if (typeof existingToken === 'string') { const existing = await loadRoom(existingToken); if (existing) return existingToken; }
     const token = crypto.randomBytes(18).toString('base64url');
-    const room = { token, owner: ownerId, boardId: null, created: Date.now(), pages: [{ id: 'p1', objs: [] }], clients: new Map(), dirty: true, saveTimer: null, unloadTimer: null, seq: 0 };
+    const room = { token, owner: ownerId, lesson: true, boardId: null, created: Date.now(), pages: [{ id: 'p1', objs: [] }], clients: new Map(), dirty: true, saveTimer: null, unloadTimer: null, seq: 0 };
     rooms.set(token, room);
     await saveRoom(room);
     await storeSet(key, token);

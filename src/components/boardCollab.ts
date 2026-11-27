@@ -10,6 +10,10 @@ export interface CollabHandlers<T> {
   onStatus: (s: CollabStatus) => void;
 }
 
+export function boardAuthorId(): string {
+  try { return localStorage.getItem('studytask-board-author') || ''; } catch { return ''; }
+}
+
 export class BoardCollab<T = unknown> {
   private ws: WebSocket | null = null;
   private queue: CollabMsg[] = [];
@@ -23,7 +27,7 @@ export class BoardCollab<T = unknown> {
     if (this.closed) return;
     this.h.onStatus(this.everOpen ? 'reconnecting' : 'connecting');
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${location.host}/ws/board/${this.token}?name=${encodeURIComponent(this.name)}`);
+    const ws = new WebSocket(`${proto}://${location.host}/ws/board/${this.token}?name=${encodeURIComponent(this.name)}&aid=${encodeURIComponent(boardAuthorId())}`);
     this.ws = ws;
     ws.onmessage = (ev) => {
       let m: CollabMsg; try { m = JSON.parse(String(ev.data)); } catch { return; }

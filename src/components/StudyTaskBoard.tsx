@@ -10,7 +10,7 @@ import { BoardCollab, type CollabMsg, type CollabStatus, type CollabUser, type R
 type Tool = 'select' | 'pen' | 'marker' | 'eraser' | 'line' | 'arrow' | 'rect' | 'tri' | 'ell' | 'text' | 'laser' | 'hand';
 type Kind = 'pen' | 'marker' | 'line' | 'arrow' | 'rect' | 'tri' | 'ell' | 'text' | 'img';
 type Pt = [number, number, number];
-interface Obj { id: number; k: Kind; c: string; w: number; fill: boolean; pts?: Pt[]; x1: number; y1: number; x2: number; y2: number; text?: string; fs?: number; src?: string }
+interface Obj { a?: string; id: number; k: Kind; c: string; w: number; fill: boolean; pts?: Pt[]; x1: number; y1: number; x2: number; y2: number; text?: string; fs?: number; src?: string }
 type Diff = BoardDiff<Obj>;
 interface Page { id: string; objs: Obj[]; undo: Diff[]; redo: Diff[] }
 const newPageId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -252,7 +252,15 @@ type Drag =
   | { mode: 'resize'; ax: number; ay: number; ox: number; oy: number; base: Obj[]; corner: number }
   | { mode: 'marquee'; wx: number; wy: number; additive: boolean };
 
-export default function StudyTaskBoard({ shareToken, guestName, embedded }: { shareToken?: string; guestName?: string; embedded?: boolean } = {}) {
+const authorId = (() => {
+  try {
+    let v = localStorage.getItem('studytask-board-author');
+    if (!v || !/^[A-Za-z0-9_-]{8,40}$/.test(v)) { v = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); localStorage.setItem('studytask-board-author', v); }
+    return v;
+  } catch { return Math.random().toString(36).slice(2, 12); }
+})();
+
+export default function StudyTaskBoard({ shareToken, guestName, embedded, restricted }: { shareToken?: string; guestName?: string; embedded?: boolean; restricted?: boolean } = {}) {
   const guest = !!shareToken;
   const wrapRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
@@ -468,8 +476,18 @@ export default function StudyTaskBoard({ shareToken, guestName, embedded }: { sh
     if (!op.add!.length && !op.del!.length && !op.upd!.length) return;
     c.send({ t: 'ops', pg: pageId, ...op }, true);
   };
-  const commit = (objs: Obj[]) => {
+  const commit = (objsIn: Obj[]) => {
     const p = page();
+    // авторство: новые объекты помечаем автором; ограниченный участник (ученик/гость) меняет и стирает только своё
+    const oldIds = new Set(p.objs.map((o) => o.id));
+    let objs = objsIn.map((o) => (oldIds.has(o.id) || o.a ? o : { ...o, a: authorId }));
+    if (restricted) {
+      const byId = new Map(objs.map((o) => [o.id, o]));
+      const out: Obj[] = [];
+      for (const o of p.objs) { if (o.a === authorId) { const n = byId.get(o.id); if (n) out.push(n); } else out.push(o); }
+      for (const n of objs) if (!oldIds.has(n.id)) out.push(n);
+      objs = out;
+    }
     const d = diffObjs<Obj>(p.objs, objs);
     if (!isEmptyDiff(d)) { p.undo.push(d); if (p.undo.length > HIST) p.undo.shift(); p.redo = []; sendDiff(p.id, d); }
     p.objs = objs;
@@ -632,7 +650,7 @@ export default function StudyTaskBoard({ shareToken, guestName, embedded }: { sh
     const clones = s.map((o) => ({ ...moveObj(JSON.parse(JSON.stringify(o)), 28, 28), id: nid() }));
     commit([...page().objs, ...clones]); setSel(clones.map((o) => o.id));
   };
-  const selectAll = () => { setSel(page().objs.map((o) => o.id)); setTool('select'); changed(); };
+  const selectAll = () => { setSel(page().objs.filter((o) => !restricted || o.a === authorId).map((o) => o.id)); setTool('select'); changed(); };
   const setTool = (t: Tool) => { setToolState(t); if (t !== 'select') { /* keep selection visible but inactive */ } requestDraw(); };
   const nudge = (dx: number, dy: number) => { if (!selRef.current.length) return; const ids = new Set(selRef.current); commit(page().objs.map((o) => (ids.has(o.id) ? moveObj(o, dx, dy) : o))); };
   const applyStyle = (patch: { c?: string; w?: number; fill?: boolean }) => {
@@ -701,10 +719,12 @@ export default function StudyTaskBoard({ shareToken, guestName, embedded }: { sh
       if (boardIdRef.current === b.id) { setBoardId(null); setBoardName(''); }
     } catch (e) { setBoardsErr((e as Error).message); }
   };
-  const clearPage = () => { if (page().objs.length) { commit([]); setSel([]); } };
+  const clearPage = () => {
+    if (restricted) return; if (page().objs.length) { commit([]); setSel([]); } };
   const gotoPage = (i: number) => { if (i < 0 || i >= pagesRef.current.length) return; curRef.current = i; setSel([]); previewRef.current = null; scheduleSave(); changed(); };
   const addPage = () => { const pg = mkPage(); pagesRef.current.push(pg); collabRef.current?.send({ t: 'page+', id: pg.id, at: pagesRef.current.length - 1 }, true); gotoPage(pagesRef.current.length - 1); };
   const removePage = () => {
+    if (restricted) return;
     if (pagesRef.current.length < 2) { clearPage(); return; }
     if (!window.confirm('Удалить страницу вместе с содержимым? Отменить это действие нельзя.')) return;
     collabRef.current?.send({ t: 'page-', id: page().id }, true);
@@ -797,7 +817,7 @@ export default function StudyTaskBoard({ shareToken, guestName, embedded }: { sh
     const tol = Math.max(8, st.current.width * 2) / viewRef.current.s;
     let added = false;
     for (const o of page().objs) {
-      if (o.k === 'img' || gone.has(o.id)) continue;
+      if (o.k === 'img' || gone.has(o.id) || (restricted && o.a !== authorId)) continue;
       const b = bbox(o);
       if (wx < b[0] - tol || wx > b[2] + tol || wy < b[1] - tol || wy > b[3] + tol) continue;
       if (hit(o, wx, wy, tol)) { gone.add(o.id); added = true; }
@@ -806,7 +826,7 @@ export default function StudyTaskBoard({ shareToken, guestName, embedded }: { sh
   };
   const topHit = (wx: number, wy: number) => {
     const tol = 6 / viewRef.current.s; const list = page().objs;
-    for (let i = list.length - 1; i >= 0; i--) if (hit(list[i], wx, wy, tol)) return list[i];
+    for (let i = list.length - 1; i >= 0; i--) if ((!restricted || list[i].a === authorId) && hit(list[i], wx, wy, tol)) return list[i];
     return null;
   };
   const handleAt = (sx: number, sy: number) => {
@@ -1284,8 +1304,8 @@ export default function StudyTaskBoard({ shareToken, guestName, embedded }: { sh
           {!guest && boardIdRef.current && <button type="button" onClick={() => void saveBoard(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted hover:bg-primary-light" title="Сохранить копией под этим названием">Как новую</button>}
           {!guest && <button type="button" onClick={() => { const next = !boardsOpen; setBoardsOpen(next); if (next) void refreshBoards(); }} aria-expanded={boardsOpen} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-primary hover:bg-primary-light">Мои доски{boards.length ? ` (${boards.length})` : ''}</button>}
           {boardMsg && <span role="status" className="text-xs font-bold text-emerald-600">{boardMsg}</span>}
-          <button type="button" onClick={clearPage} disabled={!p.objs.length} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted hover:bg-primary-light disabled:opacity-40" title="Очистить страницу (можно отменить Ctrl+Z)">Очистить страницу</button>
-          <button type="button" onClick={removePage} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">Удалить страницу</button>
+          {!restricted && <button type="button" onClick={clearPage} disabled={!p.objs.length} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted hover:bg-primary-light disabled:opacity-40" title="Очистить страницу (можно отменить Ctrl+Z)">Очистить страницу</button>}
+          {!restricted && <button type="button" onClick={removePage} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">Удалить страницу</button>}
         </span>
       </div>
     </section>

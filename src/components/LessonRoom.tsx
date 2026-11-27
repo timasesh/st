@@ -157,7 +157,7 @@ export default function LessonRoom() {
           {showBoard && (
             <div className="h-full min-h-0 overflow-hidden rounded-xl bg-white">
               <Suspense fallback={<p className="p-6 text-sm text-muted">Загружаем доску…</p>}>
-                <StudyTaskBoard embedded shareToken={info.boardToken} guestName={info.displayName} />
+                <StudyTaskBoard embedded restricted={info.role !== 'teacher'} shareToken={info.boardToken} guestName={info.displayName} />
               </Suspense>
             </div>
           )}

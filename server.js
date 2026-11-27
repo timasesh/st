@@ -3198,7 +3198,7 @@ async function start() {
       },
     }));
     // Telegram Mini App
-    app.get(['/tg', '/tg/', '/tg/admin', '/tg/admin/'], (_req, res) => {
+    app.get(['/tg', '/tg/', '/tg/admin', '/tg/admin/', '/student', '/student/'], (_req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distDir, 'tg.html'));
     });
@@ -3212,7 +3212,7 @@ async function start() {
       configFile: path.join(ROOT, 'vite.config.ts'),
       server: { middlewareMode: true },
     });
-    app.get(['/tg', '/tg/', '/tg/admin', '/tg/admin/'], async (req, res, next) => {
+    app.get(['/tg', '/tg/', '/tg/admin', '/tg/admin/', '/student', '/student/'], async (req, res, next) => {
       try {
         const html = await fs.readFile(path.join(ROOT, 'tg.html'), 'utf-8');
         res.status(200).set({ 'Content-Type': 'text/html' }).end(await vite.transformIndexHtml(req.path, html));

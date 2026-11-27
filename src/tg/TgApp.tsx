@@ -636,7 +636,7 @@ function SettingsSheet({ portal, onClose, onLogout }: { portal: Portal; onClose:
       <button className="btn block" disabled={busy}>{busy ? 'Сохраняем…' : 'Сохранить пароль'}</button>
     </form>
     <div className="stack" style={{ marginTop: 14 }}>
-      <button className="btn ghost block" disabled={opening} onClick={() => void openSite()}>{opening ? 'Открываем…' : 'Открыть полную версию на сайте'}</button>
+      {!!tg?.initData && <button className="btn ghost block" disabled={opening} onClick={() => void openSite()}>{opening ? 'Открываем…' : 'Открыть полную версию на сайте'}</button>}
       <button className="btn red block" onClick={onLogout}><LogOut size={18} /> Выйти</button>
     </div>
   </Sheet>;
