@@ -9,7 +9,7 @@ const GUEST_NAME_KEY = 'studytask-lesson-guest-name';
 type RoomInfo = {
   room: string; displayName: string; role: 'student' | 'parent' | 'teacher' | 'guest'; subject: string; boardToken: string;
   student: { id: string; name: string }; teacher: { name: string } | null;
-  jaas?: { appId: string; jwt: string } | null; joinPath?: string;
+  jaas?: { appId: string; jwt: string } | null; jaasError?: string; joinPath?: string;
 };
 type View = 'both' | 'video' | 'board';
 
@@ -147,6 +147,7 @@ export default function LessonRoom() {
       )}
       {!isGuest && error && <p role="alert" className="m-4 rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center text-sm font-semibold text-rose-700">{error} <a href="/login" className="underline">Войти</a></p>}
       {!isGuest && !error && !info && <p className="m-4 rounded-2xl border border-border bg-white p-8 text-center text-sm text-muted">Открываем урок…</p>}
+      {info?.role === 'teacher' && !info.jaas && <p role="status" className="m-1.5 rounded-xl bg-amber-50 p-2.5 text-xs font-semibold text-amber-800">Видео идёт через демо-сервер (отключится через 5 минут). Причина: {info.jaasError || 'JaaS не подключён'}.</p>}
       {isGuest && info && error && <p role="alert" className="m-2 rounded-xl bg-rose-50 p-3 text-center text-sm font-semibold text-rose-700">{error}</p>}
 
       {info && (

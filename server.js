@@ -2299,7 +2299,10 @@ const lessonJoinCode = (studentId, teacherId) => crypto.createHmac('sha256', ses
 
 function jaasTokenFor({ room, userId, name, moderator }) {
   const appId = process.env.JAAS_APP_ID, keyId = process.env.JAAS_KEY_ID, key = process.env.JAAS_PRIVATE_KEY;
-  if (!appId || !keyId || !key) return null;
+  const missing = [!appId && 'JAAS_APP_ID', !keyId && 'JAAS_KEY_ID', !key && 'JAAS_PRIVATE_KEY'].filter(Boolean);
+  if (missing.length) return { error: `не заданы переменные Render: ${missing.join(', ')}` };
+  if (!String(keyId).includes('/')) return { error: 'JAAS_KEY_ID должен быть целиком, вида vpaas-magic-cookie-…/…, а не только хвост после «/»' };
+  if (!/BEGIN [A-Z ]*PRIVATE KEY/.test(String(key))) return { error: 'JAAS_PRIVATE_KEY должен содержать весь файл, включая строку -----BEGIN PRIVATE KEY-----' };
   try {
     const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
     const now = Math.floor(Date.now() / 1000);
@@ -2313,7 +2316,7 @@ function jaasTokenFor({ room, userId, name, moderator }) {
     });
     const signature = crypto.sign('RSA-SHA256', Buffer.from(`${head}.${body}`), key.replace(/\\n/g, '\n')).toString('base64url');
     return { appId, jwt: `${head}.${body}.${signature}` };
-  } catch (error) { console.error('JaaS token error:', error.message); return null; }
+  } catch (error) { console.error('JaaS token error:', error.message); return { error: `ключ не принят: ${error.message}` }; }
 }
 
 async function buildLessonRoom({ student, teacher, userId, displayName, role }) {
@@ -2321,7 +2324,7 @@ async function buildLessonRoom({ student, teacher, userId, displayName, role }) 
   const boardToken = await boardRooms.ensureLessonRoom(`${student.id}|${student.teacherId}`, student.teacherId);
   return {
     room, displayName, role, boardToken,
-    jaas: jaasTokenFor({ room, userId, name: displayName, moderator: role === 'teacher' }),
+    ...(() => { const j = jaasTokenFor({ room, userId, name: displayName, moderator: role === 'teacher' }); return j?.error ? { jaas: null, jaasError: j.error } : { jaas: j }; })(),
     subject: `Урок: ${personName(student)}`,
     student: { id: student.id, name: personName(student) },
     teacher: teacher ? { name: personName(teacher) } : null,
