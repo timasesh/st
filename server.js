@@ -1663,9 +1663,8 @@ async function createTrialLesson(input, actor = 'admin') {
   const studentClass = typeof input?.studentClass === 'string' ? input.studentClass.trim() : '';
   const parentPhone = normalizePhone(input?.parentPhone);
   const { teacherId, day, hour } = input || {};
-  const lessonLink = typeof input?.lessonLink === 'string' ? input.lessonLink.trim() : '';
+  const lessonLink = ''; // ссылки на сторонние сервисы (Google Meet и др.) больше не используются — урок проходит на сайте
   const lessonDescription = typeof input?.lessonDescription === 'string' ? input.lessonDescription.trim() : '';
-  if (!isValidLessonLink(lessonLink)) throw new HttpError(400, 'Укажите корректную ссылку на занятие (https://…).');
   if (lessonDescription.length > 1000) throw new HttpError(400, 'Описание занятия должно быть не длиннее 1000 символов.');
   const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
   if (!firstName || firstName.length > 80 || lastName.length > 80 || !STUDENT_CLASSES.includes(studentClass) || parentPhone.length < 10 || parentPhone.length > 16) {
@@ -1706,9 +1705,8 @@ app.put('/api/admin/trial-lessons/:id', requireAdmin, async (req, res) => {
     const index = trials.findIndex((lesson) => lesson.id === req.params.id && (lesson.status === 'scheduled' || lesson.status === 'trial' || !lesson.status || lesson.status === 'no_show'));
     if (index < 0) return res.status(404).json({ error: 'Активный пробный урок не найден.' });
     const { teacherId, day, hour } = req.body || {};
-    const lessonLink = typeof req.body?.lessonLink === 'string' ? req.body.lessonLink.trim() : '';
+    const lessonLink = ''; // ссылки на сторонние сервисы (Google Meet и др.) больше не используются — урок проходит на сайте
     const lessonDescription = typeof req.body?.lessonDescription === 'string' ? req.body.lessonDescription.trim() : '';
-    if (!isValidLessonLink(lessonLink)) return res.status(400).json({ error: 'Укажите корректную ссылку на занятие (https://…).'});
     if (lessonDescription.length > 1000) return res.status(400).json({ error: 'Описание занятия должно быть не длиннее 1000 символов.' });
     const teacher = accounts.find((account) => account.id === teacherId && account.role === 'teacher');
     if (!teacher || !Number.isInteger(day) || day < 0 || day > 6 || !Number.isInteger(hour) || hour < 8 || hour > 21) return res.status(400).json({ error: 'Выберите преподавателя и временной слот.' });
@@ -1820,7 +1818,7 @@ app.post('/api/admin/trial-lessons/:id/outcome', requireAdmin, async (req, res) 
 app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   await refreshAccounts();
   const { role, phone, password, firstName, lastName, studentClass, children, teacherId } = req.body || {};
-  const lessonLink = typeof req.body?.lessonLink === 'string' ? req.body.lessonLink.trim() : '';
+  const lessonLink = ''; // ссылки на сторонние сервисы (Google Meet и др.) больше не используются — урок проходит на сайте
   const lessonDescription = typeof req.body?.lessonDescription === 'string' ? req.body.lessonDescription.trim() : '';
   const normalizedPhone = normalizePhone(phone);
   if (!accountRoles.has(role)) return res.status(400).json({ error: 'Выберите тип аккаунта.' });
@@ -1832,7 +1830,6 @@ app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
   }
   if (role === 'student' && !STUDENT_CLASSES.includes(studentClass || '')) return res.status(400).json({ error: 'Выберите класс ученика с 1 по 11.' });
   if (role === 'student' && !accounts.some((account) => account.id === teacherId && account.role === 'teacher')) return res.status(400).json({ error: 'Выберите преподавателя для ученика.' });
-  if (role === 'student' && !isValidLessonLink(lessonLink)) return res.status(400).json({ error: 'Укажите корректную ссылку на занятие (https://…).'});
   if (lessonDescription.length > 1000) return res.status(400).json({ error: 'Описание занятия должно быть не длиннее 1000 символов.' });
   let linkedChildren = [];
   if (role === 'parent') {
@@ -1862,7 +1859,7 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
   if (index < 0) return res.status(404).json({ error: 'Аккаунт не найден.' });
   const current = accounts[index];
   const { phone, password, firstName, lastName, studentClass, children, teacherId } = req.body || {};
-  const lessonLink = typeof req.body?.lessonLink === 'string' ? req.body.lessonLink.trim() : '';
+  const lessonLink = ''; // ссылки на сторонние сервисы (Google Meet и др.) больше не используются — урок проходит на сайте
   const lessonDescription = typeof req.body?.lessonDescription === 'string' ? req.body.lessonDescription.trim() : '';
   const normalizedPhone = normalizePhone(phone);
   if (normalizedPhone.length < 10 || normalizedPhone.length > 16) return res.status(400).json({ error: 'Введите корректный номер телефона.' });
@@ -1875,7 +1872,6 @@ app.put('/api/admin/accounts/:id', requireAdmin, async (req, res) => {
   if (current.role === 'student') {
     if (!STUDENT_CLASSES.includes(studentClass || '')) return res.status(400).json({ error: 'Выберите класс ученика с 1 по 11.' });
     if (!accounts.some((account) => account.id === teacherId && account.role === 'teacher')) return res.status(400).json({ error: 'Выберите преподавателя для ученика.' });
-    if (!isValidLessonLink(lessonLink)) return res.status(400).json({ error: 'Укажите корректную ссылку на занятие (https://…).'});
   }
   if (lessonDescription.length > 1000) return res.status(400).json({ error: 'Описание занятия должно быть не длиннее 1000 символов.' });
   if (current.role === 'parent') {
@@ -2295,7 +2291,43 @@ app.delete('/api/teacher/boards/:id', async (req, res) => {
   catch (error) { return res.status(500).json({ error: error.message || 'Не удалось удалить доску.' }); }
 });
 
-// Видеоурок на сайте (Jitsi). Комната — на пару «ученик + преподаватель»; имя комнаты подписано секретом, угадать нельзя.
+// Видеоурок на сайте (Jitsi) + общая доска занятия. Комната и доска — на пару «ученик + преподаватель»;
+// имя комнаты подписано секретом, угадать нельзя. Гостям преподаватель даёт ссылку /join/<код>.
+const personName = (a) => [a?.firstName, a?.lastName].filter(Boolean).join(' ');
+const lessonRoomName = (studentId, teacherId) => `StudyTask-${crypto.createHmac('sha256', sessionSecret).update(`lesson-room|${studentId}|${teacherId}`).digest('hex').slice(0, 20)}`;
+const lessonJoinCode = (studentId, teacherId) => crypto.createHmac('sha256', sessionSecret).update(`lesson-join|${studentId}|${teacherId}`).digest('base64url').slice(0, 16);
+
+function jaasTokenFor({ room, userId, name, moderator }) {
+  const appId = process.env.JAAS_APP_ID, keyId = process.env.JAAS_KEY_ID, key = process.env.JAAS_PRIVATE_KEY;
+  if (!appId || !keyId || !key) return null;
+  try {
+    const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const now = Math.floor(Date.now() / 1000);
+    const head = b64({ alg: 'RS256', typ: 'JWT', kid: keyId });
+    const body = b64({
+      aud: 'jitsi', iss: 'chat', sub: appId, room, iat: now, nbf: now - 10, exp: now + 4 * 3600,
+      context: {
+        user: { id: userId, name, moderator: moderator ? 'true' : 'false' },
+        features: { livestreaming: 'false', recording: 'false', transcription: 'false', 'outbound-call': 'false' },
+      },
+    });
+    const signature = crypto.sign('RSA-SHA256', Buffer.from(`${head}.${body}`), key.replace(/\\n/g, '\n')).toString('base64url');
+    return { appId, jwt: `${head}.${body}.${signature}` };
+  } catch (error) { console.error('JaaS token error:', error.message); return null; }
+}
+
+async function buildLessonRoom({ student, teacher, userId, displayName, role }) {
+  const room = lessonRoomName(student.id, student.teacherId);
+  const boardToken = await boardRooms.ensureLessonRoom(`${student.id}|${student.teacherId}`, student.teacherId);
+  return {
+    room, displayName, role, boardToken,
+    jaas: jaasTokenFor({ room, userId, name: displayName, moderator: role === 'teacher' }),
+    subject: `Урок: ${personName(student)}`,
+    student: { id: student.id, name: personName(student) },
+    teacher: teacher ? { name: personName(teacher) } : null,
+  };
+}
+
 app.get('/api/lesson-room', async (req, res) => {
   await refreshAccounts();
   const user = getUserSession(req);
@@ -2309,35 +2341,34 @@ app.get('/api/lesson-room', async (req, res) => {
   if (!student || student.status === 'withdrawn') return res.status(404).json({ error: 'Урок не найден или нет доступа.' });
   if (!student.teacherId) return res.status(404).json({ error: 'За учеником не закреплён преподаватель.' });
   const teacher = accounts.find((a) => a.id === student.teacherId && a.role === 'teacher');
-  const digest = crypto.createHmac('sha256', sessionSecret).update(`lesson-room|${student.id}|${student.teacherId}`).digest('hex').slice(0, 20);
-  const room = `StudyTask-${digest}`;
-  const displayName = [me.firstName, me.lastName].filter(Boolean).join(' ') || 'Участник';
-  // JaaS (8x8): если заданы ключи, выдаём подписанный токен — вход без логина, преподаватель = модератор
-  let jaas = null;
-  const jaasAppId = process.env.JAAS_APP_ID, jaasKeyId = process.env.JAAS_KEY_ID, jaasKey = process.env.JAAS_PRIVATE_KEY;
-  if (jaasAppId && jaasKeyId && jaasKey) {
-    try {
-      const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
-      const now = Math.floor(Date.now() / 1000);
-      const head = b64({ alg: 'RS256', typ: 'JWT', kid: jaasKeyId });
-      const body = b64({
-        aud: 'jitsi', iss: 'chat', sub: jaasAppId, room, iat: now, nbf: now - 10, exp: now + 4 * 3600,
-        context: {
-          user: { id: me.id, name: displayName, moderator: me.role === 'teacher' ? 'true' : 'false' },
-          features: { livestreaming: 'false', recording: 'false', transcription: 'false', 'outbound-call': 'false' },
-        },
-      });
-      const signature = crypto.sign('RSA-SHA256', Buffer.from(`${head}.${body}`), jaasKey.replace(/\\n/g, '\n')).toString('base64url');
-      jaas = { appId: jaasAppId, jwt: `${head}.${body}.${signature}` };
-    } catch (error) { console.error('JaaS token error:', error.message); }
-  }
-  return res.json({
-    room, displayName, role: me.role, jaas,
-    subject: `Урок: ${[student.firstName, student.lastName].filter(Boolean).join(' ')}`,
-    student: { id: student.id, name: [student.firstName, student.lastName].filter(Boolean).join(' ') },
-    teacher: teacher ? { name: [teacher.firstName, teacher.lastName].filter(Boolean).join(' ') } : null,
-  });
+  try {
+    const info = await buildLessonRoom({ student, teacher, userId: me.id, displayName: personName(me) || 'Участник', role: me.role });
+    if (me.role === 'teacher') {
+      const code = lessonJoinCode(student.id, student.teacherId);
+      await boardRooms.storeSet(`lesson_join:${code}`, { studentId: student.id, teacherId: student.teacherId });
+      info.joinPath = `/join/${code}`;
+    }
+    return res.json(info);
+  } catch (error) { console.error(error); return res.status(500).json({ error: 'Не удалось открыть урок.' }); }
 });
+
+// Гость по ссылке: вводит имя и фамилию, аккаунт не нужен.
+app.post('/api/join/:code', async (req, res) => {
+  await refreshAccounts();
+  const code = String(req.params.code || '');
+  if (!/^[A-Za-z0-9_-]{16}$/.test(code)) return res.status(404).json({ error: 'Ссылка на занятие недействительна.' });
+  const name = String(req.body?.name || '').replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (name.length < 2) return res.status(400).json({ error: 'Введите имя и фамилию.' });
+  try {
+    const link = await boardRooms.storeGet(`lesson_join:${code}`);
+    const student = link && accounts.find((a) => a.id === link.studentId && a.role === 'student' && a.status !== 'withdrawn' && a.teacherId === link.teacherId);
+    if (!student) return res.status(404).json({ error: 'Ссылка на занятие недействительна.' });
+    const teacher = accounts.find((a) => a.id === student.teacherId && a.role === 'teacher');
+    const info = await buildLessonRoom({ student, teacher, userId: `guest-${crypto.randomBytes(4).toString('hex')}`, displayName: name, role: 'guest' });
+    return res.json(info);
+  } catch (error) { console.error(error); return res.status(500).json({ error: 'Не удалось открыть урок.' }); }
+});
+
 app.get('/api/parent/students/:studentId/lesson-history', async (req, res) => {
   await refreshAccounts();
   const user = getUserSession(req);

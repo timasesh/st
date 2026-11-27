@@ -232,7 +232,7 @@ export default function App() {
     handleAddRewards(15, 100); // 100 XP triggers high progress
   };
 
-  if (window.location.pathname === '/lesson' || window.location.pathname.startsWith('/lesson/')) {
+  if (window.location.pathname === '/lesson' || window.location.pathname.startsWith('/lesson/') || window.location.pathname.startsWith('/join/')) {
     return withPageLoading(<LessonRoom />);
   }
   if (window.location.pathname.startsWith('/board/') && window.location.pathname.length > 8) {

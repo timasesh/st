@@ -14,7 +14,6 @@ function TrialBooker({ lead }: { lead: Lead }) {
   const [slots, setSlots] = useState<TrialSlots | null>(null);
   const [teacherId, setTeacherId] = useState('');
   const [pick, setPick] = useState<{ day: number; hour: number } | null>(null);
-  const [link, setLink] = useState('');
   const [description, setDescription] = useState('');
   const [klass, setKlass] = useState(lead.grade && lead.grade >= 1 && lead.grade <= 11 ? `${lead.grade} класс` : '5 класс');
   const [busy, setBusy] = useState(false);
@@ -31,7 +30,7 @@ function TrialBooker({ lead }: { lead: Lead }) {
     if (!pick) { setError('Выберите свободное время.'); return; }
     setBusy(true); setError('');
     try {
-      const updated = await crmApi<Lead>(`/leads/${lead.id}/trial`, { body: { teacherId, day: pick.day, hour: pick.hour, lessonLink: link.trim(), lessonDescription: description.trim(), studentClass: klass } });
+      const updated = await crmApi<Lead>(`/leads/${lead.id}/trial`, { body: { teacherId, day: pick.day, hour: pick.hour, lessonDescription: description.trim(), studentClass: klass } });
       upsertLead(updated); toast('Пробный урок записан — он уже в расписании');
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось записать.'); } finally { setBusy(false); }
   };
@@ -56,7 +55,6 @@ function TrialBooker({ lead }: { lead: Lead }) {
           ))}
         </div>
       </div>
-      <Field label="Ссылка на занятие (Zoom / Meet)"><input className="crm-input" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…" /></Field>
       <Field label="Описание (необязательно)"><input className="crm-input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Тема, что подготовить" /></Field>
       <button type="button" className="crm-btn primary" disabled={busy || !pick} onClick={() => void submit()}><CalendarCheck size={16} /> {pick ? `Записать на ${DAYS[pick.day]} ${pick.hour}:00` : 'Выберите время'}</button>
     </div>
@@ -152,7 +150,6 @@ export function LeadDrawer({ lead, onClose }: { lead: Lead; onClose: () => void 
             <div className="crm-row crm-wrap"><Chip tone="violet">{trialLabel(lead.trial)}</Chip><Chip tone={lead.trial.status === 'enrolled' ? 'ok' : lead.trial.status === 'declined' || lead.trial.status === 'no_show' ? 'bad' : 'brand'}>{TRIAL_STATUS[lead.trial.status] || lead.trial.status}</Chip></div>
             {lead.trial.teacherName && <div>Преподаватель: <strong>{lead.trial.teacherName}</strong></div>}
             {lead.trial.scheduledAt && <div className="crm-muted">Ближайшее занятие: {fmtDateTime(lead.trial.scheduledAt)}</div>}
-            {lead.trial.lessonLink && <a href={lead.trial.lessonLink} target="_blank" rel="noreferrer" className="crm-row" style={{ color: 'var(--brand)', fontWeight: 700 }}><ExternalLink size={14} /> Ссылка на занятие</a>}
             <p className="crm-muted" style={{ margin: '6px 0 0', fontSize: 12 }}>Перенос и отметка посещаемости — в разделе «Пробные занятия», CRM подхватит изменения сама.</p>
           </div>
         ) : (

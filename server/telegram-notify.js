@@ -5,6 +5,7 @@
    • «Проверочный квиз» (привязан к уроку): открылся → осталось 5 минут → время вышло;
    • «Квиз» (с дедлайном): за 24 часа → за 1 час → дедлайн прошёл. */
 import fs from 'node:fs/promises';
+const SITE = (process.env.SITE_URL || 'https://study-task.kz').replace(/\/$/, '');
 import path from 'node:path';
 import { isActiveTrial } from '../src/shared/trials.js';
 
@@ -72,14 +73,14 @@ export function createTelegramNotifier({ getSupabase, dataDir, getAccounts, refr
       const first = new Date(nextSlotStart(lesson.day, lesson.hour, now));
       for (const start of [new Date(first.getTime() - 7 * 86400000), first, new Date(first.getTime() + 7 * 86400000)]) {
         if (start.getTime() < now.getTime() - 60000 || start.getTime() > now.getTime() + 2 * 86400000) continue;
-        out.push({ key: `l:${lesson.id}:${start.toISOString()}`, studentId: lesson.studentId, start, title: lesson.title, link: accounts.find((a) => a.id === lesson.studentId)?.lessonLink || '' });
+        out.push({ key: `l:${lesson.id}:${start.toISOString()}`, studentId: lesson.studentId, start, title: lesson.title, link: `${SITE}/lesson` });
       }
     }
     for (const trial of await readTrialLessons()) {
       if (!['scheduled', 'trial', undefined].includes(trial.status) || !trial.studentId) continue;
       const start = new Date(getTrialScheduledAt(trial));
       if (!Number.isFinite(start.getTime()) || start.getTime() < now.getTime() - 60000 || start.getTime() > now.getTime() + 2 * 86400000) continue;
-      out.push({ key: `t:${trial.id}:${start.toISOString()}`, studentId: trial.studentId, start, title: 'Пробный урок', link: trial.lessonLink || '' });
+      out.push({ key: `t:${trial.id}:${start.toISOString()}`, studentId: trial.studentId, start, title: 'Пробный урок', link: `${SITE}/lesson` });
     }
     return out;
   }
@@ -208,12 +209,12 @@ ${lines.join('\n')}
       const student = getAccounts().find((a) => a.id === lesson.studentId);
       if (!student || student.status === 'withdrawn') continue;
       const first = new Date(nextSlotStart(lesson.day, lesson.hour, now));
-      for (const start of [new Date(first.getTime() - 7 * 86400000), first]) upcoming.push({ key: `th1:l:${lesson.id}:${start.toISOString()}`, start, text: `${esc(personName(lesson.studentId))}${lesson.title ? ` — ${esc(lesson.title)}` : ''}`, link: student.lessonLink || '' });
+      for (const start of [new Date(first.getTime() - 7 * 86400000), first]) upcoming.push({ key: `th1:l:${lesson.id}:${start.toISOString()}`, start, text: `${esc(personName(lesson.studentId))}${lesson.title ? ` — ${esc(lesson.title)}` : ''}`, link: `${SITE}/lesson/${lesson.studentId}` });
     }
     for (const trial of await readTrialLessons()) {
       if (!isActiveTrial(trial) || trial.teacherId !== teacherId) continue;
       const start = new Date(getTrialScheduledAt(trial));
-      if (Number.isFinite(start.getTime())) upcoming.push({ key: `th1:t:${trial.id}:${start.toISOString()}`, start, text: `${esc(`${trial.firstName || ''} ${trial.lastName || ''}`.trim())} — пробный урок 🆕`, link: trial.lessonLink || '' });
+      if (Number.isFinite(start.getTime())) upcoming.push({ key: `th1:t:${trial.id}:${start.toISOString()}`, start, text: `${esc(`${trial.firstName || ''} ${trial.lastName || ''}`.trim())} — пробный урок 🆕`, link: trial.studentId ? `${SITE}/lesson/${trial.studentId}` : '' });
     }
     for (const item of upcoming) {
       const minutes = Math.round((item.start.getTime() - now.getTime()) / 60000);

@@ -175,7 +175,7 @@ function Home({ portal, now, go, openHw, startTest }: { portal: Portal; now: Dat
       <p className="row small" style={{ gap: 6 }}><Clock3 size={16} /> {next.d === 0 ? 'Сегодня' : dateOf(now, next.d)} · {hh(next.hour)}</p>
       {next.lessonDescription && <p className="small muted" style={{ marginTop: 6 }}>{next.lessonDescription}</p>}
       {portal.account.role === 'student' && <button className="btn block" style={{ marginTop: 12 }} onClick={() => { tap('medium'); void openLessonOnSite(); }}><Video size={18} /> Видеоурок на сайте</button>}
-      {next.lessonLink && <button className="btn gold block" style={{ marginTop: 12 }} onClick={() => { tap('medium'); openExternal(next.lessonLink!); }}><Play size={18} fill="currentColor" /> {live ? 'Подключиться' : 'Открыть ссылку на занятие'}</button>}
+      
     </div> : <Empty icon={CalendarDays} title="Занятий пока нет" text={portal.account.trialAccount ? 'После пробного урока появится расписание.' : 'Когда преподаватель добавит занятие, оно появится здесь.'} />}
 
     {(tests.length > 0 || hw.length > 0) && <div className="stack">
@@ -185,7 +185,7 @@ function Home({ portal, now, go, openHw, startTest }: { portal: Portal; now: Dat
 
     {lessons.length > 1 && <>
       <h3 style={{ marginTop: 6 }}>Ближайшие занятия</h3>
-      {lessons.slice(1, 4).map((l) => <div key={l.id} className="slot"><span className="time">{pad(l.hour)}:00</span><div className="grow"><p>{l.title}</p><p className="tiny muted">{l.d === 0 ? 'Сегодня' : dateOf(now, l.d)}</p></div>{l.lessonLink && <button className="iconbtn" style={{ width: 40, height: 40 }} aria-label="Открыть занятие" onClick={() => openExternal(l.lessonLink!)}><Play size={16} fill="currentColor" /></button>}</div>)}
+      {lessons.slice(1, 4).map((l) => <div key={l.id} className="slot"><span className="time">{pad(l.hour)}:00</span><div className="grow"><p>{l.title}</p><p className="tiny muted">{l.d === 0 ? 'Сегодня' : dateOf(now, l.d)}</p></div></div>)}
       <button className="btn ghost block small" onClick={() => go('plan')}>Всё расписание</button>
     </>}
   </div>;
@@ -208,7 +208,7 @@ function Plan({ portal, now }: { portal: Portal; now: Date }) {
             return <div key={l.id} className={`slot ${isLive ? 'live' : abs ? 'abs' : ''}`}>
               <span className="time">{pad(l.hour)}:00</span>
               <div className="grow"><p>{l.title}{portal.account.role === 'parent' && l.student?.firstName ? ` · ${l.student.firstName}` : ''}</p><p className="tiny muted">{hh(l.hour)}{abs ? ' · не посещено' : isLive ? ' · идёт сейчас' : ''}</p></div>
-              {l.lessonLink && <button className="btn small" onClick={() => { tap(); openExternal(l.lessonLink!); }}><Play size={14} fill="currentColor" /></button>}
+              
             </div>;
           })}</div>
         </section>;

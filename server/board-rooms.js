@@ -239,6 +239,19 @@ export function createBoardRooms(deps) {
     });
   }
 
+  // Доска занятия: одна общая комната на пару «ученик + преподаватель», создаётся при первом входе.
+  async function ensureLessonRoom(lessonKey, ownerId) {
+    const key = `lesson_board:${lessonKey}`;
+    const existingToken = await storeGet(key);
+    if (typeof existingToken === 'string') { const existing = await loadRoom(existingToken); if (existing) return existingToken; }
+    const token = crypto.randomBytes(18).toString('base64url');
+    const room = { token, owner: ownerId, boardId: null, created: Date.now(), pages: [{ id: 'p1', objs: [] }], clients: new Map(), dirty: true, saveTimer: null, unloadTimer: null, seq: 0 };
+    rooms.set(token, room);
+    await saveRoom(room);
+    await storeSet(key, token);
+    return token;
+  }
+
   async function flushAll() { for (const room of rooms.values()) await saveRoom(room); }
-  return { register, attach, flushAll };
+  return { register, attach, flushAll, ensureLessonRoom, storeGet, storeSet };
 }
